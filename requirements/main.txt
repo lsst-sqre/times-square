@@ -97,6 +97,7 @@ pydantic==1.8.2 \
     --hash=sha256:ea5cb40a3b23b3265f6325727ddfc45141b08ed665458be8c6285e7b85bd73a1 \
     --hash=sha256:fec866a0b59f372b7e776f2d7308511784dace622e0992a0b59ea3ccee0ae833
     # via
+    #   -r requirements/main.in
     #   fastapi
     #   safir
 python-dotenv==0.19.1 \
