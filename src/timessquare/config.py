@@ -2,40 +2,49 @@
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
+from enum import Enum
 
-__all__ = ["Configuration", "config"]
+from pydantic import BaseSettings, Field, HttpUrl
+
+__all__ = ["Config", "Profile", "LogLevel"]
 
 
-@dataclass
-class Configuration:
-    """Configuration for timessquare."""
+class Profile(str, Enum):
 
-    name: str = os.getenv("SAFIR_NAME", "timessquare")
-    """The application's name, which doubles as the root HTTP endpoint path.
+    production = "production"
 
-    Set with the ``SAFIR_NAME`` environment variable.
+    development = "development"
+
+
+class LogLevel(str, Enum):
+
+    DEBUG = "DEBUG"
+
+    INFO = "INFO"
+
+    WARNING = "WARNING"
+
+    ERROR = "ERROR"
+
+    CRITICAL = "CRITICAL"
+
+
+class Config(BaseSettings):
+
+    name: str = Field("timessquare", env="SAFIR_NAME")
+
+    profile: Profile = Field(Profile.production, env="SAFIR_PROFILE")
+
+    log_level: LogLevel = Field(LogLevel.INFO, env="SAFIR_LOG_LEVEL")
+
+    logger_name: str = Field("timessquare", env="SAFIR_LOGGER")
+
+    environment_url: HttpUrl = Field(env="TS_ENVIRONMENT_URL")
+    """The base URL of the Rubin Science Platform environment.
+
+    This is used for creating URLs to other RSP services.
     """
 
-    profile: str = os.getenv("SAFIR_PROFILE", "development")
-    """Application run profile: "development" or "production".
 
-    Set with the ``SAFIR_PROFILE`` environment variable.
-    """
-
-    logger_name: str = os.getenv("SAFIR_LOGGER", "timessquare")
-    """The root name of the application's logger.
-
-    Set with the ``SAFIR_LOGGER`` environment variable.
-    """
-
-    log_level: str = os.getenv("SAFIR_LOG_LEVEL", "INFO")
-    """The log level of the application's logger.
-
-    Set with the ``SAFIR_LOG_LEVEL`` environment variable.
-    """
-
-
-config = Configuration()
-"""Configuration for times-square."""
+config = Config()
+"""Configuration for Times Square."""
