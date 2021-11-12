@@ -41,7 +41,7 @@ _subapp.include_router(external_router)
 
 # Attach the internal routes and subapp to the main application.
 app.include_router(internal_router)
-app.mount(f"/{config.name}", _subapp)
+app.mount(config.path_prefix, _subapp)
 
 
 @app.on_event("startup")

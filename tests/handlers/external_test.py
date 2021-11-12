@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 @pytest.mark.asyncio
 async def test_get_index(client: AsyncClient) -> None:
-    """Test ``GET /timessquare/``"""
-    response = await client.get("/timessquare/")
+    """Test ``GET /` for the external API."""
+    response = await client.get(f"{config.path_prefix}/")
     assert response.status_code == 200
     data = response.json()
     metadata = data["metadata"]
