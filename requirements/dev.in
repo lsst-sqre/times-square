@@ -16,3 +16,5 @@ pytest
 pytest-asyncio
 pytest-cov
 uvicorn
+sqlalchemy[mypy]
+holdup
