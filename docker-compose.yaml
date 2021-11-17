@@ -1,0 +1,15 @@
+# Run stateful services with a local development server. This is used,
+# for example, with tox -e run, which starts times-square in the foreground.
+
+version: "3"
+services:
+  postgresql:
+    image: "postgres:latest"
+    hostname: "postgresql"
+    container_name: "postgresql"
+    environment:
+      POSTGRES_PASSWORD: "INSECURE-PASSWORD"
+      POSTGRES_USER: "timessquare"
+      POSTGRES_DB: "timessquare"
+    ports:
+      - "5432:5432"
