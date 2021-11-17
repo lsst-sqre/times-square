@@ -2,40 +2,71 @@
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
+from enum import Enum
 
-__all__ = ["Configuration", "config"]
+from pydantic import BaseSettings, Field, HttpUrl, validator
+
+__all__ = ["Config", "Profile", "LogLevel"]
 
 
-@dataclass
-class Configuration:
-    """Configuration for timessquare."""
+class Profile(str, Enum):
 
-    name: str = os.getenv("SAFIR_NAME", "timessquare")
-    """The application's name, which doubles as the root HTTP endpoint path.
+    production = "production"
 
-    Set with the ``SAFIR_NAME`` environment variable.
+    development = "development"
+
+
+class LogLevel(str, Enum):
+
+    DEBUG = "DEBUG"
+
+    INFO = "INFO"
+
+    WARNING = "WARNING"
+
+    ERROR = "ERROR"
+
+    CRITICAL = "CRITICAL"
+
+
+class Config(BaseSettings):
+
+    name: str = Field("timessquare", env="SAFIR_NAME")
+
+    profile: Profile = Field(Profile.production, env="SAFIR_PROFILE")
+
+    log_level: LogLevel = Field(LogLevel.INFO, env="SAFIR_LOG_LEVEL")
+
+    logger_name: str = Field("timessquare", env="SAFIR_LOGGER")
+
+    environment_url: HttpUrl = Field(env="TS_ENVIRONMENT_URL")
+    """The base URL of the Rubin Science Platform environment.
+
+    This is used for creating URLs to other RSP services.
     """
 
-    profile: str = os.getenv("SAFIR_PROFILE", "development")
-    """Application run profile: "development" or "production".
-
-    Set with the ``SAFIR_PROFILE`` environment variable.
+    path_prefix: str = Field("/times-square", env="TS_PATH_PREFIX")
+    """The URL prefix where the application's externally-accessible endpoints
+    are hosted.
     """
 
-    logger_name: str = os.getenv("SAFIR_LOGGER", "timessquare")
-    """The root name of the application's logger.
+    @validator("path_prefix")
+    def validate_path_prefix(cls, v: str) -> str:
+        # Handle empty path prefix (i.e. app is hosted on its own domain)
+        if v == "":
+            raise ValueError(
+                "Times square does not yet support being hosted from "
+                "the root path. Set a value for $TS_PATH_PREFIX."
+            )
 
-    Set with the ``SAFIR_LOGGER`` environment variable.
-    """
+        # Remove any trailing / since individual paths operations add those.
+        v = v.rstrip("/")
 
-    log_level: str = os.getenv("SAFIR_LOG_LEVEL", "INFO")
-    """The log level of the application's logger.
+        # Add a / prefix if not present
+        if not v.startswith("/"):
+            v = "/" + v
+        return v
 
-    Set with the ``SAFIR_LOG_LEVEL`` environment variable.
-    """
 
-
-config = Configuration()
-"""Configuration for times-square."""
+config = Config()
+"""Configuration for Times Square."""

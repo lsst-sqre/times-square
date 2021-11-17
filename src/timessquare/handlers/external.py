@@ -1,17 +1,31 @@
 """Handlers for the app's external root, ``/timessquare/``."""
 
+from typing import Dict
+
 from fastapi import APIRouter, Depends
+from pydantic import AnyHttpUrl, BaseModel, Field
 from safir.dependencies.logger import logger_dependency
+from safir.metadata import Metadata as SafirMetadata
 from safir.metadata import get_metadata
+from starlette.requests import Request
 from structlog.stdlib import BoundLogger
 
-from ..config import config
-from ..models import Index
+from timessquare.config import config
 
-__all__ = ["get_index", "external_router"]
+__all__ = ["get_index", "external_router", "Index"]
 
 external_router = APIRouter()
 """FastAPI router for all external handlers."""
+
+
+class Index(BaseModel):
+    """Metadata returned by the external root URL of the application."""
+
+    metadata: SafirMetadata = Field(..., title="Package metadata")
+
+    v1_api_base: AnyHttpUrl = Field(..., tile="Base URL for the v1 REST API")
+
+    api_docs: Dict[str, AnyHttpUrl] = Field(..., tile="API documentation URLs")
 
 
 @external_router.get(
@@ -25,19 +39,10 @@ external_router = APIRouter()
     summary="Application metadata",
 )
 async def get_index(
+    request: Request,
     logger: BoundLogger = Depends(logger_dependency),
 ) -> Index:
-    """GET ``/timessquare/`` (the app's external root).
-
-    Customize this handler to return whatever the top-level resource of your
-    application should return. For example, consider listing key API URLs.
-    When doing so, also change or customize the response model in
-    `timessquare.models.Index`.
-
-    By convention, the root of the external API includes a field called
-    ``metadata`` that provides the same Safir-generated metadata as the
-    internal root endpoint.
-    """
+    """GET ``/timessquare/`` (the app's external root)."""
     # There is no need to log simple requests since uvicorn will do this
     # automatically, but this is included as an example of how to use the
     # logger for more complex logging.
@@ -47,4 +52,8 @@ async def get_index(
         package_name="times-square",
         application_name=config.name,
     )
-    return Index(metadata=metadata)
+    # Construct these URLs; this doesn't use request.url_for because the
+    # endpoints are in other FastAPI "apps".
+    v1_api_url = f"{request.url}v1"
+    api_docs = {"root": f"{request.url}docs", "v1": f"{request.url}v1/docs"}
+    return Index(metadata=metadata, v1_api_base=v1_api_url, api_docs=api_docs)

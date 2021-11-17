@@ -1,4 +1,4 @@
-"""Tests for the timessquare.handlers.external module and routes."""
+"""Test the GET /v1/ endpoint."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 @pytest.mark.asyncio
 async def test_get_index(client: AsyncClient) -> None:
-    """Test ``GET /` for the external API."""
-    response = await client.get(f"{config.path_prefix}/")
+    """Test ``GET /v1/``."""
+    response = await client.get(f"{config.path_prefix}/v1/")
     assert response.status_code == 200
     data = response.json()
     metadata = data["metadata"]
@@ -25,10 +25,6 @@ async def test_get_index(client: AsyncClient) -> None:
     assert isinstance(metadata["repository_url"], str)
     assert isinstance(metadata["documentation_url"], str)
 
-    external_docs_url = data["api_docs"]["root"]
-    external_docs_response = await client.get(external_docs_url)
-    assert external_docs_response.status_code == 200
-
-    v1_docs_url = data["api_docs"]["v1"]
-    v1_docs_response = await client.get(v1_docs_url)
-    assert v1_docs_response.status_code == 200
+    docs_url = data["api_docs"]
+    docs_response = await client.get(docs_url)
+    assert docs_response.status_code == 200
