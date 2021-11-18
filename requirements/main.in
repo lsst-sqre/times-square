@@ -16,3 +16,4 @@ safir
 pydantic
 sqlalchemy
 asyncpg
+click
