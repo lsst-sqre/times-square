@@ -9,12 +9,14 @@ called.
 
 from importlib.metadata import metadata
 
+import structlog
 from fastapi import FastAPI
 from safir.dependencies.http_client import http_client_dependency
 from safir.logging import configure_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
 
 from .config import config
+from .database import check_database
 from .handlers.external import external_router
 from .handlers.internal import internal_router
 from .handlers.v1 import v1_router
@@ -59,6 +61,8 @@ app.mount(config.path_prefix, external_app)
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    logger = structlog.get_logger(config.logger_name)
+    await check_database(config.asyncpg_database_url, logger)
     app.add_middleware(XForwardedMiddleware)
 
 
