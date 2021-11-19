@@ -26,13 +26,13 @@ async def test_pages(client: AsyncClient) -> None:
     data = r.json()
     assert data["name"] == "demo"
     assert data["self_url"] == page_url
+    source_url = data["source_url"]
 
     r = await client.get(page_url)
     assert r.status_code == 200
     data2 = r.json()
     assert data == data2
 
-    source_url = f"{page_url}/source"
     r = await client.get(source_url)
     assert r.status_code == 200
     assert r.headers["location"] == source_url

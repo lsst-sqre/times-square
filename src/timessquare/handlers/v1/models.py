@@ -31,6 +31,13 @@ page_url_field = Field(
     description="API URL for the page's metadata resource.",
 )
 
+page_source_field = Field(
+    ...,
+    example="https://example.com/v1/pages/summit-weather/source",
+    title="Source ipynb URL",
+    description="The URL for the source ipynb file (JSON-formatted)",
+)
+
 ipynb_field = Field(
     ...,
     example="{...}",
@@ -46,12 +53,15 @@ class Page(BaseModel):
 
     self_url: AnyHttpUrl = page_url_field
 
+    source_url: AnyHttpUrl = page_source_field
+
     @classmethod
     def from_domain(cls, *, page: PageModel, request: Request) -> Page:
         """Create a page resource from the domain model."""
         return cls(
             name=page.name,
             self_url=request.url_for("get_page", page=page.name),
+            source_url=request.url_for("get_page_source", page=page.name),
         )
 
 
