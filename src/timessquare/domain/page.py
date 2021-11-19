@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Dict
 
 
 @dataclass
@@ -16,3 +17,6 @@ class PageModel:
 
     ipynb: str
     """The Jinja-parameterized notebook (a JSON-formatted string)."""
+
+    parameters: Dict[str, Dict[str, Any]]
+    """The notebook's parameters and jsonschema descriptions."""

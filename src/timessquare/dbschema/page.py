@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, Unicode, UnicodeText
+from typing import Any, Dict
+
+from sqlalchemy import JSON, Column, Integer, Unicode, UnicodeText
 
 from .base import Base
 
@@ -23,3 +25,6 @@ class SqlPage(Base):
 
     ipynb: str = Column(UnicodeText)
     """The Jinja-parameterized notebook, as a JSON-formatted string."""
+
+    parameters: Dict[str, Any] = Column(JSON)
+    """Parameters and their jsonschema descriptors."""

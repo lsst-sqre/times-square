@@ -27,7 +27,9 @@ class PageStore:
 
     def add(self, page: PageModel) -> None:
         """Add a new page."""
-        new_page = SqlPage(name=page.name, ipynb=page.ipynb)
+        new_page = SqlPage(
+            name=page.name, ipynb=page.ipynb, parameters=page.parameters
+        )
         self._session.add(new_page)
 
     async def get(self, name: str) -> Optional[PageModel]:
@@ -37,4 +39,8 @@ class PageStore:
         if sql_page is None:
             return None
 
-        return PageModel(name=sql_page.name, ipynb=sql_page.ipynb)
+        return PageModel(
+            name=sql_page.name,
+            ipynb=sql_page.ipynb,
+            parameters=sql_page.parameters,
+        )

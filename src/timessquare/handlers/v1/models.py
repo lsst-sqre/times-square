@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict
+
 from fastapi import Request
 from pydantic import AnyHttpUrl, BaseModel, Field
 from safir.metadata import Metadata as SafirMetadata
@@ -38,6 +40,13 @@ page_source_field = Field(
     description="The URL for the source ipynb file (JSON-formatted)",
 )
 
+page_parameters_field = Field(
+    ...,
+    example={"units": {"enum": ["metric", "imperial"], "default": "metric"}},
+    title="Parameters",
+    description="Parameters and their JSON Schema descriptions.",
+)
+
 ipynb_field = Field(
     ...,
     example="{...}",
@@ -55,6 +64,8 @@ class Page(BaseModel):
 
     source_url: AnyHttpUrl = page_source_field
 
+    parameters: Dict[str, Dict[str, Any]] = page_parameters_field
+
     @classmethod
     def from_domain(cls, *, page: PageModel, request: Request) -> Page:
         """Create a page resource from the domain model."""
@@ -62,6 +73,7 @@ class Page(BaseModel):
             name=page.name,
             self_url=request.url_for("get_page", page=page.name),
             source_url=request.url_for("get_page_source", page=page.name),
+            parameters=page.parameters,
         )
 
 
