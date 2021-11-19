@@ -17,3 +17,5 @@ pydantic
 sqlalchemy
 asyncpg
 click
+nbformat
+jsonschema
