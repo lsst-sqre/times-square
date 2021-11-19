@@ -1,6 +1,7 @@
 """Handler's for the /v1/."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from safir.metadata import get_metadata
 
 from timessquare.config import config
@@ -85,3 +86,36 @@ async def post_page(
         "get_page", page=page.name
     )
     return Page.from_domain(page=page, request=context.request)
+
+
+@v1_router.get(
+    "/pages/{page}/source",
+    description=(
+        "Get the content of the source ipynb file, which is unexecuted and "
+        "has Jinja templating of parameterizations."
+    ),
+    summary="Parameterized notebook source.",
+    name="get_page_source",
+)
+async def get_page_source(
+    page: str,
+    context: RequestContext = Depends(context_dependency),
+) -> PlainTextResponse:
+    page_service = context.page_service
+    page_domain = await page_service.get_page(page)
+    if page_domain is None:
+        raise HTTPException(
+            status_code=404, detail=f"Page {page} does not exist."
+        )
+
+    response_headers = {
+        "location": context.request.url_for(
+            "get_page_source", page=page_domain.name
+        )
+    }
+
+    return PlainTextResponse(
+        page_domain.ipynb,
+        headers=response_headers,
+        media_type="application/json",
+    )

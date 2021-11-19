@@ -31,3 +31,10 @@ async def test_pages(client: AsyncClient) -> None:
     assert r.status_code == 200
     data2 = r.json()
     assert data == data2
+
+    source_url = f"{page_url}/source"
+    r = await client.get(source_url)
+    assert r.status_code == 200
+    assert r.headers["location"] == source_url
+    source_notebook_data = r.json()
+    assert "metadata" in source_notebook_data.keys()  # check it's a notebook
