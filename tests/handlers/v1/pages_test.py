@@ -56,6 +56,12 @@ async def test_pages(client: AsyncClient) -> None:
     source_notebook_data = r.json()
     assert "metadata" in source_notebook_data.keys()  # check it's a notebook
 
+    # Try getting a page that doesn't exist
+    r = await client.get(
+        f"{config.path_prefix}/v1/pages/my-page",
+    )
+    assert r.status_code == 404
+
     # Try adding an invalid notebook (bad parameters)
     invalid_demo_path = data_path / "demo-invalid-params.ipynb"
     r = await client.post(

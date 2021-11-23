@@ -1,6 +1,6 @@
 """Handler's for the /v1/."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 from safir.metadata import get_metadata
 
@@ -52,10 +52,6 @@ async def get_page(
 ) -> Page:
     page_service = context.page_service
     page_domain = await page_service.get_page(page)
-    if page_domain is None:
-        raise HTTPException(
-            status_code=404, detail=f"Page {page} does not exist."
-        )
 
     context.response.headers["location"] = context.request.url_for(
         "get_page", page=page_domain.name
@@ -79,8 +75,6 @@ async def post_page(
         name=request_data.name, ipynb=request_data.ipynb
     )
     page = await page_service.get_page(request_data.name)
-    if page is None:
-        raise HTTPException(status_code=500, detail="Error creating page.")
 
     context.response.headers["location"] = context.request.url_for(
         "get_page", page=page.name
@@ -103,10 +97,6 @@ async def get_page_source(
 ) -> PlainTextResponse:
     page_service = context.page_service
     page_domain = await page_service.get_page(page)
-    if page_domain is None:
-        raise HTTPException(
-            status_code=404, detail=f"Page {page} does not exist."
-        )
 
     response_headers = {
         "location": context.request.url_for(

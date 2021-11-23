@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict
 
 import jsonschema.exceptions
 import nbformat
@@ -11,6 +11,7 @@ from jsonschema import Draft202012Validator
 
 from timessquare.domain.page import PageModel
 from timessquare.exceptions import (
+    PageNotFoundError,
     ParameterDefaultInvalidError,
     ParameterDefaultMissingError,
     ParameterNameValidationError,
@@ -67,9 +68,12 @@ class PageService:
         page = PageModel(name=name, ipynb=ipynb, parameters=parameters)
         self._page_store.add(page)
 
-    async def get_page(self, name: str) -> Optional[PageModel]:
+    async def get_page(self, name: str) -> PageModel:
         """Get the page from the data store, given its name."""
-        return await self._page_store.get(name)
+        page = await self._page_store.get(name)
+        if page is None:
+            raise PageNotFoundError(name)
+        return page
 
     def _read_ipynb(self, ipynb: str) -> nbformat.NotebookNode:
         """Parse the Jupyter Notebook."""

@@ -31,6 +31,17 @@ class TimesSquareError(Exception):
         }
 
 
+class PageNotFoundError(TimesSquareError):
+
+    error = "page_not_found"
+
+    status_code = 404
+
+    def __init__(self, name: str) -> None:
+        message = f"Page {name} not found."
+        super().__init__(message)
+
+
 class ParameterSchemaValidationError(TimesSquareError):
     """Error related to a parameter.
 
