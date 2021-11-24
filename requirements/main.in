@@ -19,3 +19,4 @@ asyncpg
 click
 nbformat
 jsonschema
+jinja2
