@@ -45,8 +45,8 @@ class PageModel:
     ipynb: str
     """The Jinja-parameterized notebook (a JSON-formatted string)."""
 
-    parameters: Dict[str, Dict[str, Any]]
-    """The notebook's parameters and jsonschema descriptions."""
+    parameters: Dict[str, PageParameterSchema]
+    """The notebook's parameter schemas, keyed by their names."""
 
     @classmethod
     def create(cls, *, name: str, ipynb: str) -> PageModel:
@@ -74,7 +74,7 @@ class PageModel:
     @staticmethod
     def _extract_parameters(
         notebook: nbformat.NotebookNode,
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> Dict[str, PageParameterSchema]:
         """Get the page parmeters from the notebook.
 
         Parameters are located in the Jupyter Notebook's metadata under
@@ -86,13 +86,17 @@ class PageModel:
         except AttributeError:
             return {}
 
-        for name, schema in parameters_metadata.items():
-            PageModel.validate_parameter_schema(name, schema)
+        page_parameters = {
+            name: PageModel.create_and_validate_page_parameter(name, schema)
+            for name, schema in parameters_metadata.items()
+        }
 
-        return parameters_metadata
+        return page_parameters
 
     @staticmethod
-    def validate_parameter_schema(name: str, schema: Dict[str, Any]) -> None:
+    def create_and_validate_page_parameter(
+        name: str, schema: Dict[str, Any]
+    ) -> PageParameterSchema:
         """Validate a parameter's name and schema.
 
         Raises
@@ -102,21 +106,63 @@ class PageModel:
             for each type of validation check).
         """
         PageModel.validate_parameter_name(name)
-
-        try:
-            Draft202012Validator.check_schema(schema)
-        except jsonschema.exceptions.SchemaError as e:
-            raise ParameterSchemaError(name, str(e))
-
-        validator = Draft202012Validator(schema)
-
-        if "default" not in schema:
-            raise ParameterDefaultMissingError(name)
-        else:
-            if not validator.is_valid(schema["default"]):
-                raise ParameterDefaultInvalidError(name, schema["default"])
+        return PageParameterSchema.create_and_validate(
+            name=name, json_schema=schema
+        )
 
     @staticmethod
     def validate_parameter_name(name: str) -> None:
         if parameter_name_pattern.match(name) is None:
             raise ParameterNameValidationError(name)
+
+
+@dataclass
+class PageParameterSchema:
+    """The domain model for a page parameter's JSON schema, which is a template
+    variable in a page's notebook (`PageModel`).
+    """
+
+    validator: Draft202012Validator
+    """Parameter value validator (based on `json_schema`)."""
+
+    @classmethod
+    def create(cls, json_schema: Dict[str, Any]) -> PageParameterSchema:
+        """Create a PageParameterSchema given a JSON Schema.
+
+        Note that this method does not validate the schema. If the schema is
+        being instantiated from an external source, run the
+        `create_and_validate` constructor instead.
+        """
+        return cls(validator=Draft202012Validator(json_schema))
+
+    @classmethod
+    def create_and_validate(
+        cls, name: str, json_schema: Dict[str, Any]
+    ) -> PageParameterSchema:
+        try:
+            Draft202012Validator.check_schema(json_schema)
+        except jsonschema.exceptions.SchemaError as e:
+            raise ParameterSchemaError(name, str(e))
+
+        if "default" not in json_schema:
+            raise ParameterDefaultMissingError(name)
+
+        instance = cls.create(json_schema)
+        if not instance.validate(json_schema["default"]):
+            raise ParameterDefaultInvalidError(name, json_schema["default"])
+
+        return instance
+
+    def validate(self, v: Any) -> bool:
+        """Validate a parameter value."""
+        return self.validator.is_valid(v)
+
+    @property
+    def schema(self) -> Dict[str, Any]:
+        """Get the JSON schema."""
+        return self.validator.schema
+
+    @property
+    def default(self) -> Any:
+        """Get the schema's default value."""
+        return self.schema["default"]

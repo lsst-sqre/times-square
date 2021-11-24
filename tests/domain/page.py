@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import pytest
 
-from timessquare.domain.page import PageModel
+from timessquare.domain.page import PageModel, PageParameterSchema
 from timessquare.exceptions import (
     ParameterDefaultInvalidError,
     ParameterDefaultMissingError,
@@ -31,11 +31,11 @@ def test_parameter_default_exists() -> None:
     schema: Dict[str, Any] = {"type": "number", "description": "Test schema"}
 
     with pytest.raises(ParameterDefaultMissingError):
-        PageModel.validate_parameter_schema(name, schema)
+        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
 
     # should work with default added
     schema["default"] = 0.0
-    PageModel.validate_parameter_schema(name, schema)
+    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
 
 
 def test_parameter_default_invalid() -> None:
@@ -48,8 +48,8 @@ def test_parameter_default_invalid() -> None:
     }
 
     with pytest.raises(ParameterDefaultInvalidError):
-        PageModel.validate_parameter_schema(name, schema)
+        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
 
     # Change default to fulfil minimum
     schema["default"] = 1.0
-    PageModel.validate_parameter_schema(name, schema)
+    PageParameterSchema.create_and_validate(name=name, json_schema=schema)

@@ -69,11 +69,15 @@ class Page(BaseModel):
     @classmethod
     def from_domain(cls, *, page: PageModel, request: Request) -> Page:
         """Create a page resource from the domain model."""
+        parameters = {
+            name: parameter.schema
+            for name, parameter in page.parameters.items()
+        }
         return cls(
             name=page.name,
             self_url=request.url_for("get_page", page=page.name),
             source_url=request.url_for("get_page_source", page=page.name),
-            parameters=page.parameters,
+            parameters=parameters,
         )
 
 

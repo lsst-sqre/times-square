@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import select
 
 from timessquare.dbschema.page import SqlPage
-from timessquare.domain.page import PageModel
+from timessquare.domain.page import PageModel, PageParameterSchema
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +27,12 @@ class PageStore:
 
     def add(self, page: PageModel) -> None:
         """Add a new page."""
+        parameters_json = {
+            name: parameter.schema
+            for name, parameter in page.parameters.items()
+        }
         new_page = SqlPage(
-            name=page.name, ipynb=page.ipynb, parameters=page.parameters
+            name=page.name, ipynb=page.ipynb, parameters=parameters_json
         )
         self._session.add(new_page)
 
@@ -39,8 +43,13 @@ class PageStore:
         if sql_page is None:
             return None
 
+        parameters = {
+            name: PageParameterSchema.create(schema)
+            for name, schema in sql_page.parameters.items()
+        }
+
         return PageModel(
             name=sql_page.name,
             ipynb=sql_page.ipynb,
-            parameters=sql_page.parameters,
+            parameters=parameters,
         )
