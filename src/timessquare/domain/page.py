@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
+import jinja2
 import jsonschema.exceptions
 import nbformat
 from jsonschema import Draft202012Validator
 
 from timessquare.exceptions import (
+    PageParameterError,
+    PageParameterValueCastingError,
     ParameterDefaultInvalidError,
     ParameterDefaultMissingError,
     ParameterNameValidationError,
@@ -66,10 +70,19 @@ class PageModel:
         """Parse Jupyter Notebook source into `~NotebookNode` for
         editing of execution.
 
-        The notebook is read according the `NB_VERSION` notebook version
+        The notebook is read according to the `NB_VERSION` notebook version
         constant.
         """
         return nbformat.reads(source, as_version=NB_VERSION)
+
+    @staticmethod
+    def write_ipynb(notebook: nbformat.NotebookNode) -> str:
+        """Write a notebook back into a JSON-encoded string.
+
+        The notebook is written according to the `NB_VERSION` notebook version
+        constant.
+        """
+        return nbformat.writes(notebook, version=NB_VERSION)
 
     @staticmethod
     def _extract_parameters(
@@ -115,6 +128,77 @@ class PageModel:
         if parameter_name_pattern.match(name) is None:
             raise ParameterNameValidationError(name)
 
+    def resolve_and_validate_parameters(
+        self, requested_parameters: Mapping[str, Any]
+    ) -> Dict[str, Any]:
+        """Resolve and validate parameter values for a notebook based on
+        a possibly incomplete user request.
+
+        Parameters
+        ----------
+        requested_parameters : dict
+            User-specified values for parameters. If parameters are not set by
+            the user, the parameter's defaults are used intead.
+        """
+        # Collect the values for each parameter; either from the request or
+        # the default. Avoid extraneous parameters from the request for
+        # security.
+        resolved_values = {
+            name: requested_parameters.get(name, schema.default)
+            for name, schema in self.parameters.items()
+        }
+
+        # Cast to the correct types
+        cast_values: Dict[str, Any] = {}
+        for name, value in resolved_values.items():
+            try:
+                cast_values[name] = self.parameters[name].cast_value(value)
+            except PageParameterValueCastingError:
+                raise PageParameterError(name, value, self.parameters[name])
+
+        # Ensure each parameter's value is valid
+        for name, value in cast_values.items():
+            if not self.parameters[name].validate(value):
+                raise PageParameterError(name, value, self.parameters[name])
+
+        return cast_values
+
+    def render_parameters(
+        self,
+        values: Mapping[str, Any],
+    ) -> str:
+        """Render the Jinja template in the source notebook cells with
+        specified parameter values.
+
+        **Note**: parameter values are not validated. Use
+        resolve_and_validate_parameters first.
+
+        Parameters
+        ----------
+        requested_parameters : `dict`
+            Parameter values.
+
+        Returns
+        -------
+        ipynb : str
+            JSON-encoded notebook source.
+        """
+        # Build Jinja render context
+        jinja_env = jinja2.Environment()
+        jinja_env.globals.update({"params": values})
+
+        # Read notebook and render cell-by-cell
+        notebook = PageModel.read_ipynb(self.ipynb)
+        for cell in notebook.cells:
+            template = jinja_env.from_string(cell.source)
+            cell.source = template.render()
+
+        # Modify notebook metadata to include values
+        notebook.metadata["times-square"]["values"] = values
+
+        # Render notebook back to a string and return
+        return PageModel.write_ipynb(notebook)
+
 
 @dataclass
 class PageParameterSchema:
@@ -153,10 +237,6 @@ class PageParameterSchema:
 
         return instance
 
-    def validate(self, v: Any) -> bool:
-        """Validate a parameter value."""
-        return self.validator.is_valid(v)
-
     @property
     def schema(self) -> Dict[str, Any]:
         """Get the JSON schema."""
@@ -166,3 +246,51 @@ class PageParameterSchema:
     def default(self) -> Any:
         """Get the schema's default value."""
         return self.schema["default"]
+
+    def __str__(self) -> str:
+        return json.dumps(self.schema, sort_keys=True, indent=2)
+
+    def validate(self, v: Any) -> bool:
+        """Validate a parameter value."""
+        return self.validator.is_valid(v)
+
+    def cast_value(self, v: Any) -> Any:
+        """Cast a value to the type indicated by the schema.
+
+        Often the input value is a string value usually obtained from the URL
+        query parameters into the correct type based on the JSON Schema's type.
+        You can also safely pass the correct type idempotently.
+
+        Only string, integer, number, and boolean schema types are supported.
+        """
+        schema_type = self.schema.get("type")
+        if schema_type is None:
+            return v
+
+        try:
+            if schema_type == "string":
+                return v
+            elif schema_type == "integer":
+                return int(v)
+            elif schema_type == "number":
+                if isinstance(v, str):
+                    if "." in v:
+                        return float(v)
+                    else:
+                        return int(v)
+                else:
+                    return v
+            elif schema_type == "boolean":
+                if isinstance(v, str):
+                    if v.lower() == "true":
+                        return True
+                    elif v.lower() == "false":
+                        return False
+                    else:
+                        raise ValueError
+                else:
+                    return v
+            else:
+                raise ValueError
+        except ValueError:
+            raise PageParameterValueCastingError(v, schema_type)

@@ -109,3 +109,23 @@ async def get_page_source(
         headers=response_headers,
         media_type="application/json",
     )
+
+
+@v1_router.get(
+    "/pages/{page}/rendered",
+    description=(
+        "Get a Jupyter Notebook with the parameter values filled in. The "
+        "notebook is still unexecuted."
+    ),
+    summary="Unexecuted notebook source with parameters.",
+)
+async def get_rendered_notebook(
+    page: str,
+    context: RequestContext = Depends(context_dependency),
+) -> PlainTextResponse:
+    page_service = context.page_service
+    parameters = context.request.query_params
+    rendered_notebook = await page_service.render_page_template(
+        page, parameters
+    )
+    return PlainTextResponse(rendered_notebook, media_type="application/json")

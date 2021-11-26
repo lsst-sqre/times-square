@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import nbformat
 import pytest
 
 from timessquare.config import config
@@ -75,3 +76,41 @@ async def test_pages(client: AsyncClient) -> None:
     assert error_data["detail"][0]["msg"] == (
         "Parameter A's default is invalid: -1."
     )
+
+    # Render the page template with defaults
+    r = await client.get(f"{page_url}/rendered")
+    assert r.status_code == 200
+    notebook = nbformat.reads(r.text, as_version=4)
+    assert notebook.cells[0].source == (
+        "# Times Square demo\n"
+        "\n"
+        "Plot parameters:\n"
+        "\n"
+        "- Amplitude: A = 4\n"
+        "- Y offset: y0 = 0\n"
+        "- Wavelength: lambd = 2"
+    )
+    assert notebook.metadata["times-square"]["values"] == {
+        "A": 4,
+        "y0": 0,
+        "lambd": 2,
+    }
+
+    # Render the page template with some parameters set
+    r = await client.get(f"{page_url}/rendered", params={"A": 2})
+    assert r.status_code == 200
+    notebook = nbformat.reads(r.text, as_version=4)
+    assert notebook.cells[0].source == (
+        "# Times Square demo\n"
+        "\n"
+        "Plot parameters:\n"
+        "\n"
+        "- Amplitude: A = 2\n"
+        "- Y offset: y0 = 0\n"
+        "- Wavelength: lambd = 2"
+    )
+    assert notebook.metadata["times-square"]["values"] == {
+        "A": 2,
+        "y0": 0,
+        "lambd": 2,
+    }

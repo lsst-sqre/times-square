@@ -53,3 +53,28 @@ def test_parameter_default_invalid() -> None:
     # Change default to fulfil minimum
     schema["default"] = 1.0
     PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+
+
+def test_parameter_casting() -> None:
+    schema = PageParameterSchema.create(
+        {"default": "default", "type": "string"}
+    )
+    assert "hello" == schema.cast_value("hello")
+
+    schema = PageParameterSchema.create({"default": 1, "type": "integer"})
+    assert 1 == schema.cast_value("1")
+    assert 1 == schema.cast_value(1)
+
+    schema = PageParameterSchema.create({"default": 1.5, "type": "number"})
+    assert 2.4 == schema.cast_value("2.4")
+    assert 2.4 == schema.cast_value(2.4)
+
+    schema = PageParameterSchema.create({"default": 1.5, "type": "number"})
+    assert 2 == schema.cast_value("2")
+    assert 2 == schema.cast_value(2)
+
+    schema = PageParameterSchema.create({"default": True, "type": "boolean"})
+    assert True is schema.cast_value("true")
+    assert False is schema.cast_value("false")
+    assert True is schema.cast_value(True)
+    assert False is schema.cast_value(False)

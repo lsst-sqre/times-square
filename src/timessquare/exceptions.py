@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict, List, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Union
 
 from fastapi import status
+
+if TYPE_CHECKING:
+    from .domain.page import PageParameterSchema
 
 
 class TimesSquareError(Exception):
@@ -39,6 +42,39 @@ class PageNotFoundError(TimesSquareError):
 
     def __init__(self, name: str) -> None:
         message = f"Page {name} not found."
+        super().__init__(message)
+
+
+class PageParameterError(TimesSquareError):
+    """Error related to a page parameter's value."""
+
+    error = "parameter_value_invalid"
+
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def __init__(
+        self, name: str, value: Any, schema: PageParameterSchema
+    ) -> None:
+        message = (
+            f"Value {value!r} for the {name} parameter is invalid. The "
+            f"schema is:\n\n{schema!s}"
+        )
+        super().__init__(message)
+
+
+class PageParameterValueCastingError(TimesSquareError):
+    """Error related to casting a parameter's value.
+
+    Usually this error is converted into a `PageParameterError` since the
+    name isn't known at the time the exception is raised.
+    """
+
+    error = "parameter_value_casting_error"
+
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def __init__(self, value: Any, schema_type: Any) -> None:
+        message = f"Value {value!r} cannot be cast to type {schema_type}"
         super().__init__(message)
 
 
