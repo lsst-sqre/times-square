@@ -11,6 +11,7 @@ import jinja2
 import jsonschema.exceptions
 import nbformat
 from jsonschema import Draft202012Validator
+from nbconvert.exporters.html import HTMLExporter
 
 from timessquare.exceptions import (
     PageParameterError,
@@ -198,6 +199,13 @@ class PageModel:
 
         # Render notebook back to a string and return
         return PageModel.write_ipynb(notebook)
+
+    def render_html(self, ipynb: str) -> str:
+        """Render a notebook into HTML."""
+        notebook = PageModel.read_ipynb(ipynb)
+        exporter = HTMLExporter()
+        html, resources = exporter.from_notebook_node(notebook)
+        return html
 
 
 @dataclass

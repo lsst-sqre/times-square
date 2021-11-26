@@ -1,7 +1,7 @@
 """Handler's for the /v1/."""
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from safir.metadata import get_metadata
 
 from timessquare.config import config
@@ -129,3 +129,18 @@ async def get_rendered_notebook(
         page, parameters
     )
     return PlainTextResponse(rendered_notebook, media_type="application/json")
+
+
+@v1_router.get(
+    "/pages/{page}/html",
+    description="Get the rendered HTML of a notebook.",
+    summary="The HTML page of an computed notebook.",
+)
+async def get_page_html(
+    page: str,
+    context: RequestContext = Depends(context_dependency),
+) -> HTMLResponse:
+    page_service = context.page_service
+    parameters = context.request.query_params
+    html = await page_service.render_html(page, parameters)
+    return HTMLResponse(html)

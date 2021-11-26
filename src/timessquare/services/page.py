@@ -63,3 +63,19 @@ class PageService:
         resolved_parameters = page.resolve_and_validate_parameters(parameters)
         rendered_notebook = page.render_parameters(resolved_parameters)
         return rendered_notebook
+
+    async def render_html(
+        self, name: str, parameters: Mapping[str, Any]
+    ) -> str:
+        """Render the HTML for a page.
+
+        **Note:** ultimately this service method should rendering the
+        *computed* notebook, rather than merely the template-rendered notebook.
+        However, this functionality is a useful stop-gap for developing the
+        front-end.
+        """
+        page = await self.get_page(name)
+        resolved_parameters = page.resolve_and_validate_parameters(parameters)
+        rendered_notebook = page.render_parameters(resolved_parameters)
+        html = page.render_html(rendered_notebook)
+        return html

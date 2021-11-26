@@ -114,3 +114,7 @@ async def test_pages(client: AsyncClient) -> None:
         "y0": 0,
         "lambd": 2,
     }
+
+    # Render HTML
+    r = await client.get(f"{page_url}/html", params={"A": 2})
+    assert r.status_code == 200
