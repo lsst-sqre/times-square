@@ -7,17 +7,28 @@ constructed when this module is loaded and is not deferred until a function is
 called.
 """
 
-from importlib.metadata import metadata
+from __future__ import annotations
 
+from importlib.metadata import metadata
+from typing import TYPE_CHECKING
+
+import structlog
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from safir.dependencies.http_client import http_client_dependency
 from safir.logging import configure_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
 
 from .config import config
+from .database import check_database
+from .dependencies.dbsession import db_session_dependency
+from .exceptions import TimesSquareError
 from .handlers.external import external_router
 from .handlers.internal import internal_router
 from .handlers.v1 import v1_router
+
+if TYPE_CHECKING:
+    from fastapi import Request
 
 __all__ = ["app", "config"]
 
@@ -59,9 +70,23 @@ app.mount(config.path_prefix, external_app)
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    logger = structlog.get_logger(config.logger_name)
+    await check_database(config.asyncpg_database_url, logger)
+    await db_session_dependency.initialize(config.asyncpg_database_url)
     app.add_middleware(XForwardedMiddleware)
 
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     await http_client_dependency.aclose()
+    await db_session_dependency.aclose()
+
+
+@v1_app.exception_handler(TimesSquareError)
+async def v1_exception_handler(
+    request: Request, exc: TimesSquareError
+) -> JSONResponse:
+    """Custom handler for Times Square errors for the v1 API."""
+    return JSONResponse(
+        status_code=exc.status_code, content={"detail": [exc.to_dict()]}
+    )

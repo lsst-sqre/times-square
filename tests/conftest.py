@@ -9,6 +9,8 @@ from asgi_lifespan import LifespanManager
 from httpx import AsyncClient
 
 from timessquare import main
+from timessquare.config import config
+from timessquare.database import initialize_database
 
 if TYPE_CHECKING:
     from typing import AsyncIterator
@@ -23,6 +25,7 @@ async def app() -> AsyncIterator[FastAPI]:
     Wraps the application in a lifespan manager so that startup and shutdown
     events are sent during test execution.
     """
+    await initialize_database(config, reset=True)
     async with LifespanManager(main.app):
         yield main.app
 

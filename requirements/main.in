@@ -14,3 +14,10 @@ uvicorn[standard]
 # Other dependencies.
 safir
 pydantic
+sqlalchemy
+asyncpg
+click
+nbformat
+nbconvert
+jsonschema
+jinja2

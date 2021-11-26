@@ -22,7 +22,6 @@ jobs:
     strategy:
       matrix:
         python:
-          - "3.8"
           - "3.9"
           - "3.10"
 
@@ -38,7 +37,7 @@ jobs:
         uses: pre-commit/action@v2.0.3
 
       - name: Install tox
-        run: pip install tox
+        run: pip install tox tox-docker
 
       - name: Cache tox environments
         id: cache-tox
@@ -52,7 +51,7 @@ jobs:
             tox-${{ matrix.python }}-${{ hashFiles('requirements/*.txt') }}-
 
       - name: Run tox
-        run: tox -e py,coverage-report,typing
+        run: tox -e docker,coverage-report,typing
 
   build:
     runs-on: ubuntu-latest
