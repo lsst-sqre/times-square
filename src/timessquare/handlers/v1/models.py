@@ -47,6 +47,26 @@ page_parameters_field = Field(
     description="Parameters and their JSON Schema descriptions.",
 )
 
+page_rendered_field = Field(
+    ...,
+    example="https://example.com/v1/pages/summit-weather/rendered",
+    title="Rendered notebook template URL",
+    description=(
+        "The URL for the source notebook rendered with parameter values "
+        "(JSON-formatted)."
+    ),
+)
+
+page_html_field = Field(
+    ...,
+    example="https://example.com/v1/pages/summit-weather/html",
+    title="HTML view of computed notebook",
+    description=(
+        "The URL for the HTML-rendering of the notebook, computed with "
+        "parameter values (JSON-formatted)."
+    ),
+)
+
 ipynb_field = Field(
     ...,
     example="{...}",
@@ -64,6 +84,10 @@ class Page(BaseModel):
 
     source_url: AnyHttpUrl = page_source_field
 
+    rendered_url: AnyHttpUrl = page_rendered_field
+
+    html_url: AnyHttpUrl = page_html_field
+
     parameters: Dict[str, Dict[str, Any]] = page_parameters_field
 
     @classmethod
@@ -77,6 +101,10 @@ class Page(BaseModel):
             name=page.name,
             self_url=request.url_for("get_page", page=page.name),
             source_url=request.url_for("get_page_source", page=page.name),
+            rendered_url=request.url_for(
+                "get_rendered_notebook", page=page.name
+            ),
+            html_url=request.url_for("get_page_html", page=page.name),
             parameters=parameters,
         )
 

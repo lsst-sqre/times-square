@@ -29,6 +29,8 @@ async def test_pages(client: AsyncClient) -> None:
     assert data["name"] == "demo"
     assert data["self_url"] == page_url
     source_url = data["source_url"]
+    rendered_url = data["rendered_url"]
+    html_url = data["html_url"]
 
     assert data["parameters"] == {
         "A": {
@@ -78,7 +80,7 @@ async def test_pages(client: AsyncClient) -> None:
     )
 
     # Render the page template with defaults
-    r = await client.get(f"{page_url}/rendered")
+    r = await client.get(rendered_url)
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
     assert notebook.cells[0].source == (
@@ -97,7 +99,7 @@ async def test_pages(client: AsyncClient) -> None:
     }
 
     # Render the page template with some parameters set
-    r = await client.get(f"{page_url}/rendered", params={"A": 2})
+    r = await client.get(rendered_url, params={"A": 2})
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
     assert notebook.cells[0].source == (
@@ -116,5 +118,5 @@ async def test_pages(client: AsyncClient) -> None:
     }
 
     # Render HTML
-    r = await client.get(f"{page_url}/html", params={"A": 2})
+    r = await client.get(html_url, params={"A": 2})
     assert r.status_code == 200

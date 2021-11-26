@@ -118,6 +118,7 @@ async def get_page_source(
         "notebook is still unexecuted."
     ),
     summary="Unexecuted notebook source with parameters.",
+    name="get_rendered_notebook",
 )
 async def get_rendered_notebook(
     page: str,
@@ -135,6 +136,7 @@ async def get_rendered_notebook(
     "/pages/{page}/html",
     description="Get the rendered HTML of a notebook.",
     summary="The HTML page of an computed notebook.",
+    name="get_page_html",
 )
 async def get_page_html(
     page: str,
