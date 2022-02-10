@@ -39,7 +39,7 @@ class LogLevel(str, Enum):
 
 class Config(BaseSettings):
 
-    name: str = Field("timessquare", env="SAFIR_NAME")
+    name: str = Field("times-square", env="SAFIR_NAME")
 
     profile: Profile = Field(Profile.production, env="SAFIR_PROFILE")
 

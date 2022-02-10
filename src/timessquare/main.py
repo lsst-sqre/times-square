@@ -36,7 +36,7 @@ __all__ = ["app", "config"]
 configure_logging(
     profile=config.profile,
     log_level=config.log_level,
-    name=config.logger_name,
+    name="timessquare",
 )
 
 app = FastAPI(
