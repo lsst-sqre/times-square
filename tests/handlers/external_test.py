@@ -25,10 +25,6 @@ async def test_get_index(client: AsyncClient) -> None:
     assert isinstance(metadata["repository_url"], str)
     assert isinstance(metadata["documentation_url"], str)
 
-    external_docs_url = data["api_docs"]["root"]
-    external_docs_response = await client.get(external_docs_url)
-    assert external_docs_response.status_code == 200
-
-    v1_docs_url = data["api_docs"]["v1"]
-    v1_docs_response = await client.get(v1_docs_url)
-    assert v1_docs_response.status_code == 200
+    docs_url = data["api_docs"]
+    docs_response = await client.get(docs_url)
+    assert docs_response.status_code == 200

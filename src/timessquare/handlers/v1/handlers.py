@@ -34,7 +34,8 @@ async def get_index(
         package_name="times-square",
         application_name=config.name,
     )
-    return Index(metadata=metadata, api_docs=f"{request.url}docs")
+    doc_url = request.url.replace(path=f"/{config.name}/docs")
+    return Index(metadata=metadata, api_docs=str(doc_url))
 
 
 @v1_router.get(

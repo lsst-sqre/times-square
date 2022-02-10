@@ -1,7 +1,5 @@
 """Handlers for the app's external root, ``/timessquare/``."""
 
-from typing import Dict
-
 from fastapi import APIRouter, Depends
 from pydantic import AnyHttpUrl, BaseModel, Field
 from safir.dependencies.logger import logger_dependency
@@ -25,7 +23,7 @@ class Index(BaseModel):
 
     v1_api_base: AnyHttpUrl = Field(..., tile="Base URL for the v1 REST API")
 
-    api_docs: Dict[str, AnyHttpUrl] = Field(..., tile="API documentation URLs")
+    api_docs: AnyHttpUrl = Field(..., tile="API documentation URL")
 
 
 @external_router.get(
@@ -55,5 +53,7 @@ async def get_index(
     # Construct these URLs; this doesn't use request.url_for because the
     # endpoints are in other FastAPI "apps".
     v1_api_url = f"{request.url}v1"
-    api_docs = {"root": f"{request.url}docs", "v1": f"{request.url}v1/docs"}
-    return Index(metadata=metadata, v1_api_base=v1_api_url, api_docs=api_docs)
+    doc_url = request.url.replace(path=f"/{config.name}/docs")
+    return Index(
+        metadata=metadata, v1_api_base=v1_api_url, api_docs=str(doc_url)
+    )

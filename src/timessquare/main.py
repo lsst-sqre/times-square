@@ -39,33 +39,19 @@ configure_logging(
     name=config.logger_name,
 )
 
-app = FastAPI()
-"""The main FastAPI application for times-square."""
-
-# Define the external routes in a subapp so that it will serve its own OpenAPI
-# interface definition and documentation URLs under the external URL.
-external_app = FastAPI(
+app = FastAPI(
     title="times-square",
     description=metadata("times-square").get("Summary", ""),
     version=metadata("times-square").get("Version", "0.0.0"),
+    openapi_url=f"/{config.name}/openapi.json",
+    docs_url=f"/{config.name}/docs",
+    redoc_url=None,
 )
-external_app.include_router(external_router)
+"""The FastAPI application for times-square."""
 
-# The v1 REST API also has its own app to specifically have its own
-# own OpenAPI docs
-v1_app = FastAPI(
-    title="Times Square v1 REST API",
-    description=metadata("times-square").get("Summary", ""),
-    version=metadata("times-square").get("Version", "0.0.0"),
-)
-v1_app.include_router(v1_router)
-
-# Attach the internal routes and other apps to the main application.
-# Note that v1 needs to be mounted before the external app because of
-# a FastAPI/Starlette routing precedence issue.
 app.include_router(internal_router)
-app.mount(f"{config.path_prefix}/v1", v1_app)
-app.mount(config.path_prefix, external_app)
+app.include_router(external_router, prefix=f"/{config.name}")
+app.include_router(v1_router, prefix=f"/{config.name}/v1")
 
 
 @app.on_event("startup")
@@ -82,11 +68,11 @@ async def shutdown_event() -> None:
     await db_session_dependency.aclose()
 
 
-@v1_app.exception_handler(TimesSquareError)
-async def v1_exception_handler(
+@app.exception_handler(TimesSquareError)
+async def ts_exception_handler(
     request: Request, exc: TimesSquareError
 ) -> JSONResponse:
-    """Custom handler for Times Square errors for the v1 API."""
+    """Custom handler for Times Square error."""
     return JSONResponse(
         status_code=exc.status_code, content={"detail": [exc.to_dict()]}
     )
