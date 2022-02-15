@@ -117,6 +117,6 @@ async def test_pages(client: AsyncClient) -> None:
         "lambd": 2,
     }
 
-    # Render HTML
+    # Try to get HTML rendering; should be unavailable right now.
     r = await client.get(html_url, params={"A": 2})
-    assert r.status_code == 200
+    assert r.status_code == 404

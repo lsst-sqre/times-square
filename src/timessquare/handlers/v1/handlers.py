@@ -1,6 +1,6 @@
 """Handler's for the /v1/."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from safir.metadata import get_metadata
 
@@ -145,5 +145,9 @@ async def get_page_html(
 ) -> HTMLResponse:
     page_service = context.page_service
     parameters = context.request.query_params
-    html = await page_service.render_html(page, parameters)
+    html = await page_service.get_html(page, parameters)
+
+    if not html:
+        raise HTTPException(status_code=404, detail="HTML not available")
+
     return HTMLResponse(html)

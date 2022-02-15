@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import Any, Mapping, Optional
 
+from structlog.stdlib import BoundLogger
+
+from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel
 from timessquare.exceptions import PageNotFoundError
-
-if TYPE_CHECKING:
-    from structlog.stdlib import BoundLogger
-
-    from timessquare.storage.page import PageStore
+from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
+from timessquare.storage.page import PageStore
 
 
 class PageService:
@@ -27,9 +27,11 @@ class PageService:
     def __init__(
         self,
         page_store: PageStore,
+        html_cache: NbHtmlCacheStore,
         logger: BoundLogger,
     ) -> None:
         self._page_store = page_store
+        self._html_store = html_cache
         self._logger = logger
 
     def create_page_with_notebook(self, name: str, ipynb: str) -> None:
@@ -64,18 +66,31 @@ class PageService:
         rendered_notebook = page.render_parameters(resolved_parameters)
         return rendered_notebook
 
-    async def render_html(
+    async def get_html(
         self, name: str, parameters: Mapping[str, Any]
-    ) -> str:
-        """Render the HTML for a page.
+    ) -> Optional[NbHtmlModel]:
+        """Get the HTML for a page given a set of parameter values, first
+        from a cache or triggering a rendering if not available.
 
-        **Note:** ultimately this service method should rendering the
-        *computed* notebook, rather than merely the template-rendered notebook.
-        However, this functionality is a useful stop-gap for developing the
-        front-end.
+        Returns
+        -------
+        nbhtml : `NbHtmlModel` or `None`
+            The NbHtmlModel if available, or `None` if the executed notebook is
+            not presently available.
         """
         page = await self.get_page(name)
-        resolved_parameters = page.resolve_and_validate_parameters(parameters)
-        rendered_notebook = page.render_parameters(resolved_parameters)
-        html = page.render_html(rendered_notebook)
-        return html
+
+        nbhtml = await self._html_store.get(
+            page_name=page.name, parameters=parameters
+        )
+        if nbhtml is not None:
+            return nbhtml
+
+        # TODO render the executed notebook to HTML instead of the template
+        # resolved_parameters = page.resolve_and_validate_parameters(
+        #     parameters
+        # )
+        # rendered_notebook = page.render_parameters(resolved_parameters)
+        # html = page.render_html(rendered_notebook)
+
+        return None

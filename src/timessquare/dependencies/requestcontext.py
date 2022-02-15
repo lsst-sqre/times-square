@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
+import aioredis
 from fastapi import Depends, Request, Response
 from httpx import AsyncClient
 from safir.dependencies.http_client import http_client_dependency
@@ -11,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import Config, config
+from timessquare.dependencies.redis import redis_dependency
 from timessquare.services.page import PageService
+from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.page import PageStore
 
 from .dbsession import db_session_dependency
@@ -44,13 +47,18 @@ class RequestContext:
     session: AsyncSession
     """The database session."""
 
+    redis: aioredis.Redis
+    """Redis connection pool."""
+
     http_client: AsyncClient
     """Shared HTTP client."""
 
     @property
     def page_service(self) -> PageService:
         return PageService(
-            page_store=PageStore(self.session), logger=self.logger
+            page_store=PageStore(self.session),
+            html_cache=NbHtmlCacheStore(self.redis),
+            logger=self.logger,
         )
 
     def rebind_logger(self, **values: Optional[str]) -> None:
@@ -72,6 +80,7 @@ async def context_dependency(
     response: Response,
     logger: BoundLogger = Depends(logger_dependency),
     session: AsyncSession = Depends(db_session_dependency),
+    redis: aioredis.Redis = Depends(redis_dependency),
     http_client: AsyncClient = Depends(http_client_dependency),
 ) -> RequestContext:
     """Provides a RequestContext as a dependency."""
@@ -81,5 +90,6 @@ async def context_dependency(
         config=config,
         logger=logger,
         session=session,
+        redis=redis,
         http_client=http_client,
     )
