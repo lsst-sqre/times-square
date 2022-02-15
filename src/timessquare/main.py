@@ -22,6 +22,7 @@ from safir.middleware.x_forwarded import XForwardedMiddleware
 from .config import config
 from .database import check_database
 from .dependencies.dbsession import db_session_dependency
+from .dependencies.redis import redis_dependency
 from .exceptions import TimesSquareError
 from .handlers.external import external_router
 from .handlers.internal import internal_router
@@ -59,6 +60,7 @@ async def startup_event() -> None:
     logger = structlog.get_logger(config.logger_name)
     await check_database(config.asyncpg_database_url, logger)
     await db_session_dependency.initialize(config.asyncpg_database_url)
+    await redis_dependency.initialize(config.redis_url)
     app.add_middleware(XForwardedMiddleware)
 
 
@@ -66,6 +68,7 @@ async def startup_event() -> None:
 async def shutdown_event() -> None:
     await http_client_dependency.aclose()
     await db_session_dependency.aclose()
+    await redis_dependency.close()
 
 
 @app.exception_handler(TimesSquareError)

@@ -10,6 +10,7 @@ from pydantic import (
     Field,
     HttpUrl,
     PostgresDsn,
+    RedisDsn,
     SecretStr,
     validator,
 )
@@ -61,6 +62,9 @@ class Config(BaseSettings):
     database_url: PostgresDsn = Field(..., env="TS_DATABASE_URL")
 
     database_password: SecretStr = Field(..., env="TS_DATABASE_PASSWORD")
+
+    redis_url: RedisDsn = Field("redis://localhost:6379/0", env="TS_REDIS_URL")
+    """URL for the redis instance, used by the worker queue."""
 
     @validator("path_prefix")
     def validate_path_prefix(cls, v: str) -> str:
