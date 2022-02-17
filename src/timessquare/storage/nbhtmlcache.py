@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
-from base64 import b64encode
 from typing import Any, AsyncIterable, Mapping, Optional
 
 import aioredis
 
 from timessquare.domain.nbhtml import NbHtmlModel
+
+from .redisutils import calculate_key
 
 
 class NbHtmlCacheStore:
@@ -114,33 +114,6 @@ class NbHtmlCacheStore:
         return count > 0
 
     @staticmethod
-    def encode_parameters_key(parameters: Mapping[str, Any]) -> str:
-        """Encode the notebook template parameters into a string that is used
-        in the redis key for an HTML record.
-
-        Parameters
-        ----------
-        parameters : dict
-            The parameter values, keyed by the parameter names, with values as
-            cast Python types
-            (`timessquare.domain.page.PageParameterSchema.cast_value`).
-
-        Returns
-        -------
-        parameters_key : str
-            A canonical string reprentation of the parameter values.
-
-        See also
-        --------
-        NbHtmlCacheStore.calculate_key
-        """
-        return b64encode(
-            json.dumps(
-                {k: p for k, p in parameters.items()}, sort_keys=True
-            ).encode("utf-8")
-        ).decode("utf-8")
-
-    @staticmethod
     def calculate_key(*, page_name: str, parameters: Mapping[str, Any]) -> str:
         """Create the redis key for an NbHtmlModel given the page's name and
         parameter values.
@@ -161,6 +134,6 @@ class NbHtmlCacheStore:
             The unique redis key for this combination of page name and
             parameter values.
         """
-        return (
-            f"{page_name}/{NbHtmlCacheStore.encode_parameters_key(parameters)}"
+        return calculate_key(
+            prefix="nbhtml", page_name=page_name, parameters=parameters
         )
