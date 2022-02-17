@@ -145,9 +145,9 @@ async def get_page_html(
 ) -> HTMLResponse:
     page_service = context.page_service
     parameters = context.request.query_params
-    html = await page_service.get_html(page, parameters)
+    html = await page_service.get_html(name=page, parameters=parameters)
 
     if not html:
         raise HTTPException(status_code=404, detail="HTML not available")
 
-    return HTMLResponse(html)
+    return HTMLResponse(html.html)

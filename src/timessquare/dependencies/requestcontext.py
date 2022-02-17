@@ -15,6 +15,7 @@ from timessquare.config import Config, config
 from timessquare.dependencies.redis import redis_dependency
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
+from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore
 
 from .dbsession import db_session_dependency
@@ -58,6 +59,8 @@ class RequestContext:
         return PageService(
             page_store=PageStore(self.session),
             html_cache=NbHtmlCacheStore(self.redis),
+            job_store=NoteburstJobStore(self.redis),
+            http_client=self.http_client,
             logger=self.logger,
         )
 

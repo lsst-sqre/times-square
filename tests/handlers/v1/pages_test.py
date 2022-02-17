@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import nbformat
 import pytest
+import respx
+from httpx import AsyncClient, Response
 
 from timessquare.config import config
 
-if TYPE_CHECKING:
-    from httpx import AsyncClient
-
 
 @pytest.mark.asyncio
-async def test_pages(client: AsyncClient) -> None:
+async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     """Test creating and managing pages."""
     data_path = Path(__file__).parent.joinpath("../../data")
     demo_path = data_path / "demo.ipynb"
@@ -118,5 +117,78 @@ async def test_pages(client: AsyncClient) -> None:
     }
 
     # Try to get HTML rendering; should be unavailable right now.
+    respx_mock.post("https://test.example.com/noteburst/v1/").mock(
+        return_value=Response(
+            202,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "queued",
+                "self_url": "https://test.example.com/noteburst/v1/jobs/xyz",
+                "result_url": (
+                    "https://test.example.com/noteburst/v1/jobs/xyz/result"
+                ),
+            },
+        )
+    )
     r = await client.get(html_url, params={"A": 2})
     assert r.status_code == 404
+
+    # Try to get noteburst job while still queued
+    respx_mock.get("https://test.example.com/noteburst/v1/jobs/xyz").mock(
+        return_value=Response(
+            200,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "queued",
+                "self_url": "https://test.example.com/noteburst/v1/jobs/xyz",
+                "result_url": (
+                    "https://test.example.com/noteburst/v1/jobs/xyz/result"
+                ),
+            },
+        )
+    )
+    r = await client.get(html_url, params={"A": 2})
+    assert r.status_code == 404
+
+    # Get completed noteburst job
+    respx_mock.get("https://test.example.com/noteburst/v1/jobs/xyz").mock(
+        return_value=Response(
+            200,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "complete",
+                "self_url": "https://test.example.com/noteburst/v1/jobs/xyz",
+                "result_url": (
+                    "https://test.example.com/noteburst/v1/jobs/xyz/result"
+                ),
+            },
+        )
+    )
+    respx_mock.get(
+        "https://test.example.com/noteburst/v1/jobs/xyz/result"
+    ).mock(
+        return_value=Response(
+            200,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "complete",
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/jobs/xyz/result",
+                ),
+                "start_time": datetime.utcnow().isoformat(),
+                "finish_time": datetime.utcnow().isoformat(),
+                "success": True,
+                "ipynb": demo_path.read_text(),
+            },
+        )
+    )
+    r = await client.get(html_url, params={"A": 2})
+    assert r.status_code == 200

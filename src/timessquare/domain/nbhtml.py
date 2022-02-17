@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict
+from datetime import datetime, timedelta
+from typing import Any, Dict, Mapping
 
 from pydantic import BaseModel
+
+from .noteburstjob import NoteburstResultResponseModel
 
 
 class NbHtmlModel(BaseModel):
@@ -35,5 +37,27 @@ class NbHtmlModel(BaseModel):
     date_executed: datetime
     """The time when the notebook was executed (UTC)."""
 
+    execution_duration: timedelta
+    """The duration required to compute the notebook."""
+
     date_rendered: datetime
     """The time when the notebook was rendered to HTML (UTC)."""
+
+    @classmethod
+    def create_from_noteburst_result(
+        cls,
+        *,
+        page_name: str,
+        html: str,
+        parameters: Mapping[str, Any],
+        noteburst_result: NoteburstResultResponseModel,
+    ) -> NbHtmlModel:
+        td = noteburst_result.finish_time - noteburst_result.start_time
+        return cls(
+            page_name=page_name,
+            html=html,
+            parameters=dict(parameters),
+            date_executed=noteburst_result.finish_time,
+            date_rendered=datetime.utcnow(),
+            execution_duration=td,
+        )
