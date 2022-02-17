@@ -64,9 +64,9 @@ certifi==2021.10.8 \
     # via
     #   httpcore
     #   httpx
-charset-normalizer==2.0.11 \
-    --hash=sha256:2842d8f5e82a1f6aa437380934d5e1cd4fcf2003b06fed6940769c164a480a45 \
-    --hash=sha256:98398a9d69ee80548c762ba991a4728bfc3836768ed226b3945908d1a688371c
+charset-normalizer==2.0.12 \
+    --hash=sha256:2857e29ff0d34db842cd7ca3230549d1a697f96ee6d3fb071cfa6c7393832597 \
+    --hash=sha256:6881edbebdb17b39b4eaaa821b438bf6eddffb4468cf344f09f89def34a8b1df
     # via httpx
 click==8.0.3 \
     --hash=sha256:353f466495adaeb40b6b5f592f9f91cb22372351c84caeb068132442a4518ef3 \
@@ -84,9 +84,9 @@ entrypoints==0.4 \
     # via
     #   jupyter-client
     #   nbconvert
-fastapi==0.73.0 \
-    --hash=sha256:dcfee92a7f9a72b5d4b7ca364bd2b009f8fc10d95ed5769be20e94f39f7e5a15 \
-    --hash=sha256:f0a618aff5f6942862f2d3f20f39b1c037e33314d1b8207fd1c3a2cca76dfd8c
+fastapi==0.74.0 \
+    --hash=sha256:5363a2cd983aa700e5a6c25d63d1b84aee0d4c94358247b4a1a947e39f654ffe \
+    --hash=sha256:e21d7d0d587c8c2014e8ff61be2626f999cfb8c3cb42f034df9f8589bcb893e1
     # via
     #   -r requirements/main.in
     #   safir
@@ -217,9 +217,9 @@ jupyter-client==7.1.2 \
     --hash=sha256:4ea61033726c8e579edb55626d8ee2e6bf0a83158ddf3751b8dd46b2c5cd1e96 \
     --hash=sha256:d56f1c57bef42ff31e61b1185d3348a5b2bcde7c9a05523ae4dbe5ee0871797c
     # via nbclient
-jupyter-core==4.9.1 \
-    --hash=sha256:1c091f3bbefd6f2a8782f2c1db662ca8478ac240e962ae2c66f0b87c818154ea \
-    --hash=sha256:dce8a7499da5a53ae3afd5a9f4b02e5df1d57250cf48f3ad79da23b4778cd6fa
+jupyter-core==4.9.2 \
+    --hash=sha256:d69baeb9ffb128b8cd2657fcf2703f89c769d1673c851812119e3a2a0e93ad9a \
+    --hash=sha256:f875e4d27e202590311d468fa55f90c575f201490bd0c18acabe4e318db4a46d
     # via
     #   jupyter-client
     #   nbconvert
@@ -303,9 +303,9 @@ mistune==0.8.4 \
     --hash=sha256:59a3429db53c50b5c6bcc8a07f8848cb00d7dc8bdb431a4ab41920d201d4756e \
     --hash=sha256:88a1051873018da288eee8538d476dffe1262495144b33ecb586c4ab266bb8d4
     # via nbconvert
-nbclient==0.5.10 \
-    --hash=sha256:5b582e21c8b464e6676a9d60acc6871d7fbc3b080f74bef265a9f90411b31f6f \
-    --hash=sha256:b5fdea88d6fa52ca38de6c2361401cfe7aaa7cd24c74effc5e489cec04d79088
+nbclient==0.5.11 \
+    --hash=sha256:03e857bea3012377289daa1e1c1651f4fc0295bcd109ccd36a337efcdbebaed7 \
+    --hash=sha256:751516992f34b58172bad54eef1e4bf7e4f4460d58e255ca1a4e5c9649476007
     # via nbconvert
 nbconvert==6.4.2 \
     --hash=sha256:7b006ae9979af56200e7fa3db39d9d12c99e811e8843b05dbe518e5b754bcb2e \
@@ -623,15 +623,15 @@ traitlets==5.1.1 \
     #   nbclient
     #   nbconvert
     #   nbformat
-typing-extensions==4.0.1 \
-    --hash=sha256:4ca091dea149f945ec56afb48dae714f21e8692ef22a395223bcd328961b6a0e \
-    --hash=sha256:7f001e5ac290a0c0401508864c7ec868be4e701886d5b573a9528ed3973d9d3b
+typing-extensions==4.1.1 \
+    --hash=sha256:1a9462dcc3347a79b1f1c0271fbe79e844580bb598bafa1ed208b94da3cdcd42 \
+    --hash=sha256:21c85e0fe4b9a155d0799430b0ad741cdce7e359660ccbd8b530613e8df88ce2
     # via
     #   aioredis
     #   pydantic
-uvicorn[standard]==0.17.4 \
-    --hash=sha256:25850bbc86195a71a6477b3e4b3b7b4c861fb687fb96912972ce5324472b1011 \
-    --hash=sha256:e85872d84fb651cccc4c5d2a71cf7ead055b8fb4d8f1e78e36092282c0cf2aec
+uvicorn[standard]==0.17.5 \
+    --hash=sha256:8adddf629b79857b48b999ae1b14d6c92c95d4d7840bd86461f09bee75f1653e \
+    --hash=sha256:c04a9c069111489c324f427501b3840d306c6b91a77b00affc136a840a3f45f1
     # via -r requirements/main.in
 uvloop==0.16.0 \
     --hash=sha256:04ff57aa137230d8cc968f03481176041ae789308b4d5079118331ab01112450 \

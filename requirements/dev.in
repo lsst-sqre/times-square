@@ -18,3 +18,4 @@ pytest-cov
 uvicorn
 sqlalchemy[mypy]
 holdup
+respx
