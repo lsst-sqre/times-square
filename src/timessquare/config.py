@@ -54,6 +54,11 @@ class Config(BaseSettings):
     This is used for creating URLs to other RSP services.
     """
 
+    gafaelfawr_token: SecretStr = Field(env="TS_GAFAELFAWR_TOKEN")
+    """This token is used to make requests to other RSP services, such as
+    Noteburst.
+    """
+
     path_prefix: str = Field("/times-square", env="TS_PATH_PREFIX")
     """The URL prefix where the application's externally-accessible endpoints
     are hosted.
