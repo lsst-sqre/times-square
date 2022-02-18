@@ -93,6 +93,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: lsstsqre/timessquare:${{ steps.vars.outputs.tag }}
+          tags: lsstsqre/times-square:${{ steps.vars.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
