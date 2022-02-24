@@ -6,9 +6,10 @@ from typing import Optional
 import aioredis
 from fastapi import Depends, Request, Response
 from httpx import AsyncClient
+from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import async_scoped_session
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import Config, config
@@ -17,8 +18,6 @@ from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore
-
-from .dbsession import db_session_dependency
 
 __all__ = ["RequestContext", "context_dependency"]
 
@@ -45,7 +44,7 @@ class RequestContext:
     logger: BoundLogger
     """The request logger, rebound with discovered context."""
 
-    session: AsyncSession
+    session: async_scoped_session
     """The database session."""
 
     redis: aioredis.Redis
@@ -82,7 +81,7 @@ async def context_dependency(
     request: Request,
     response: Response,
     logger: BoundLogger = Depends(logger_dependency),
-    session: AsyncSession = Depends(db_session_dependency),
+    session: async_scoped_session = Depends(db_session_dependency),
     redis: aioredis.Redis = Depends(redis_dependency),
     http_client: AsyncClient = Depends(http_client_dependency),
 ) -> RequestContext:

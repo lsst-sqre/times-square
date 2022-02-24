@@ -12,16 +12,14 @@ from __future__ import annotations
 from importlib.metadata import metadata
 from typing import TYPE_CHECKING
 
-import structlog
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.logging import configure_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
 
 from .config import config
-from .database import check_database
-from .dependencies.dbsession import db_session_dependency
 from .dependencies.redis import redis_dependency
 from .exceptions import TimesSquareError
 from .handlers.external import external_router
@@ -57,9 +55,9 @@ app.include_router(v1_router, prefix=f"/{config.name}/v1")
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    logger = structlog.get_logger(config.logger_name)
-    await check_database(config.asyncpg_database_url, logger)
-    await db_session_dependency.initialize(config.asyncpg_database_url)
+    await db_session_dependency.initialize(
+        config.database_url, config.database_password.get_secret_value()
+    )
     await redis_dependency.initialize(config.redis_url)
     app.add_middleware(XForwardedMiddleware)
 

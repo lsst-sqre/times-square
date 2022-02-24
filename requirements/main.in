@@ -12,10 +12,8 @@ starlette
 uvicorn[standard]
 
 # Other dependencies.
-safir
+safir[db]
 pydantic
-sqlalchemy
-asyncpg
 click
 nbformat
 nbconvert

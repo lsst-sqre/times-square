@@ -5,7 +5,6 @@ from __future__ import annotations
 from enum import Enum
 
 from pydantic import (
-    AnyUrl,
     BaseSettings,
     Field,
     HttpUrl,
@@ -87,22 +86,6 @@ class Config(BaseSettings):
         if not v.startswith("/"):
             v = "/" + v
         return v
-
-    @property
-    def asyncpg_database_url(self) -> str:
-        """The ``postgresql+asyncpg`` database URL that includes the password,
-        based on the `database_url` and `database_password` attributes.
-        """
-        return str(
-            AnyUrl.build(
-                scheme="postgresql+asyncpg",
-                user=self.database_url.user,
-                host=self.database_url.host,
-                port=self.database_url.port,
-                path=self.database_url.path,
-                password=self.database_password.get_secret_value(),
-            )
-        )
 
 
 config = Config()

@@ -52,12 +52,13 @@ async def get_page(
     page: str, context: RequestContext = Depends(context_dependency)
 ) -> Page:
     page_service = context.page_service
-    page_domain = await page_service.get_page(page)
+    async with context.session.begin():
+        page_domain = await page_service.get_page(page)
 
-    context.response.headers["location"] = context.request.url_for(
-        "get_page", page=page_domain.name
-    )
-    return Page.from_domain(page=page_domain, request=context.request)
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page_domain.name
+        )
+        return Page.from_domain(page=page_domain, request=context.request)
 
 
 @v1_router.post(
@@ -72,15 +73,16 @@ async def post_page(
     context: RequestContext = Depends(context_dependency),
 ) -> Page:
     page_service = context.page_service
-    page_service.create_page_with_notebook(
-        name=request_data.name, ipynb=request_data.ipynb
-    )
-    page = await page_service.get_page(request_data.name)
+    async with context.session.begin():
+        page_service.create_page_with_notebook(
+            name=request_data.name, ipynb=request_data.ipynb
+        )
+        page = await page_service.get_page(request_data.name)
 
-    context.response.headers["location"] = context.request.url_for(
-        "get_page", page=page.name
-    )
-    return Page.from_domain(page=page, request=context.request)
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page.name
+        )
+        return Page.from_domain(page=page, request=context.request)
 
 
 @v1_router.get(
@@ -97,19 +99,20 @@ async def get_page_source(
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
     page_service = context.page_service
-    page_domain = await page_service.get_page(page)
+    async with context.session.begin():
+        page_domain = await page_service.get_page(page)
 
-    response_headers = {
-        "location": context.request.url_for(
-            "get_page_source", page=page_domain.name
+        response_headers = {
+            "location": context.request.url_for(
+                "get_page_source", page=page_domain.name
+            )
+        }
+
+        return PlainTextResponse(
+            page_domain.ipynb,
+            headers=response_headers,
+            media_type="application/json",
         )
-    }
-
-    return PlainTextResponse(
-        page_domain.ipynb,
-        headers=response_headers,
-        media_type="application/json",
-    )
 
 
 @v1_router.get(
@@ -127,10 +130,13 @@ async def get_rendered_notebook(
 ) -> PlainTextResponse:
     page_service = context.page_service
     parameters = context.request.query_params
-    rendered_notebook = await page_service.render_page_template(
-        page, parameters
-    )
-    return PlainTextResponse(rendered_notebook, media_type="application/json")
+    async with context.session.begin():
+        rendered_notebook = await page_service.render_page_template(
+            page, parameters
+        )
+        return PlainTextResponse(
+            rendered_notebook, media_type="application/json"
+        )
 
 
 @v1_router.get(
@@ -145,9 +151,10 @@ async def get_page_html(
 ) -> HTMLResponse:
     page_service = context.page_service
     parameters = context.request.query_params
-    html = await page_service.get_html(name=page, parameters=parameters)
+    async with context.session.begin():
+        html = await page_service.get_html(name=page, parameters=parameters)
 
-    if not html:
-        raise HTTPException(status_code=404, detail="HTML not available")
+        if not html:
+            raise HTTPException(status_code=404, detail="HTML not available")
 
-    return HTMLResponse(html.html)
+        return HTMLResponse(html.html)

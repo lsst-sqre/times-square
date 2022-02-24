@@ -18,6 +18,7 @@ FROM python:3.10.2-slim-bullseye as base-image
 
 # Update system packages
 COPY scripts/install-base-packages.sh .
+COPY scripts/start-api.sh /start-api.sh
 RUN ./install-base-packages.sh && rm ./install-base-packages.sh
 
 FROM base-image AS dependencies-image
@@ -65,4 +66,4 @@ USER appuser
 EXPOSE 8080
 
 # Run the application.
-CMD ["uvicorn", "timessquare.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["/start-api.sh"]

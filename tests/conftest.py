@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import AsyncIterator
 
 import pytest_asyncio
+import structlog
 from asgi_lifespan import LifespanManager
+from fastapi import FastAPI
 from httpx import AsyncClient
+from safir.database import create_database_engine, initialize_database
 
 from timessquare import main
 from timessquare.config import config
-from timessquare.database import initialize_database
-
-if TYPE_CHECKING:
-    from typing import AsyncIterator
-
-    from fastapi import FastAPI
+from timessquare.dbschema import Base
 
 
 @pytest_asyncio.fixture
@@ -25,7 +23,12 @@ async def app() -> AsyncIterator[FastAPI]:
     Wraps the application in a lifespan manager so that startup and shutdown
     events are sent during test execution.
     """
-    await initialize_database(config, reset=True)
+    logger = structlog.get_logger(config.logger_name)
+    engine = create_database_engine(
+        config.database_url, config.database_password.get_secret_value()
+    )
+    await initialize_database(engine, logger, schema=Base.metadata, reset=True)
+    await engine.dispose()
     async with LifespanManager(main.app):
         yield main.app
 

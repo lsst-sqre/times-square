@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_scoped_session
 
 from timessquare.dbschema.page import SqlPage
 from timessquare.domain.page import PageModel, PageParameterSchema
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class PageStore:
@@ -18,11 +16,11 @@ class PageStore:
 
     Parameters
     ----------
-    session : `sqlalchemy.ext.asyncio.AsyncSession`
+    session : `sqlalchemy.ext.asyncio.async_scoped_session`
         The database session proxy.
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: async_scoped_session) -> None:
         self._session = session
 
     def add(self, page: PageModel) -> None:
