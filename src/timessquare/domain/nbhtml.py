@@ -7,7 +7,7 @@ from typing import Any, Dict, Mapping
 
 from pydantic import BaseModel
 
-from .noteburstjob import NoteburstResultResponseModel
+from .noteburstjob import NoteburstJobResponseModel
 
 
 class NbHtmlModel(BaseModel):
@@ -50,8 +50,10 @@ class NbHtmlModel(BaseModel):
         page_name: str,
         html: str,
         parameters: Mapping[str, Any],
-        noteburst_result: NoteburstResultResponseModel,
+        noteburst_result: NoteburstJobResponseModel,
     ) -> NbHtmlModel:
+        assert noteburst_result.finish_time
+        assert noteburst_result.start_time
         td = noteburst_result.finish_time - noteburst_result.start_time
         return cls(
             page_name=page_name,

@@ -10,10 +10,9 @@ from structlog.stdlib import BoundLogger
 from timessquare.config import config
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.noteburstjob import (
-    NoteburstJobMetadataResponseModel,
     NoteburstJobModel,
+    NoteburstJobResponseModel,
     NoteburstJobStatus,
-    NoteburstResultResponseModel,
 )
 from timessquare.domain.page import PageModel
 from timessquare.exceptions import PageNotFoundError
@@ -136,21 +135,14 @@ class PageService:
             job.job_url, headers=self._noteburst_auth_header
         )
         if r.status_code == 200:
-            job_metadata = NoteburstJobMetadataResponseModel.parse_obj(
-                r.json()
-            )
+            noteburst_response = NoteburstJobResponseModel.parse_obj(r.json())
             self._logger.debug(
-                "Got noteburst job metadata", status=str(job_metadata.status)
+                "Got noteburst job metadata",
+                status=str(noteburst_response.status),
             )
-            if job_metadata.status == NoteburstJobStatus.complete:
-                # request the result
-                r = await self._http_client.get(
-                    job.result_url, headers=self._noteburst_auth_header
-                )
-                noteburst_response = NoteburstResultResponseModel.parse_obj(
-                    r.json()
-                )
+            if noteburst_response.status == NoteburstJobStatus.complete:
                 ipynb = noteburst_response.ipynb
+                assert ipynb
                 html = page.render_html(ipynb)
                 nbhtml = NbHtmlModel.create_from_noteburst_result(
                     page_name=page.name,
@@ -201,7 +193,7 @@ class PageService:
         """
         ipynb = page.render_parameters(resolved_parameters)
         r = await self._http_client.post(
-            f"{config.environment_url}/noteburst/v1/",
+            f"{config.environment_url}/noteburst/v1/notebooks/",
             json={
                 "ipynb": ipynb,
                 "kernel_name": "LSST",  # TODO make a setting per page?

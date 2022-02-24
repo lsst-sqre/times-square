@@ -117,7 +117,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     }
 
     # Try to get HTML rendering; should be unavailable right now.
-    respx_mock.post("https://test.example.com/noteburst/v1/").mock(
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
         return_value=Response(
             202,
             json={
@@ -125,9 +125,8 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
                 "kernel_name": "LSST",
                 "enqueue_time": datetime.utcnow().isoformat(),
                 "status": "queued",
-                "self_url": "https://test.example.com/noteburst/v1/jobs/xyz",
-                "result_url": (
-                    "https://test.example.com/noteburst/v1/jobs/xyz/result"
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
                 ),
             },
         )
@@ -136,7 +135,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 404
 
     # Try to get noteburst job while still queued
-    respx_mock.get("https://test.example.com/noteburst/v1/jobs/xyz").mock(
+    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
         return_value=Response(
             200,
             json={
@@ -144,9 +143,8 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
                 "kernel_name": "LSST",
                 "enqueue_time": datetime.utcnow().isoformat(),
                 "status": "queued",
-                "self_url": "https://test.example.com/noteburst/v1/jobs/xyz",
-                "result_url": (
-                    "https://test.example.com/noteburst/v1/jobs/xyz/result"
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
                 ),
             },
         )
@@ -155,24 +153,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 404
 
     # Get completed noteburst job
-    respx_mock.get("https://test.example.com/noteburst/v1/jobs/xyz").mock(
-        return_value=Response(
-            200,
-            json={
-                "job_id": "xyz",
-                "kernel_name": "LSST",
-                "enqueue_time": datetime.utcnow().isoformat(),
-                "status": "complete",
-                "self_url": "https://test.example.com/noteburst/v1/jobs/xyz",
-                "result_url": (
-                    "https://test.example.com/noteburst/v1/jobs/xyz/result"
-                ),
-            },
-        )
-    )
-    respx_mock.get(
-        "https://test.example.com/noteburst/v1/jobs/xyz/result"
-    ).mock(
+    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
         return_value=Response(
             200,
             json={
@@ -181,7 +162,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
                 "enqueue_time": datetime.utcnow().isoformat(),
                 "status": "complete",
                 "self_url": (
-                    "https://test.example.com/noteburst/v1/jobs/xyz/result",
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
                 ),
                 "start_time": datetime.utcnow().isoformat(),
                 "finish_time": datetime.utcnow().isoformat(),
