@@ -21,3 +21,4 @@ nbformat
 nbconvert
 jsonschema
 jinja2
+aioredis
