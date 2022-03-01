@@ -45,7 +45,10 @@ class Config(BaseSettings):
 
     log_level: LogLevel = Field(LogLevel.INFO, env="SAFIR_LOG_LEVEL")
 
-    logger_name: str = Field("timessquare", env="SAFIR_LOGGER")
+    logger_name: str = "timessquare"
+    """The name of the logger, which is also the root Python namespace
+    of the application.
+    """
 
     environment_url: HttpUrl = Field(env="TS_ENVIRONMENT_URL")
     """The base URL of the Rubin Science Platform environment.
