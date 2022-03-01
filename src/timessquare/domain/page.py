@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 from nbconvert.exporters.html import HTMLExporter
 
 from timessquare.exceptions import (
+    PageNotebookFormatError,
     PageParameterError,
     PageParameterValueCastingError,
     ParameterDefaultInvalidError,
@@ -74,7 +75,10 @@ class PageModel:
         The notebook is read according to the `NB_VERSION` notebook version
         constant.
         """
-        return nbformat.reads(source, as_version=NB_VERSION)
+        try:
+            return nbformat.reads(source, as_version=NB_VERSION)
+        except Exception:
+            raise PageNotebookFormatError
 
     @staticmethod
     def write_ipynb(notebook: nbformat.NotebookNode) -> str:
