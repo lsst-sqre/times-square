@@ -42,15 +42,15 @@ app = FastAPI(
     title="times-square",
     description=metadata("times-square").get("Summary", ""),
     version=metadata("times-square").get("Version", "0.0.0"),
-    openapi_url=f"/{config.name}/openapi.json",
-    docs_url=f"/{config.name}/docs",
+    openapi_url=f"{config.path_prefix}/openapi.json",
+    docs_url=f"{config.path_prefix}/docs",
     redoc_url=None,
 )
 """The FastAPI application for times-square."""
 
 app.include_router(internal_router)
-app.include_router(external_router, prefix=f"/{config.name}")
-app.include_router(v1_router, prefix=f"/{config.name}/v1")
+app.include_router(external_router, prefix=f"{config.path_prefix}")
+app.include_router(v1_router, prefix=f"{config.path_prefix}/v1")
 
 
 @app.on_event("startup")
