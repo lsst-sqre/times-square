@@ -206,6 +206,19 @@ class PageService:
                 noteburst_status=r.status_code,
                 noteburst_body=r.text,
             )
+
+            r2 = await self._http_client.get(
+                f"{config.environment_url}/noteburst/",
+                headers=self._noteburst_auth_header,
+            )
+            self._logger.warning(
+                "Pinged noteburst metadata",
+                noteburst_status=r2.status_code,
+                noteburst_body=r2.text,
+                noteburst_req_url=r2.request.url,
+                noteburst_req_headers=r2.request.headers,
+            )
+
             return None
 
         response_data = r.json()
