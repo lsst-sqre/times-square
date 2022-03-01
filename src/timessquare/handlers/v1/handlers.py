@@ -14,7 +14,7 @@ from .models import Index, Page, PostPageRequest
 
 __all__ = ["v1_router"]
 
-v1_router = APIRouter()
+v1_router = APIRouter(tags=["v1"])
 """FastAPI router for all external handlers."""
 
 
