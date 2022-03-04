@@ -10,6 +10,7 @@ called.
 from __future__ import annotations
 
 from importlib.metadata import metadata
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
@@ -39,8 +40,8 @@ configure_logging(
 )
 
 app = FastAPI(
-    title="times-square",
-    description=metadata("times-square").get("Summary", ""),
+    title="Times Square",
+    description=Path(__file__).parent.joinpath("description.md").read_text(),
     version=metadata("times-square").get("Version", "0.0.0"),
     openapi_url=f"{config.path_prefix}/openapi.json",
     docs_url=f"{config.path_prefix}/docs",
