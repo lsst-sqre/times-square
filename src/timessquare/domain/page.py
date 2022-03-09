@@ -306,3 +306,13 @@ class PageParameterSchema:
                 raise ValueError
         except ValueError:
             raise PageParameterValueCastingError(v, schema_type)
+
+
+@dataclass
+class PageSummaryModel:
+    """The domain model for a page summary, which is a subset of information
+    about a page that's useful for constructing index UIs.
+    """
+
+    name: str
+    """The name of the page, which is used as a URL path component (slug)."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from httpx import AsyncClient
 from structlog.stdlib import BoundLogger
@@ -14,7 +14,7 @@ from timessquare.domain.noteburstjob import (
     NoteburstJobResponseModel,
     NoteburstJobStatus,
 )
-from timessquare.domain.page import PageModel
+from timessquare.domain.page import PageModel, PageSummaryModel
 from timessquare.exceptions import PageNotFoundError
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
@@ -59,6 +59,10 @@ class PageService:
         if page is None:
             raise PageNotFoundError(name)
         return page
+
+    async def get_page_summaries(self) -> List[PageSummaryModel]:
+        """Get page summaries."""
+        return await self._page_store.list_page_summaries()
 
     async def render_page_template(
         self, name: str, parameters: Mapping[str, Any]

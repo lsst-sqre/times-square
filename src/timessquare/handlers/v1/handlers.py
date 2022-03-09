@@ -1,5 +1,7 @@
 """Handler's for the /v1/."""
 
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from safir.metadata import get_metadata
@@ -10,7 +12,7 @@ from timessquare.dependencies.requestcontext import (
     context_dependency,
 )
 
-from .models import Index, Page, PostPageRequest
+from .models import Index, Page, PageSummary, PostPageRequest
 
 __all__ = ["v1_router"]
 
@@ -59,6 +61,25 @@ async def get_page(
             "get_page", page=page_domain.name
         )
         return Page.from_domain(page=page_domain, request=context.request)
+
+
+@v1_router.get(
+    "/pages",
+    response_model=List[PageSummary],
+    summary="List pages.",
+    name="get_pages",
+)
+async def get_pages(
+    context: RequestContext = Depends(context_dependency),
+) -> List[PageSummary]:
+    """List available pages."""
+    page_service = context.page_service
+    async with context.session.begin():
+        page_summaries_domain = await page_service.get_page_summaries()
+        return [
+            PageSummary.from_domain(summary=s, request=context.request)
+            for s in page_summaries_domain
+        ]
 
 
 @v1_router.post(

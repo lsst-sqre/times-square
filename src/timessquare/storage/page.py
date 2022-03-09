@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_scoped_session
 
 from timessquare.dbschema.page import SqlPage
-from timessquare.domain.page import PageModel, PageParameterSchema
+from timessquare.domain.page import (
+    PageModel,
+    PageParameterSchema,
+    PageSummaryModel,
+)
 
 
 class PageStore:
@@ -51,3 +55,17 @@ class PageStore:
             ipynb=sql_page.ipynb,
             parameters=parameters,
         )
+
+    async def list_page_summaries(self) -> List[PageSummaryModel]:
+        """Get a listing of page summaries (excludes the ipynb and
+        parameters).
+
+        Rather than a list of `PageModel` objects, Times Square's page
+        listing APIs generally need to just provide a listing of page titles
+        and metadata that's usefulf or populating index UIs. That's why
+        """
+        # TODO consider adding other fields like title, description,
+        # date-updated, etc.. Anything that index UIs might find useful.
+        statement = select(SqlPage.name).order_by(SqlPage.name)
+        result = await self._session.scalars(statement)
+        return [PageSummaryModel(name=name) for name in result.all()]

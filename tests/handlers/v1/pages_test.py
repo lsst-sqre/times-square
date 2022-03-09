@@ -47,6 +47,15 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         },
     }
 
+    # List page summaries
+    r = await client.get(f"{config.path_prefix}/v1/pages")
+    assert r.status_code == 200
+    pages_data = r.json()
+    assert len(pages_data) == 1
+    assert pages_data[0]["name"] == "demo"
+    assert pages_data[0]["self_url"] == page_url
+
+    # Get the page resource itself
     r = await client.get(page_url)
     assert r.status_code == 200
     data2 = r.json()
