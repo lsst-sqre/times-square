@@ -22,16 +22,15 @@ v1_router = APIRouter(tags=["v1"])
 
 @v1_router.get(
     "/",
-    description=(
-        "Metadata about the v1 REST API, including links to "
-        "documentation and endpoints."
-    ),
     response_model=Index,
     summary="V1 API metadata",
 )
 async def get_index(
     request: Request,
 ) -> Index:
+    """Get metadata about the v1 REST API, including links to documentation and
+    endpoints.
+    """
     metadata = get_metadata(
         package_name="times-square",
         application_name=config.name,
@@ -42,10 +41,6 @@ async def get_index(
 
 @v1_router.get(
     "/pages/{page}",
-    description=(
-        "Get metadata about a page resource, which models a webpage that is "
-        "rendered from a parameterized Jupyter Notebook."
-    ),
     response_model=Page,
     summary="Page metadata.",
     name="get_page",
@@ -53,6 +48,9 @@ async def get_index(
 async def get_page(
     page: str, context: RequestContext = Depends(context_dependency)
 ) -> Page:
+    """Get metadata about a page resource, which models a webpage that is
+    rendered from a parameterized Jupyter Notebook.
+    """
     page_service = context.page_service
     async with context.session.begin():
         page_domain = await page_service.get_page(page)
@@ -84,7 +82,6 @@ async def get_pages(
 
 @v1_router.post(
     "/pages",
-    description="Create a new page.",
     response_model=Page,
     summary="Create a new page.",
     status_code=201,
@@ -93,6 +90,7 @@ async def post_page(
     request_data: PostPageRequest,
     context: RequestContext = Depends(context_dependency),
 ) -> Page:
+    """Create a new page."""
     page_service = context.page_service
     async with context.session.begin():
         page_service.create_page_with_notebook(
@@ -108,17 +106,16 @@ async def post_page(
 
 @v1_router.get(
     "/pages/{page}/source",
-    description=(
-        "Get the content of the source ipynb file, which is unexecuted and "
-        "has Jinja templating of parameterizations."
-    ),
-    summary="Parameterized notebook source.",
+    summary="Get the source parameterized notebook (ipynb).",
     name="get_page_source",
 )
 async def get_page_source(
     page: str,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
+    """Get the content of the source ipynb file, which is unexecuted and has
+    Jinja templating of parameterizations.
+    """
     page_service = context.page_service
     async with context.session.begin():
         page_domain = await page_service.get_page(page)
@@ -138,17 +135,16 @@ async def get_page_source(
 
 @v1_router.get(
     "/pages/{page}/rendered",
-    description=(
-        "Get a Jupyter Notebook with the parameter values filled in. The "
-        "notebook is still unexecuted."
-    ),
-    summary="Unexecuted notebook source with parameters.",
+    summary="Get the unexecuted notebook source with rendered parameters.",
     name="get_rendered_notebook",
 )
 async def get_rendered_notebook(
     page: str,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
+    """Get a Jupyter Notebook with the parameter values filled in. The
+    notebook is still unexecuted.
+    """
     page_service = context.page_service
     parameters = context.request.query_params
     async with context.session.begin():
@@ -162,14 +158,14 @@ async def get_rendered_notebook(
 
 @v1_router.get(
     "/pages/{page}/html",
-    description="Get the rendered HTML of a notebook.",
-    summary="The HTML page of an computed notebook.",
+    summary="Get the HTML page of an computed notebook.",
     name="get_page_html",
 )
 async def get_page_html(
     page: str,
     context: RequestContext = Depends(context_dependency),
 ) -> HTMLResponse:
+    """Get the rendered HTML of a notebook."""
     page_service = context.page_service
     parameters = context.request.query_params
     async with context.session.begin():
