@@ -90,7 +90,62 @@ async def post_page(
     request_data: PostPageRequest,
     context: RequestContext = Depends(context_dependency),
 ) -> Page:
-    """Create a new page."""
+    """Register a new page with a Jinja-templated Jupyter Notebook.
+
+    ## Preparing the ipynb file
+
+    The `ipynb` property is a Jupyter Notebook file, either as a JSON-encoded
+    string or a parsed object. You can *parameterize* the notebook by
+    adding Jinja template syntax. You can create Jinja variables that get
+    their values from the URL query string of users viewing the notebook.
+
+    For example, a code cell:
+
+    ```
+    a = {{ params.a }}
+    b = {{ params.b }}
+    a + b
+    ```
+
+    A viewer can set these parameters by modifying URLs query string:
+
+    ```
+    ?a=40b=2
+    ```
+
+    To declare these parameters, add a `times-square` field to the notebook's
+    metadata (top-level metadata, not per-cell metadata). This field should
+    contain a ``parameters`` field that contains an object keyed by parameter
+    name and the value is a
+    [JSON Schema](https://json-schema.org/understanding-json-schema/) object
+    describing that parameter. For example, to declare that parameters
+    must be integers:
+
+    ```json
+    {
+      "times-square": {
+        "parameters": {
+          "a": {
+            "type": "integer",
+            "default": 0,
+            "description": "A demo value"
+          },
+          "b": {
+            "type": "integer",
+            "default": 0,
+            "description": "Another demo value"
+          }
+        }
+      }
+    }
+    ```
+
+    These JSON Schema parameters have special use by Times Square beyond
+    data validation:
+
+    - ``default`` is used when the URL does not override a parameter value.
+    - ``description`` is used for documentation.
+    """
     page_service = context.page_service
     async with context.session.begin():
         page_service.create_page_with_notebook(
