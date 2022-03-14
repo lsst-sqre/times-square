@@ -108,13 +108,9 @@ class PageService:
         # Second, look if there's an existing job request. If the job is
         # done this renders it into HTML; otherwise it triggers a noteburst
         # request, but does not return any HTML for this request.
-        nbhtml = await self._get_html_from_noteburst_job(
+        return await self._get_html_from_noteburst_job(
             page=page, resolved_parameters=resolved_parameters
         )
-        if nbhtml is not None:
-            return nbhtml
-
-        return None
 
     async def _get_html_from_noteburst_job(
         self, *, page: PageModel, resolved_parameters: Mapping[str, Any]
