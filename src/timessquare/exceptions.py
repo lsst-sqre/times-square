@@ -52,8 +52,8 @@ class PageNotebookFormatError(TimesSquareError):
 
     status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
 
-    def __init__(self) -> None:
-        message = "The notebook is not a valid ipynb file."
+    def __init__(self, message: str) -> None:
+        message = f"The notebook is not a valid ipynb file.\n\n{message}"
         super().__init__(message)
 
 

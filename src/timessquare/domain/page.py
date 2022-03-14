@@ -77,8 +77,8 @@ class PageModel:
         """
         try:
             return nbformat.reads(source, as_version=NB_VERSION)
-        except Exception:
-            raise PageNotebookFormatError
+        except Exception as e:
+            raise PageNotebookFormatError(str(e))
 
     @staticmethod
     def write_ipynb(notebook: nbformat.NotebookNode) -> str:
