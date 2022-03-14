@@ -30,7 +30,7 @@ class NbHtmlCacheStore:
         nbhtml : `timessquare.domain.nbhtml.NbHtmlModel`
             The HTML page domain model.
         lifetime : int, optional
-            The lifetime for the record. `None` to cache the record
+            The lifetime for the record in seconds. `None` to cache the record
             indefinitely.
         """
         key = NbHtmlCacheStore.calculate_key(
