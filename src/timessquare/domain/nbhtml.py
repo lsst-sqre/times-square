@@ -52,8 +52,14 @@ class NbHtmlModel(BaseModel):
         parameters: Mapping[str, Any],
         noteburst_result: NoteburstJobResponseModel,
     ) -> NbHtmlModel:
-        assert noteburst_result.finish_time
-        assert noteburst_result.start_time
+        if not noteburst_result.start_time:
+            raise RuntimeError(
+                "Noteburst result does not include a start time"
+            )
+        if not noteburst_result.finish_time:
+            raise RuntimeError(
+                "Noteburst result does not include a finish time"
+            )
         td = noteburst_result.finish_time - noteburst_result.start_time
         return cls(
             page_name=page_name,
