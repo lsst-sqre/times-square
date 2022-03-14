@@ -18,7 +18,6 @@ FROM python:3.10.2-slim-bullseye as base-image
 
 # Update system packages
 COPY scripts/install-base-packages.sh .
-COPY scripts/start-api.sh /start-api.sh
 RUN ./install-base-packages.sh && rm ./install-base-packages.sh
 
 FROM base-image AS dependencies-image
@@ -55,6 +54,8 @@ RUN useradd --create-home appuser
 
 # Copy the virtualenv
 COPY --from=install-image /opt/venv /opt/venv
+
+COPY scripts/start-api.sh /start-api.sh
 
 # Make sure we use the virtualenv
 ENV PATH="/opt/venv/bin:$PATH"
