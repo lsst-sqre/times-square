@@ -23,7 +23,7 @@ v1_router = APIRouter(tags=["v1"])
 @v1_router.get(
     "/",
     response_model=Index,
-    summary="V1 API metadata",
+    summary="v1 API metadata",
 )
 async def get_index(
     request: Request,
@@ -42,7 +42,7 @@ async def get_index(
 @v1_router.get(
     "/pages/{page}",
     response_model=Page,
-    summary="Page metadata.",
+    summary="Page metadata",
     name="get_page",
 )
 async def get_page(
@@ -64,7 +64,7 @@ async def get_page(
 @v1_router.get(
     "/pages",
     response_model=List[PageSummary],
-    summary="List pages.",
+    summary="List pages",
     name="get_pages",
 )
 async def get_pages(
@@ -83,7 +83,7 @@ async def get_pages(
 @v1_router.post(
     "/pages",
     response_model=Page,
-    summary="Create a new page.",
+    summary="Create a new page",
     status_code=201,
 )
 async def post_page(
@@ -161,7 +161,7 @@ async def post_page(
 
 @v1_router.get(
     "/pages/{page}/source",
-    summary="Get the source parameterized notebook (ipynb).",
+    summary="Get the source parameterized notebook (ipynb)",
     name="get_page_source",
 )
 async def get_page_source(
@@ -190,7 +190,7 @@ async def get_page_source(
 
 @v1_router.get(
     "/pages/{page}/rendered",
-    summary="Get the unexecuted notebook source with rendered parameters.",
+    summary="Get the unexecuted notebook source with rendered parameters",
     name="get_rendered_notebook",
 )
 async def get_rendered_notebook(
@@ -213,7 +213,7 @@ async def get_rendered_notebook(
 
 @v1_router.get(
     "/pages/{page}/html",
-    summary="Get the HTML page of an computed notebook.",
+    summary="Get the HTML page of an computed notebook",
     name="get_page_html",
 )
 async def get_page_html(
