@@ -12,12 +12,11 @@ starlette
 uvicorn[standard]
 
 # Other dependencies.
-safir
+safir[db]
 pydantic
-sqlalchemy
-asyncpg
 click
 nbformat
 nbconvert
 jsonschema
 jinja2
+aioredis

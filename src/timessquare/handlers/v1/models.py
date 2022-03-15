@@ -8,7 +8,7 @@ from fastapi import Request
 from pydantic import AnyHttpUrl, BaseModel, Field
 from safir.metadata import Metadata as SafirMetadata
 
-from timessquare.domain.page import PageModel
+from timessquare.domain.page import PageModel, PageSummaryModel
 
 
 class Index(BaseModel):
@@ -106,6 +106,24 @@ class Page(BaseModel):
             ),
             html_url=request.url_for("get_page_html", page=page.name),
             parameters=parameters,
+        )
+
+
+class PageSummary(BaseModel):
+    """Summary information about a Page."""
+
+    name: str = page_name_field
+
+    self_url: AnyHttpUrl = page_url_field
+
+    @classmethod
+    def from_domain(
+        cls, *, summary: PageSummaryModel, request: Request
+    ) -> PageSummary:
+        """Create a PageSummary response from the domain model."""
+        return cls(
+            name=summary.name,
+            self_url=request.url_for("get_page", page=summary.name),
         )
 
 

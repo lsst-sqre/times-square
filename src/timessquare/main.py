@@ -10,18 +10,18 @@ called.
 from __future__ import annotations
 
 from importlib.metadata import metadata
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-import structlog
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.logging import configure_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
 
 from .config import config
-from .database import check_database
-from .dependencies.dbsession import db_session_dependency
+from .dependencies.redis import redis_dependency
 from .exceptions import TimesSquareError
 from .handlers.external import external_router
 from .handlers.internal import internal_router
@@ -39,40 +39,28 @@ configure_logging(
     name=config.logger_name,
 )
 
-app = FastAPI()
-"""The main FastAPI application for times-square."""
-
-# Define the external routes in a subapp so that it will serve its own OpenAPI
-# interface definition and documentation URLs under the external URL.
-external_app = FastAPI(
-    title="times-square",
-    description=metadata("times-square").get("Summary", ""),
+app = FastAPI(
+    title="Times Square",
+    description=Path(__file__).parent.joinpath("description.md").read_text(),
     version=metadata("times-square").get("Version", "0.0.0"),
+    openapi_url=f"{config.path_prefix}/openapi.json",
+    docs_url=f"{config.path_prefix}/docs",
+    redoc_url=f"{config.path_prefix}/redoc",
+    openapi_tags=[{"name": "v1", "description": "Times Square v1 REST API"}],
 )
-external_app.include_router(external_router)
+"""The FastAPI application for times-square."""
 
-# The v1 REST API also has its own app to specifically have its own
-# own OpenAPI docs
-v1_app = FastAPI(
-    title="Times Square v1 REST API",
-    description=metadata("times-square").get("Summary", ""),
-    version=metadata("times-square").get("Version", "0.0.0"),
-)
-v1_app.include_router(v1_router)
-
-# Attach the internal routes and other apps to the main application.
-# Note that v1 needs to be mounted before the external app because of
-# a FastAPI/Starlette routing precedence issue.
 app.include_router(internal_router)
-app.mount(f"{config.path_prefix}/v1", v1_app)
-app.mount(config.path_prefix, external_app)
+app.include_router(external_router, prefix=f"{config.path_prefix}")
+app.include_router(v1_router, prefix=f"{config.path_prefix}/v1")
 
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    logger = structlog.get_logger(config.logger_name)
-    await check_database(config.asyncpg_database_url, logger)
-    await db_session_dependency.initialize(config.asyncpg_database_url)
+    await db_session_dependency.initialize(
+        config.database_url, config.database_password.get_secret_value()
+    )
+    await redis_dependency.initialize(config.redis_url)
     app.add_middleware(XForwardedMiddleware)
 
 
@@ -80,13 +68,14 @@ async def startup_event() -> None:
 async def shutdown_event() -> None:
     await http_client_dependency.aclose()
     await db_session_dependency.aclose()
+    await redis_dependency.close()
 
 
-@v1_app.exception_handler(TimesSquareError)
-async def v1_exception_handler(
+@app.exception_handler(TimesSquareError)
+async def ts_exception_handler(
     request: Request, exc: TimesSquareError
 ) -> JSONResponse:
-    """Custom handler for Times Square errors for the v1 API."""
+    """Custom handler for Times Square error."""
     return JSONResponse(
         status_code=exc.status_code, content={"detail": [exc.to_dict()]}
     )

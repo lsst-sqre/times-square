@@ -6,10 +6,20 @@ services:
   postgresql:
     image: "postgres:latest"
     hostname: "postgresql"
-    container_name: "postgresql"
+    container_name: "ts-postgresql"
     environment:
       POSTGRES_PASSWORD: "INSECURE-PASSWORD"
       POSTGRES_USER: "timessquare"
       POSTGRES_DB: "timessquare"
     ports:
       - "5432:5432"
+  redis:
+    image: "redis:latest"
+    hostname: "redis"
+    container_name: "ts-redis"
+    command:
+      - "redis-server"
+      # - "--requirepass"
+      # - "TOTALLY-INSECURE-test-password"
+    ports:
+      - "6379:6379"

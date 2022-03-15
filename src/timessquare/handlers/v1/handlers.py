@@ -1,6 +1,8 @@
 """Handler's for the /v1/."""
 
-from fastapi import APIRouter, Depends, Request
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from safir.metadata import get_metadata
 
@@ -10,71 +12,146 @@ from timessquare.dependencies.requestcontext import (
     context_dependency,
 )
 
-from .models import Index, Page, PostPageRequest
+from .models import Index, Page, PageSummary, PostPageRequest
 
 __all__ = ["v1_router"]
 
-v1_router = APIRouter()
+v1_router = APIRouter(tags=["v1"])
 """FastAPI router for all external handlers."""
 
 
 @v1_router.get(
     "/",
-    description=(
-        "Metadata about the v1 REST API, including links to "
-        "documentation and endpoints."
-    ),
     response_model=Index,
-    summary="V1 API metadata",
+    summary="v1 API metadata",
 )
 async def get_index(
     request: Request,
 ) -> Index:
+    """Get metadata about the v1 REST API, including links to documentation and
+    endpoints.
+    """
     metadata = get_metadata(
         package_name="times-square",
         application_name=config.name,
     )
-    return Index(metadata=metadata, api_docs=f"{request.url}docs")
+    doc_url = request.url.replace(path=f"/{config.name}/docs")
+    return Index(metadata=metadata, api_docs=str(doc_url))
 
 
 @v1_router.get(
     "/pages/{page}",
-    description=(
-        "Get metadata about a page resource, which models a webpage that is "
-        "rendered from a parameterized Jupyter Notebook."
-    ),
     response_model=Page,
-    summary="Page metadata.",
+    summary="Page metadata",
     name="get_page",
 )
 async def get_page(
     page: str, context: RequestContext = Depends(context_dependency)
 ) -> Page:
+    """Get metadata about a page resource, which models a webpage that is
+    rendered from a parameterized Jupyter Notebook.
+    """
     page_service = context.page_service
-    page_domain = await page_service.get_page(page)
+    async with context.session.begin():
+        page_domain = await page_service.get_page(page)
 
-    context.response.headers["location"] = context.request.url_for(
-        "get_page", page=page_domain.name
-    )
-    return Page.from_domain(page=page_domain, request=context.request)
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page_domain.name
+        )
+        return Page.from_domain(page=page_domain, request=context.request)
+
+
+@v1_router.get(
+    "/pages",
+    response_model=List[PageSummary],
+    summary="List pages",
+    name="get_pages",
+)
+async def get_pages(
+    context: RequestContext = Depends(context_dependency),
+) -> List[PageSummary]:
+    """List available pages."""
+    page_service = context.page_service
+    async with context.session.begin():
+        page_summaries_domain = await page_service.get_page_summaries()
+        return [
+            PageSummary.from_domain(summary=s, request=context.request)
+            for s in page_summaries_domain
+        ]
 
 
 @v1_router.post(
     "/pages",
-    description="Create a new page.",
     response_model=Page,
-    summary="Create a new page.",
+    summary="Create a new page",
     status_code=201,
 )
 async def post_page(
     request_data: PostPageRequest,
     context: RequestContext = Depends(context_dependency),
 ) -> Page:
+    """Register a new page with a Jinja-templated Jupyter Notebook.
+
+    ## Preparing the ipynb file
+
+    The `ipynb` property is a Jupyter Notebook file, either as a JSON-encoded
+    string or a parsed object. You can *parameterize* the notebook by
+    adding Jinja template syntax. You can create Jinja variables that get
+    their values from the URL query string of users viewing the notebook.
+
+    For example, a code cell:
+
+    ```
+    a = {{ params.a }}
+    b = {{ params.b }}
+    a + b
+    ```
+
+    A viewer can set these parameters by modifying URLs query string:
+
+    ```
+    ?a=40b=2
+    ```
+
+    To declare these parameters, add a `times-square` field to the notebook's
+    metadata (top-level metadata, not per-cell metadata). This field should
+    contain a ``parameters`` field that contains an object keyed by parameter
+    name and the value is a
+    [JSON Schema](https://json-schema.org/understanding-json-schema/) object
+    describing that parameter. For example, to declare that parameters
+    must be integers:
+
+    ```json
+    {
+      "times-square": {
+        "parameters": {
+          "a": {
+            "type": "integer",
+            "default": 0,
+            "description": "A demo value"
+          },
+          "b": {
+            "type": "integer",
+            "default": 0,
+            "description": "Another demo value"
+          }
+        }
+      }
+    }
+    ```
+
+    These JSON Schema parameters have special use by Times Square beyond
+    data validation:
+
+    - ``default`` is used when the URL does not override a parameter value.
+    - ``description`` is used for documentation.
+    """
     page_service = context.page_service
-    page_service.create_page_with_notebook(
-        name=request_data.name, ipynb=request_data.ipynb
-    )
-    page = await page_service.get_page(request_data.name)
+    async with context.session.begin():
+        page_service.create_page_with_notebook(
+            name=request_data.name, ipynb=request_data.ipynb
+        )
+        page = await page_service.get_page(request_data.name)
 
     context.response.headers["location"] = context.request.url_for(
         "get_page", page=page.name
@@ -84,19 +161,19 @@ async def post_page(
 
 @v1_router.get(
     "/pages/{page}/source",
-    description=(
-        "Get the content of the source ipynb file, which is unexecuted and "
-        "has Jinja templating of parameterizations."
-    ),
-    summary="Parameterized notebook source.",
+    summary="Get the source parameterized notebook (ipynb)",
     name="get_page_source",
 )
 async def get_page_source(
     page: str,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
+    """Get the content of the source ipynb file, which is unexecuted and has
+    Jinja templating of parameterizations.
+    """
     page_service = context.page_service
-    page_domain = await page_service.get_page(page)
+    async with context.session.begin():
+        page_domain = await page_service.get_page(page)
 
     response_headers = {
         "location": context.request.url_for(
@@ -113,36 +190,41 @@ async def get_page_source(
 
 @v1_router.get(
     "/pages/{page}/rendered",
-    description=(
-        "Get a Jupyter Notebook with the parameter values filled in. The "
-        "notebook is still unexecuted."
-    ),
-    summary="Unexecuted notebook source with parameters.",
+    summary="Get the unexecuted notebook source with rendered parameters",
     name="get_rendered_notebook",
 )
 async def get_rendered_notebook(
     page: str,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
+    """Get a Jupyter Notebook with the parameter values filled in. The
+    notebook is still unexecuted.
+    """
     page_service = context.page_service
     parameters = context.request.query_params
-    rendered_notebook = await page_service.render_page_template(
-        page, parameters
-    )
+    async with context.session.begin():
+        rendered_notebook = await page_service.render_page_template(
+            page, parameters
+        )
     return PlainTextResponse(rendered_notebook, media_type="application/json")
 
 
 @v1_router.get(
     "/pages/{page}/html",
-    description="Get the rendered HTML of a notebook.",
-    summary="The HTML page of an computed notebook.",
+    summary="Get the HTML page of an computed notebook",
     name="get_page_html",
 )
 async def get_page_html(
     page: str,
     context: RequestContext = Depends(context_dependency),
 ) -> HTMLResponse:
+    """Get the rendered HTML of a notebook."""
     page_service = context.page_service
     parameters = context.request.query_params
-    html = await page_service.render_html(page, parameters)
-    return HTMLResponse(html)
+    async with context.session.begin():
+        html = await page_service.get_html(name=page, parameters=parameters)
+
+    if not html:
+        raise HTTPException(status_code=404, detail="HTML not available")
+
+    return HTMLResponse(html.html)

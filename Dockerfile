@@ -55,6 +55,8 @@ RUN useradd --create-home appuser
 # Copy the virtualenv
 COPY --from=install-image /opt/venv /opt/venv
 
+COPY scripts/start-api.sh /start-api.sh
+
 # Make sure we use the virtualenv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -65,4 +67,4 @@ USER appuser
 EXPOSE 8080
 
 # Run the application.
-CMD ["uvicorn", "timessquare.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["/start-api.sh"]

@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 from nbconvert.exporters.html import HTMLExporter
 
 from timessquare.exceptions import (
+    PageNotebookFormatError,
     PageParameterError,
     PageParameterValueCastingError,
     ParameterDefaultInvalidError,
@@ -74,7 +75,10 @@ class PageModel:
         The notebook is read according to the `NB_VERSION` notebook version
         constant.
         """
-        return nbformat.reads(source, as_version=NB_VERSION)
+        try:
+            return nbformat.reads(source, as_version=NB_VERSION)
+        except Exception as e:
+            raise PageNotebookFormatError(str(e))
 
     @staticmethod
     def write_ipynb(notebook: nbformat.NotebookNode) -> str:
@@ -302,3 +306,41 @@ class PageParameterSchema:
                 raise ValueError
         except ValueError:
             raise PageParameterValueCastingError(v, schema_type)
+
+
+@dataclass
+class PageSummaryModel:
+    """The domain model for a page summary, which is a subset of information
+    about a page that's useful for constructing index UIs.
+    """
+
+    name: str
+    """The name of the page, which is used as a URL path component (slug)."""
+
+
+@dataclass
+class PageInstanceIdModel:
+    """The domain model that identifies an instance of a page through the
+    page's name and values of parameters.
+    """
+
+    name: str
+    """The name of the page, which is used as a URL path component (slug)."""
+
+    values: Dict[str, Any]
+    """The values of a page instance's parameters.
+
+    Keys are parameter names, and values are the parameter values.
+    The values are cast as Python types (`PageParameterSchema.cast_value`).
+    """
+
+
+@dataclass
+class PageInstanceModel(PageInstanceIdModel):
+    """A domain model for a page instance, which combines the page model with
+    information identifying the values a specific page instance is rendered
+    with.
+    """
+
+    page: PageModel
+    """The page domain object."""
