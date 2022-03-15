@@ -333,3 +333,14 @@ class PageInstanceIdModel:
     Keys are parameter names, and values are the parameter values.
     The values are cast as Python types (`PageParameterSchema.cast_value`).
     """
+
+
+@dataclass
+class PageInstanceModel(PageInstanceIdModel):
+    """A domain model for a page instance, which combines the page model with
+    information identifying the values a specific page instance is rendered
+    with.
+    """
+
+    page: PageModel
+    """The page domain object."""

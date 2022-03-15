@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
 from pydantic import BaseModel
 
 from .noteburstjob import NoteburstJobResponseModel
+from .page import PageInstanceIdModel
 
 
 class NbHtmlModel(BaseModel):
@@ -47,9 +48,8 @@ class NbHtmlModel(BaseModel):
     def create_from_noteburst_result(
         cls,
         *,
-        page_name: str,
+        page_id: PageInstanceIdModel,
         html: str,
-        parameters: Mapping[str, Any],
         noteburst_result: NoteburstJobResponseModel,
     ) -> NbHtmlModel:
         if not noteburst_result.start_time:
@@ -62,9 +62,9 @@ class NbHtmlModel(BaseModel):
             )
         td = noteburst_result.finish_time - noteburst_result.start_time
         return cls(
-            page_name=page_name,
+            page_name=page_id.name,
             html=html,
-            parameters=dict(parameters),
+            parameters=page_id.values,
             date_executed=noteburst_result.finish_time,
             date_rendered=datetime.utcnow(),
             execution_duration=td,

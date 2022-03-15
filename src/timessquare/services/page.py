@@ -15,7 +15,7 @@ from timessquare.domain.noteburstjob import (
     NoteburstJobStatus,
 )
 from timessquare.domain.page import (
-    PageInstanceIdModel,
+    PageInstanceModel,
     PageModel,
     PageSummaryModel,
 )
@@ -101,12 +101,12 @@ class PageService:
         page = await self.get_page(name)
         resolved_parameters = page.resolve_and_validate_parameters(parameters)
 
-        page_id = PageInstanceIdModel(
-            name=page.name, values=resolved_parameters
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_parameters, page=page
         )
 
         # First try to get HTML from redis cache
-        nbhtml = await self._html_store.get(page_id)
+        nbhtml = await self._html_store.get(page_instance)
         if nbhtml is not None:
             self._logger.debug("Got HTML from cache")
             return nbhtml
@@ -114,21 +114,21 @@ class PageService:
         # Second, look if there's an existing job request. If the job is
         # done this renders it into HTML; otherwise it triggers a noteburst
         # request, but does not return any HTML for this request.
-        return await self._get_html_from_noteburst_job(page, page_id)
+        return await self._get_html_from_noteburst_job(page_instance)
 
     async def _get_html_from_noteburst_job(
-        self, page: PageModel, page_id: PageInstanceIdModel
+        self, page_instance: PageInstanceModel
     ) -> Optional[NbHtmlModel]:
         """Convert a noteburst job for a given page and parameters into
         HTML (caching that HTML as well), and triggering a new noteburst
         """
         # Is there an existing job in the noteburst job store?
-        job = await self._job_store.get(page_id)
+        job = await self._job_store.get(page_instance)
         if not job:
             self._logger.debug("No existing noteburst job available")
             # A record of a noteburst job is not available. Send a request
             # to noteburst.
-            await self._request_noteburst_execution(page, page_id)
+            await self._request_noteburst_execution(page_instance)
             return None
 
         r = await self._http_client.get(
@@ -143,11 +143,10 @@ class PageService:
             if noteburst_response.status == NoteburstJobStatus.complete:
                 ipynb = noteburst_response.ipynb
                 assert ipynb
-                html = page.render_html(ipynb)
+                html = page_instance.page.render_html(ipynb)
                 nbhtml = NbHtmlModel.create_from_noteburst_result(
-                    page_name=page_id.name,
+                    page_id=page_instance,
                     html=html,
-                    parameters=page_id.values,
                     noteburst_result=noteburst_response,
                 )
                 # FIXME make lifetime a setting of page for pages that aren't
@@ -156,7 +155,7 @@ class PageService:
                     nbhtml=nbhtml, lifetime=None
                 )
                 self._logger.debug("Stored new HTML")
-                await self._job_store.delete(page_id)
+                await self._job_store.delete(page_instance)
                 self._logger.debug("Deleted old job record")
                 return nbhtml
 
@@ -169,8 +168,8 @@ class PageService:
             self._logger.warning(
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
-            await self._job_store.delete(page_id)
-            await self._request_noteburst_execution(page, page_id)
+            await self._job_store.delete(page_instance)
+            await self._request_noteburst_execution(page_instance)
         else:
             # server error from noteburst
             self._logger.warning(
@@ -182,12 +181,12 @@ class PageService:
         return None
 
     async def _request_noteburst_execution(
-        self, page: PageModel, page_id: PageInstanceIdModel
+        self, page_instance: PageInstanceModel
     ) -> None:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
-        ipynb = page.render_parameters(page_id.values)
+        ipynb = page_instance.page.render_parameters(page_instance.values)
         r = await self._http_client.post(
             f"{config.environment_url}/noteburst/v1/notebooks/",
             json={
@@ -207,11 +206,11 @@ class PageService:
 
         response_data = r.json()
         job = NoteburstJobModel.from_noteburst_response(response_data)
-        await self._job_store.store_job(job=job, page_id=page_id)
+        await self._job_store.store_job(job=job, page_id=page_instance)
         self._logger.info(
             "Requested noteburst notebook execution",
-            page_name=page.name,
-            parameters=page_id.values,
+            page_name=page_instance.name,
+            parameters=page_instance.values,
             job_url=job.job_url,
         )
 
