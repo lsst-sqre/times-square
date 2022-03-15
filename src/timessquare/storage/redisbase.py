@@ -4,18 +4,12 @@ from __future__ import annotations
 
 import json
 from base64 import b64encode
-from typing import (
-    Any,
-    AsyncIterable,
-    Generic,
-    Mapping,
-    Optional,
-    Type,
-    TypeVar,
-)
+from typing import AsyncIterable, Generic, Optional, Type, TypeVar
 
 import aioredis
 from pydantic import BaseModel
+
+from timessquare.domain.page import PageInstanceIdModel
 
 T = TypeVar("T", bound="BaseModel")
 
@@ -44,21 +38,15 @@ class RedisStore(Generic[T]):
         self._key_prefix = key_prefix
         self._datatype = datatype
 
-    def calculate_redis_key(
-        self, *, page_name: str, parameters: Mapping[str, Any]
-    ) -> str:
+    def calculate_redis_key(self, page_id: PageInstanceIdModel) -> str:
         """Create the redis key for given the page's name and
         parameter values with a datastore's redis key prefix.
 
         Parameters
         ----------
-        page_name : `str`
-            The name of the page (corresponds to
-            `timessquare.domain.page.PageModel.name`).
-        parameters : `dict`
-            The parameter values, keyed by the parameter names, with values as
-            cast Python types
-            (`timessquare.domain.page.PageParameterSchema.cast_value`).
+        page_id : `timessquare.domain.page.PageInstanceIdModel`
+            Identifier of the page instance, composed of the page's name
+            and the values the page instance is rendered with.
 
         Returns
         -------
@@ -68,22 +56,26 @@ class RedisStore(Generic[T]):
         """
         encoded_parameters_key = b64encode(
             json.dumps(
-                {k: p for k, p in parameters.items()}, sort_keys=True
+                {k: p for k, p in page_id.values.items()}, sort_keys=True
             ).encode("utf-8")
         ).decode("utf-8")
-        return f"{self._key_prefix}/{page_name}/{encoded_parameters_key}"
+        return f"{self._key_prefix}/{page_id.name}/{encoded_parameters_key}"
 
     async def store(
-        self, key: str, data: T, lifetime: Optional[int] = None
+        self,
+        page_id: PageInstanceIdModel,
+        data: T,
+        lifetime: Optional[int] = None,
     ) -> None:
-        """Store a pydantic object to redis at a given key.
+        """Store a pydantic object to Redis.
 
-        The data is persisted in redis as a JSON string.
+        The data is persisted in Redis as a JSON string.
 
         Parameters
         ----------
-        key : `str`
-            The key where the data is stored.
+        page_id : `timessquare.domain.page.PageInstanceIdModel`
+            Identifier of the page instance, composed of the page's name
+            and the values the page instance is rendered with.
         data : `pydantic.BaseModel`
             A pydantic model of the type this RedisStore instance is
             instantiated for.
@@ -91,17 +83,19 @@ class RedisStore(Generic[T]):
             The lifetime (in seconds) of the persisted data in Redis. If
             `None`, the data is persisted forever.
         """
+        key = self.calculate_redis_key(page_id)
         serialized_data = data.json()
         await self._redis.set(key, serialized_data, ex=lifetime)
 
-    async def get(self, key: str) -> Optional[T]:
-        """Get the data stored at a Redis key, deserializing it into the
+    async def get(self, page_id: PageInstanceIdModel) -> Optional[T]:
+        """Get the data stored for a page instance, deserializing it into the
         Pydantic model type.
 
         Parameters
         ----------
-        key : `str`
-            The key where the data is stored.
+        page_id : `timessquare.domain.page.PageInstanceIdModel`
+            Identifier of the page instance, composed of the page's name
+            and the values the page instance is rendered with.
 
         Returns
         -------
@@ -109,6 +103,7 @@ class RedisStore(Generic[T]):
             The dataset, as a Pydantic model. If the dataset is not found at
             the key, `None` is returned.
         """
+        key = self.calculate_redis_key(page_id)
         serialized_data = await self._redis.get(key)
         if not serialized_data:
             return None
@@ -133,8 +128,8 @@ class RedisStore(Generic[T]):
         async for key in self._redis.scan_iter(pattern):
             yield key
 
-    async def delete(self, key: str) -> bool:
-        """Delete a dataset at a specific key.
+    async def delete(self, page_id: PageInstanceIdModel) -> bool:
+        """Delete a dataset for a specific page instance.
 
         Parameters
         ----------
@@ -146,5 +141,6 @@ class RedisStore(Generic[T]):
         deleted : bool
             `True` if a record was deleted, `False` otherwise.
         """
+        key = self.calculate_redis_key(page_id)
         count = await self._redis.delete(key)
         return count > 0

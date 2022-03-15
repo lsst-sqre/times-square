@@ -316,3 +316,20 @@ class PageSummaryModel:
 
     name: str
     """The name of the page, which is used as a URL path component (slug)."""
+
+
+@dataclass
+class PageInstanceIdModel:
+    """The domain model that identifies an instance of a page through the
+    page's name and values of parameters.
+    """
+
+    name: str
+    """The name of the page, which is used as a URL path component (slug)."""
+
+    values: Dict[str, Any]
+    """The values of a page instance's parameters.
+
+    Keys are parameter names, and values are the parameter values.
+    The values are cast as Python types (`PageParameterSchema.cast_value`).
+    """
