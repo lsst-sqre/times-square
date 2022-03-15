@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from hashlib import sha256
 from typing import Any, Dict
 
 from pydantic import BaseModel
@@ -25,6 +26,9 @@ class NbHtmlModel(BaseModel):
 
     html: str
     """The HTML content."""
+
+    html_hash: str
+    """A sha256 hash of the HTML content."""
 
     parameters: Dict[str, Any]
     """The parameter values, keyed by parameter name.
@@ -61,9 +65,14 @@ class NbHtmlModel(BaseModel):
                 "Noteburst result does not include a finish time"
             )
         td = noteburst_result.finish_time - noteburst_result.start_time
+
+        html_hash = sha256()
+        html_hash.update(html.encode())
+
         return cls(
             page_name=page_id.name,
             html=html,
+            html_hash=html_hash.hexdigest(),
             parameters=page_id.values,
             date_executed=noteburst_result.finish_time,
             date_rendered=datetime.utcnow(),
