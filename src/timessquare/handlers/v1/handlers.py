@@ -12,7 +12,7 @@ from timessquare.dependencies.requestcontext import (
     context_dependency,
 )
 
-from .models import Index, Page, PageSummary, PostPageRequest
+from .models import HtmlStatus, Index, Page, PageSummary, PostPageRequest
 
 __all__ = ["v1_router"]
 
@@ -228,3 +228,23 @@ async def get_page_html(
         raise HTTPException(status_code=404, detail="HTML not available")
 
     return HTMLResponse(html.html)
+
+
+@v1_router.get(
+    "/pages/{page}/htmlstatus",
+    summary="Get the status of a page's HTML rendering",
+    name="get_page_html_status",
+    response_model=HtmlStatus,
+)
+async def get_page_html_status(
+    page: str,
+    context: RequestContext = Depends(context_dependency),
+) -> HtmlStatus:
+    page_service = context.page_service
+    parameters = context.request.query_params
+    async with context.session.begin():
+        html = await page_service.get_html_status(
+            name=page, parameters=parameters
+        )
+
+    return HtmlStatus.from_html(html=html, request=context.request)

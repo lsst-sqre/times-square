@@ -221,3 +221,20 @@ class PageService:
                 f"Bearer {config.gafaelfawr_token.get_secret_value()}"
             )
         }
+
+    async def get_html_status(
+        self, *, name: str, parameters: Mapping[str, Any]
+    ) -> Optional[NbHtmlModel]:
+        """Get HTML rendering for a page instance without triggering an
+        execution if it does not exist.
+
+        This service method powers the HTML status endpoint, allowing front-end
+        clients to quickly determine if HTML is available, and what the latest
+        version of that HTML is.
+        """
+        page = await self.get_page(name)
+        resolved_parameters = page.resolve_and_validate_parameters(parameters)
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_parameters, page=page
+        )
+        return await self._html_store.get(page_instance)
