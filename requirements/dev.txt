@@ -169,9 +169,9 @@ h11==0.12.0 \
     #   -c requirements/main.txt
     #   httpcore
     #   uvicorn
-holdup==2.0.0 \
-    --hash=sha256:178a4c409464257b0592854b546ef1f4c5e5a4658a728c0d942622725353c4c7 \
-    --hash=sha256:34e2b6b61f47dcb04fc63e5f9392d4a3d54dab24e07436a9e44ed2a765d5f264
+holdup==3.0.0 \
+    --hash=sha256:4a6a43862d3710a27be563c6c91a733de6e59e7c36e94ca701d077d7cb6afda5 \
+    --hash=sha256:64b7ab29078c48d284914bb5b15b0ebdbff64cb272bbc8493ba1b149650cfdc5
     # via -r requirements/dev.in
 httpcore==0.14.7 \
     --hash=sha256:47d772f754359e56dd9d892d9593b6f9870a37aeb8ba51e9a88b09b3d68cfade \
@@ -224,9 +224,9 @@ httpx==0.22.0 \
     #   -c requirements/main.txt
     #   -r requirements/dev.in
     #   respx
-identify==2.4.11 \
-    --hash=sha256:2986942d3974c8f2e5019a190523b0b0e2a07cb8e89bf236727fb4b26f27f8fd \
-    --hash=sha256:fd906823ed1db23c7a48f9b176a1d71cb8abede1e21ebe614bac7bdd688d9213
+identify==2.4.12 \
+    --hash=sha256:3f3244a559290e7d3deb9e9adc7b33594c1bc85a9dd82e0f1be519bf12a1ec17 \
+    --hash=sha256:5f06b14366bd1facb88b00540a1de05b69b310cbc2654db3c7e07fa3a4339323
     # via pre-commit
 idna==3.3 \
     --hash=sha256:84d9dd047ffa80596e0f246e2eab0b391788b0503584e8945f2368256d2735ff \
@@ -302,9 +302,9 @@ pyparsing==3.0.7 \
     # via
     #   -c requirements/main.txt
     #   packaging
-pytest==7.1.0 \
-    --hash=sha256:b555252a95bbb2a37a97b5ac2eb050c436f7989993565f5e0c9128fcaacadd0e \
-    --hash=sha256:f1089d218cfcc63a212c42896f1b7fbf096874d045e1988186861a1a87d27b47
+pytest==7.1.1 \
+    --hash=sha256:841132caef6b1ad17a9afde46dc4f6cfa59a05f9555aae5151f73bdf2820ca63 \
+    --hash=sha256:92f723789a8fdd7180b6b06483874feca4c48a5c76968e03bb3e7f806a1869ea
     # via
     #   -r requirements/dev.in
     #   pytest-asyncio
@@ -473,9 +473,9 @@ uvloop==0.16.0 \
     # via
     #   -c requirements/main.txt
     #   uvicorn
-virtualenv==20.13.3 \
-    --hash=sha256:dd448d1ded9f14d1a4bfa6bfc0c5b96ae3be3f2d6c6c159b23ddcfd701baa021 \
-    --hash=sha256:e9dd1a1359d70137559034c0f5433b34caf504af2dc756367be86a5a32967134
+virtualenv==20.13.4 \
+    --hash=sha256:c3e01300fb8495bc00ed70741f5271fc95fed067eb7106297be73d30879af60c \
+    --hash=sha256:ce8901d3bbf3b90393498187f2d56797a8a452fb2d0d7efc6fd837554d6f679c
     # via pre-commit
 watchgod==0.8 \
     --hash=sha256:29a1d8f25e1721ddb73981652ca318c47387ffb12ec4171ddd7b9d01540033b1 \
