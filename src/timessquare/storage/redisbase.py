@@ -144,3 +144,18 @@ class RedisStore(Generic[T]):
         key = self.calculate_redis_key(page_id)
         count = await self._redis.delete(key)
         return count > 0
+
+    async def delete_all(self) -> int:
+        """Delete all records with the store's key prefix.
+
+        Returns
+        -------
+        count : `int`
+            The number of records deleted.
+        """
+        pattern = f"{self._key_prefix}/*"
+        count = 0
+        async for key in self._redis.scan_iter(pattern):
+            await self._redis.delete(key)
+            count += 1
+        return count > 0
