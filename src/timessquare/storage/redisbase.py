@@ -124,7 +124,7 @@ class RedisStore(Generic[T]):
         key : str
             Yields keys for a page.
         """
-        pattern = r"^{self._key_prefix}\/{page_name}\/"
+        pattern = f"{self._key_prefix}/{page_name}/*"
         async for key in self._redis.scan_iter(pattern):
             yield key
 
