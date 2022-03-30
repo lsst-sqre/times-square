@@ -243,8 +243,6 @@ async def get_page_html_status(
     page_service = context.page_service
     parameters = context.request.query_params
     async with context.session.begin():
-        html = await page_service.get_html_status(
-            name=page, parameters=parameters
-        )
+        html = await page_service.get_html(name=page, parameters=parameters)
 
     return HtmlStatus.from_html(html=html, request=context.request)

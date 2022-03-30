@@ -145,6 +145,20 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 404
 
     # Check the htmlstatus
+    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
+        return_value=Response(
+            200,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "queued",
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
+                ),
+            },
+        )
+    )
     r = await client.get(html_status_url, params={"A": 2})
     assert r.status_code == 200
     data = r.json()

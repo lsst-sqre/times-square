@@ -121,6 +121,17 @@ class PageService:
     ) -> Optional[NbHtmlModel]:
         """Convert a noteburst job for a given page and parameters into
         HTML (caching that HTML as well), and triggering a new noteburst
+
+        Parameters
+        ----------
+        page_instance : `PageInstanceModel`
+            The page instance (consisting of resolved parameters).
+
+        Returns
+        -------
+        nbhtml : `NbHtmlModel` or `None`
+            The NbHtmlModel if available, or `None` if the executed notebook is
+            not presently available.
         """
         # Is there an existing job in the noteburst job store?
         job = await self._job_store.get(page_instance)
@@ -221,20 +232,3 @@ class PageService:
                 f"Bearer {config.gafaelfawr_token.get_secret_value()}"
             )
         }
-
-    async def get_html_status(
-        self, *, name: str, parameters: Mapping[str, Any]
-    ) -> Optional[NbHtmlModel]:
-        """Get HTML rendering for a page instance without triggering an
-        execution if it does not exist.
-
-        This service method powers the HTML status endpoint, allowing front-end
-        clients to quickly determine if HTML is available, and what the latest
-        version of that HTML is.
-        """
-        page = await self.get_page(name)
-        resolved_parameters = page.resolve_and_validate_parameters(parameters)
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_parameters, page=page
-        )
-        return await self._html_store.get(page_instance)
