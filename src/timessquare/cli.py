@@ -7,11 +7,13 @@ from typing import Optional
 import click
 import structlog
 import uvicorn
+from aioredis import Redis
 from safir.asyncio import run_with_asyncio
 from safir.database import create_database_engine, initialize_database
 
 from .config import config
 from .dbschema import Base
+from .storage.nbhtmlcache import NbHtmlCacheStore
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -67,3 +69,22 @@ async def init(reset: bool) -> None:
         engine, logger, schema=Base.metadata, reset=reset
     )
     await engine.dispose()
+
+
+@main.command("reset-html")
+@run_with_asyncio
+async def reset_html() -> None:
+    """Reset the Redis-based HTML result cache."""
+    redis = Redis.from_url(config.redis_url, password=None)
+    try:
+        html_store = NbHtmlCacheStore(redis)
+        record_count = await html_store.delete_all()
+        if record_count > 0:
+            click.echo(f"Deleted {record_count} HTML records")
+        else:
+            click.echo("No HTML records to delete")
+    except Exception as e:
+        click.echo(str(e))
+    finally:
+        await redis.close()
+        await redis.connection_pool.disconnect()

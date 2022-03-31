@@ -4,5 +4,5 @@
 
 set -eu
 
-timessquare init
+times-square init
 uvicorn timessquare.main:app --host 0.0.0.0 --port 8080

@@ -121,6 +121,17 @@ class PageService:
     ) -> Optional[NbHtmlModel]:
         """Convert a noteburst job for a given page and parameters into
         HTML (caching that HTML as well), and triggering a new noteburst
+
+        Parameters
+        ----------
+        page_instance : `PageInstanceModel`
+            The page instance (consisting of resolved parameters).
+
+        Returns
+        -------
+        nbhtml : `NbHtmlModel` or `None`
+            The NbHtmlModel if available, or `None` if the executed notebook is
+            not presently available.
         """
         # Is there an existing job in the noteburst job store?
         job = await self._job_store.get(page_instance)

@@ -30,6 +30,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     source_url = data["source_url"]
     rendered_url = data["rendered_url"]
     html_url = data["html_url"]
+    html_status_url = data["html_status_url"]
 
     assert data["parameters"] == {
         "A": {
@@ -143,6 +144,26 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     r = await client.get(html_url, params={"A": 2})
     assert r.status_code == 404
 
+    # Check the htmlstatus
+    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
+        return_value=Response(
+            200,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "queued",
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
+                ),
+            },
+        )
+    )
+    r = await client.get(html_status_url, params={"A": 2})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["available"] is False
+
     # Try to get noteburst job while still queued
     respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
         return_value=Response(
@@ -168,13 +189,13 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             json={
                 "job_id": "xyz",
                 "kernel_name": "LSST",
-                "enqueue_time": datetime.utcnow().isoformat(),
+                "enqueue_time": "2022-03-15T04:12:00Z",
                 "status": "complete",
                 "self_url": (
                     "https://test.example.com/noteburst/v1/notebooks/xyz"
                 ),
-                "start_time": datetime.utcnow().isoformat(),
-                "finish_time": datetime.utcnow().isoformat(),
+                "start_time": "2022-03-15T04:13:00Z",
+                "finish_time": "2022-03-15T04:13:10Z",
                 "success": True,
                 "ipynb": demo_path.read_text(),
             },
@@ -182,3 +203,9 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     )
     r = await client.get(html_url, params={"A": 2})
     assert r.status_code == 200
+
+    # Check the htmlstatus
+    r = await client.get(html_status_url, params={"A": 2})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["available"] is True

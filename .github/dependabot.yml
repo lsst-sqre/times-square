@@ -4,8 +4,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: America/Toronto
+    reviewers:
+      - "jonathansick"
 
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: America/Toronto
+    reviewers:
+      - "jonathansick"
