@@ -1,4 +1,4 @@
-**Times Square is a Rubin Science Platform (RSP) service for displayed parameterized Jupyter Notebooks as websites.**
+**Times Square is a Rubin Science Platform (RSP) service for displaying parameterized Jupyter Notebooks as websites.**
 
 Excellent applications for Times Square include:
 
