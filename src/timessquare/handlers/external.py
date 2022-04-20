@@ -8,6 +8,7 @@ import httpx
 from fastapi import APIRouter, Depends, Request, Response, status
 from gidgethub.sansio import Event
 from pydantic import AnyHttpUrl, BaseModel, Field
+from safir.dependencies.arq import ArqQueue, arq_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
 from safir.metadata import Metadata as SafirMetadata
@@ -75,6 +76,7 @@ async def post_github_webhook(
     request: Request,
     logger: BoundLogger = Depends(logger_dependency),
     http_client: httpx.AsyncClient = Depends(http_client_dependency),
+    arq_queue: ArqQueue = Depends(arq_dependency),
 ) -> Response:
     """Process GitHub webhook events."""
     if not config.enable_github_app:
@@ -111,7 +113,7 @@ async def post_github_webhook(
     )
     # Give GitHub some time to reach internal consistency.
     await asyncio.sleep(1)
-    await webhook_router.dispatch(event, github_client, logger)
+    await webhook_router.dispatch(event, github_client, logger, arq_queue)
 
     logger.debug(
         "GH requests remaining",

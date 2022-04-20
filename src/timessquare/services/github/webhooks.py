@@ -7,6 +7,7 @@ from __future__ import annotations
 from gidgethub.httpx import GitHubAPI
 from gidgethub.routing import Router
 from gidgethub.sansio import Event
+from safir.dependencies.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 __all__ = ["router"]
@@ -21,6 +22,7 @@ async def handle_push_event(
     event: Event,
     github_client: GitHubAPI,
     logger: BoundLogger,
+    arq_queue: ArqQueue,
 ) -> None:
     """Handle the ``push`` webhook event from GitHub.
 
@@ -32,6 +34,8 @@ async def handle_push_event(
         The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
     """
     logger.debug(
         "GitHub push event",
@@ -45,6 +49,7 @@ async def handle_repositories_added(
     event: Event,
     github_client: GitHubAPI,
     logger: BoundLogger,
+    arq_queue: ArqQueue,
 ) -> None:
     """Handle the ``installation_repositories`` (added) webhook event from
     GitHub.
@@ -57,6 +62,8 @@ async def handle_repositories_added(
         The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
     """
     logger.debug(
         "GitHub installation_repositories added event",
@@ -69,6 +76,7 @@ async def handle_repositories_removed(
     event: Event,
     github_client: GitHubAPI,
     logger: BoundLogger,
+    arq_queue: ArqQueue,
 ) -> None:
     """Handle the ``installation_repositories`` (removed) webhook event from
     GitHub.
@@ -81,6 +89,8 @@ async def handle_repositories_removed(
         The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
     """
     logger.debug(
         "GitHub installation_repositories removed event",
@@ -93,6 +103,7 @@ async def handle_pr_opened(
     event: Event,
     github_client: GitHubAPI,
     logger: BoundLogger,
+    arq_queue: ArqQueue,
 ) -> None:
     """Handle the ``pull_request`` (opened) webhook event from
     GitHub.
@@ -105,6 +116,8 @@ async def handle_pr_opened(
         The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
     """
     logger.debug(
         "GitHub pull_request opened event",
@@ -118,6 +131,7 @@ async def handle_pr_sync(
     event: Event,
     github_client: GitHubAPI,
     logger: BoundLogger,
+    arq_queue: ArqQueue,
 ) -> None:
     """Handle the ``pull_request`` (synchronized) webhook event from
     GitHub.
@@ -130,6 +144,8 @@ async def handle_pr_sync(
         The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
     """
     logger.debug(
         "GitHub pull_request synchronized event",
@@ -143,6 +159,7 @@ async def handle_ping(
     event: Event,
     github_client: GitHubAPI,
     logger: BoundLogger,
+    arq_queue: ArqQueue,
 ) -> None:
     """Handle the ``ping` webhook event from GitHub to let us know we've
     set up the app properly.
@@ -155,6 +172,8 @@ async def handle_ping(
         The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
     """
     logger.info(
         "GitHub ping",
