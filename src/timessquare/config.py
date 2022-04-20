@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Mapping, Optional
+from urllib.parse import urlparse
 
+from arq.connections import RedisSettings
 from pydantic import (
     BaseSettings,
     Field,
@@ -15,6 +17,7 @@ from pydantic import (
     SecretStr,
     validator,
 )
+from safir.dependencies.arq import ArqMode
 
 __all__ = ["Config", "Profile", "LogLevel"]
 
@@ -102,6 +105,15 @@ class Config(BaseSettings):
     manually toggled to False if necessary.
     """
 
+    redis_queue_url: RedisDsn = Field(
+        "redis://localhost:6379/1", env="TS_REDIS_QUEUE_URL"
+    )
+
+    queue_name: str = Field("arq:queue", env="TS_REDIS_QUEUE_NAME")
+    """Name of the arq queue that the worker processes from."""
+
+    arq_mode: ArqMode = Field(ArqMode.production, env="TS_ARQ_MODE")
+
     @validator("path_prefix")
     def validate_path_prefix(cls, v: str) -> str:
         # Handle empty path prefix (i.e. app is hosted on its own domain)
@@ -157,6 +169,17 @@ class Config(BaseSettings):
             return False
 
         return True
+
+    @property
+    def arq_redis_settings(self) -> RedisSettings:
+        """Create a Redis settings instance for arq."""
+        url_parts = urlparse(self.redis_queue_url)
+        redis_settings = RedisSettings(
+            host=url_parts.hostname or "localhost",
+            port=url_parts.port or 6379,
+            database=int(url_parts.path.lstrip("/")) if url_parts.path else 0,
+        )
+        return redis_settings
 
 
 config = Config()
