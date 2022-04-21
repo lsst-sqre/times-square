@@ -13,7 +13,7 @@ uvicorn[standard]
 
 # Other dependencies.
 git+https://github.com/lsst-sqre/safir.git@tickets/DM-34473#egg=safir[db,arq]
-pydantic
+pydantic[email]
 click
 nbformat
 nbconvert
