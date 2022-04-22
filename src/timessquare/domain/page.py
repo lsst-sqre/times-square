@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
-from typing import Any, Dict, Mapping
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Mapping, Optional
+from uuid import uuid4
 
 import jinja2
 import jsonschema.exceptions
@@ -46,7 +48,9 @@ class PageModel:
     """
 
     name: str
-    """The name of the page, which is used as a URL path component (slug)."""
+    """The name of the page, which is used as an API URL path component
+    (slug).
+    """
 
     ipynb: str
     """The Jinja-parameterized notebook (a JSON-formatted string)."""
@@ -54,9 +58,80 @@ class PageModel:
     parameters: Dict[str, PageParameterSchema]
     """The notebook's parameter schemas, keyed by their names."""
 
+    title: str
+    """The presentation title of the page."""
+
+    date_added: datetime
+    """Date when the page is registered through the Times Square API."""
+
+    authors: List[PersonModel] = field(default_factory=list)
+    """Authors of the notebook."""
+
+    tags: List[str] = field(default_factory=list)
+    """Tags (keywords) assigned to this page."""
+
+    uploader_username: Optional[str] = None
+    """Username of the uploader, if this page is uploaded without GitHub
+    backing.
+    """
+
+    date_deleted: Optional[datetime] = None
+    """A nullable datetime that is set to the datetime when the page is
+    soft-deleted.
+    """
+
+    description: Optional[str] = None
+    """Description of a page (markdown-formatted)."""
+
+    cache_ttl: Optional[int] = None
+    """The cache TTL (seconds) for HTML renders, or None to retain renders
+    indefinitely.
+    """
+
+    github_owner: Optional[str] = None
+    """The GitHub repository owner (username or organization name) for
+    GitHub-backed pages.
+    """
+
+    github_repo: Optional[str] = None
+    """The GitHub repository name for GitHub-backed pages."""
+
+    repository_path_prefix: Optional[str] = None
+    """The repository path prefix, relative to the root of the repository."""
+
+    repository_display_path_prefix: Optional[str] = None
+    """The repository path prefix, relative to the configured root of Times
+    Square notebooks in a repository.
+    """
+
+    repository_source_filename: Optional[str] = None
+    """The filename (without prefix) of the source file in the GitHub
+    repository for GitHub-backed pages.
+    """
+
+    repository_sidecar_filename: Optional[str] = None
+    """The filename (without prefix) of the sidecar YAML file in the GitHub
+    repository for GitHub-backed pages.
+    """
+
+    repository_source_sha: Optional[str] = None
+    """The git tree sha of the source file for GitHub-backed pages."""
+
+    repository_sidecar_sha: Optional[str] = None
+    """The git tree sha of the sidecar YAML file for GitHub-backed pages."""
+
     @classmethod
-    def create(cls, *, name: str, ipynb: str) -> PageModel:
-        """Create a page model given the page's name and source notebook.
+    def create_from_api_upload(
+        cls,
+        *,
+        ipynb: str,
+        title: str,
+        uploader_username: str,
+        description: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+    ) -> PageModel:
+        """Create a page model given an API upload of a notebook.
 
         The notebook is parameterized, and the page parameters are defined in
         the Jupyter Notebook's metadata under the ``times-square.parameters``
@@ -65,7 +140,23 @@ class PageModel:
         """
         notebook = cls.read_ipynb(ipynb)
         parameters = cls._extract_parameters(notebook)
-        return cls(name=name, ipynb=ipynb, parameters=parameters)
+
+        name = uuid4().hex()  # random slug for API uploads
+        date_added = datetime.now(timezone.utc)
+
+        authors = [PersonModel(username=uploader_username)]
+
+        return cls(
+            name=name,
+            ipynb=ipynb,
+            parameters=parameters,
+            title=title,
+            tags=tags if tags else list(),
+            authors=authors,
+            date_added=date_added,
+            description=description,
+            cache_ttl=cache_ttl,
+        )
 
     @staticmethod
     def read_ipynb(source: str) -> nbformat.NotebookNode:
@@ -210,6 +301,41 @@ class PageModel:
         exporter = HTMLExporter()
         html, resources = exporter.from_notebook_node(notebook)
         return html
+
+
+@dataclass
+class PersonModel:
+    """A domain model for rich information about a person, such as an author
+    of a notebook.
+    """
+
+    name: Optional[str] = None
+    """A person's display name."""
+
+    username: Optional[str] = None
+    """A person's RSP username."""
+
+    affiliation_name: Optional[str] = None
+    """Display name of a person's main affiliation."""
+
+    email: Optional[str] = None
+    """A person's email."""
+
+    slack_name: Optional[str] = None
+    """A person's Slack handle."""
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> PersonModel:
+        return cls(
+            name=d.get("name"),
+            username=d.get("username"),
+            affiliation_name=d.get("affiliation_name"),
+            email=d.get("email"),
+            slack_name=d.get("slack_name"),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass
