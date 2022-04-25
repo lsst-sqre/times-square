@@ -110,7 +110,7 @@ async def post_page(
     A viewer can set these parameters by modifying URLs query string:
 
     ```
-    ?a=40b=2
+    ?a=4&b=2
     ```
 
     To declare these parameters, add a `times-square` field to the notebook's
@@ -147,14 +147,28 @@ async def post_page(
     - ``description`` is used for documentation.
     """
     page_service = context.page_service
-    async with context.session.begin():
-        page_service.create_page_with_notebook(
-            name=request_data.name, ipynb=request_data.ipynb
+    username = context.get_request_username()
+    if username is None:
+        raise HTTPException(
+            status_code=500, detail="X-Auth-Request-User not set"
         )
-        page = await page_service.get_page(request_data.name)
+
+    authors = [a.to_domain() for a in request_data.authors]
+
+    async with context.session.begin():
+        page_name = page_service.create_page_with_notebook_from_upload(
+            title=request_data.title,
+            ipynb=request_data.ipynb,
+            uploader_username=username,
+            authors=authors,
+            tags=request_data.tags,
+            description=request_data.description,
+            cache_ttl=request_data.cache_ttl,
+        )
+        page = await page_service.get_page(page_name)
 
     context.response.headers["location"] = context.request.url_for(
-        "get_page", page=page.name
+        "get_page", page=page_name
     )
     return Page.from_domain(page=page, request=context.request)
 

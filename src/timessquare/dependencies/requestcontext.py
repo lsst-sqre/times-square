@@ -63,6 +63,13 @@ class RequestContext:
             logger=self.logger,
         )
 
+    def get_request_username(self) -> Optional[str]:
+        """Get the username who made the request
+
+        Uses the X-Auth-Request-Username header passed by Gafaelfawr.
+        """
+        return self.request.headers.get("X-Auth-Request-User")
+
     def rebind_logger(self, **values: Optional[str]) -> None:
         """Add the given values to the logging context.
 

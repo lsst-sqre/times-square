@@ -130,6 +130,7 @@ class PageModel:
         description: Optional[str] = None,
         cache_ttl: Optional[int] = None,
         tags: Optional[List[str]] = None,
+        authors: Optional[List[PersonModel]] = None,
     ) -> PageModel:
         """Create a page model given an API upload of a notebook.
 
@@ -141,10 +142,14 @@ class PageModel:
         notebook = cls.read_ipynb(ipynb)
         parameters = cls._extract_parameters(notebook)
 
-        name = uuid4().hex()  # random slug for API uploads
+        name = uuid4().hex  # random slug for API uploads
         date_added = datetime.now(timezone.utc)
 
-        authors = [PersonModel(username=uploader_username)]
+        if not authors:
+            # Create a default author using the uploader info
+            authors = [
+                PersonModel(name=uploader_username, username=uploader_username)
+            ]
 
         return cls(
             name=name,
@@ -309,7 +314,7 @@ class PersonModel:
     of a notebook.
     """
 
-    name: Optional[str] = None
+    name: str
     """A person's display name."""
 
     username: Optional[str] = None
@@ -327,7 +332,7 @@ class PersonModel:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> PersonModel:
         return cls(
-            name=d.get("name"),
+            name=d["name"],
             username=d.get("username"),
             affiliation_name=d.get("affiliation_name"),
             email=d.get("email"),
@@ -442,6 +447,9 @@ class PageSummaryModel:
 
     name: str
     """The name of the page, which is used as a URL path component (slug)."""
+
+    title: str
+    """The display title of the page."""
 
 
 @dataclass

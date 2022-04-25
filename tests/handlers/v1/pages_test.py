@@ -18,14 +18,15 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     """Test creating and managing pages."""
     data_path = Path(__file__).parent.joinpath("../../data")
     demo_path = data_path / "demo.ipynb"
-    page_req_data = {"name": "demo", "ipynb": demo_path.read_text()}
+    page_req_data = {"title": "Demo", "ipynb": demo_path.read_text()}
 
     r = await client.post(f"{config.path_prefix}/v1/pages", json=page_req_data)
     assert r.status_code == 201
     page_url = r.headers["location"]
-    assert page_url == "https://example.com/times-square/v1/pages/demo"
     data = r.json()
-    assert data["name"] == "demo"
+    assert page_url == (
+        f"https://example.com/times-square/v1/pages/{data['name']}"
+    )
     assert data["self_url"] == page_url
     source_url = data["source_url"]
     rendered_url = data["rendered_url"]
@@ -53,7 +54,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 200
     pages_data = r.json()
     assert len(pages_data) == 1
-    assert pages_data[0]["name"] == "demo"
+    assert pages_data[0]["title"] == "Demo"
     assert pages_data[0]["self_url"] == page_url
 
     # Get the page resource itself
@@ -78,7 +79,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     invalid_demo_path = data_path / "demo-invalid-params.ipynb"
     r = await client.post(
         f"{config.path_prefix}/v1/pages",
-        json={"name": "demo-invalid", "ipynb": invalid_demo_path.read_text()},
+        json={"title": "demo-invalid", "ipynb": invalid_demo_path.read_text()},
     )
     assert r.status_code == 422
     error_data = r.json()

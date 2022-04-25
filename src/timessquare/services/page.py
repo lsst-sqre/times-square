@@ -18,6 +18,7 @@ from timessquare.domain.page import (
     PageInstanceModel,
     PageModel,
     PageSummaryModel,
+    PersonModel,
 )
 from timessquare.exceptions import PageNotFoundError
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
@@ -50,12 +51,31 @@ class PageService:
         self._http_client = http_client
         self._logger = logger
 
-    def create_page_with_notebook(self, name: str, ipynb: str) -> None:
+    def create_page_with_notebook_from_upload(
+        self,
+        ipynb: str,
+        title: str,
+        uploader_username: str,
+        description: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        authors: Optional[List[PersonModel]] = None,
+    ) -> str:
         """Create a page resource given the parameterized Jupyter Notebook
         content.
         """
-        page = PageModel.create(name=name, ipynb=ipynb)
+        page = PageModel.create_from_api_upload(
+            title=title,
+            ipynb=ipynb,
+            uploader_username=uploader_username,
+            description=description,
+            cache_ttl=cache_ttl,
+            tags=tags,
+            authors=authors,
+        )
         self._page_store.add(page)
+
+        return page.name
 
     async def get_page(self, name: str) -> PageModel:
         """Get the page from the data store, given its name."""

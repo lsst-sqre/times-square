@@ -73,7 +73,7 @@ class PageStore:
 
         return self._rehydrate_page_from_sql(sql_page)
 
-    def _rehydrate_page_from_sql(self, sql_page) -> PageModel:
+    def _rehydrate_page_from_sql(self, sql_page: SqlPage) -> PageModel:
         """Create a page domain model from the SQL result."""
         parameters = {
             name: PageParameterSchema.create(schema)
@@ -81,7 +81,9 @@ class PageStore:
         }
 
         date_deleted = (
-            datetime_from_db(sql_page.date_added) if sql_page.date else None
+            datetime_from_db(sql_page.date_added)
+            if sql_page.date_deleted
+            else None
         )
 
         authors = [PersonModel.from_dict(p) for p in sql_page.authors]
@@ -120,6 +122,9 @@ class PageStore:
         """
         # TODO consider adding other fields like title, description,
         # date-updated, etc.. Anything that index UIs might find useful.
-        statement = select(SqlPage.name).order_by(SqlPage.name)
-        result = await self._session.scalars(statement)
-        return [PageSummaryModel(name=name) for name in result.all()]
+        statement = select(SqlPage.name, SqlPage.title).order_by(SqlPage.name)
+        result = await self._session.execute(statement)
+        return [
+            PageSummaryModel(name=name, title=title)
+            for name, title in result.all()
+        ]

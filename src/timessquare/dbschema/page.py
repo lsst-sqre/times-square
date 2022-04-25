@@ -31,7 +31,7 @@ class SqlPage(Base):
 
     __tablename__ = "pages"
 
-    id: str = Column(
+    name: str = Column(
         Unicode(32), primary_key=True, default=lambda: uuid.uuid4().hex
     )
     """The primary key, and also the ID for the Page REST API."""
