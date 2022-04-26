@@ -124,3 +124,43 @@ class GitHubAppInstallationRepositoriesEventModel(BaseModel):
     )
 
     installation: GitHubAppInstallationModel
+
+
+class GitHubPullRequestModel(BaseModel):
+    """A Pydantic model for the ``pull_request`` field inside
+    `GitHubPullRequestEventModel`.
+
+    https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+    """
+
+    html_url: HttpUrl = Field(title="Web URL of the PR")
+
+    number: int = Field(title="Pull request number")
+
+    title: str = Field(title="Title")
+
+    # TODO a lot more data is available. Expand this model as needed.
+
+
+class GitHubPullRequestEventModel(BaseModel):
+    """A Pydantic model for a "pull_request" webhook.
+
+    https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
+    """
+
+    repository: GitHubRepositoryModel
+
+    installation: GitHubAppInstallationModel
+
+    action: str = Field(
+        title="The action that was performed.",
+        description=(
+            "Many event types are possible. The most relevant to Times Square "
+            "are ``opened`` and ``synchronize`` (when the head branch is "
+            "updated)."
+        ),
+    )
+
+    number: int = Field(title="Pull request number")
+
+    pull_request: GitHubPullRequestModel
