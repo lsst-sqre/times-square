@@ -1,4 +1,6 @@
-"""Domain models for GitHub repositories containing Times Square notebooks."""
+"""Domain models for "checkouts" of GitHub repositories containing Times
+Square notebooks based on GitHub's Git Tree API for a specific git ref SHA.
+"""
 
 from __future__ import annotations
 

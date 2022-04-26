@@ -1,4 +1,4 @@
-"""Tests for the github domain."""
+"""Tests for the githubcheckout domain."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import respx
 from gidgethub.httpx import GitHubAPI
 from httpx import Response
 
-from timessquare.domain.github import (
+from timessquare.domain.githubcheckout import (
     GitBlobModel,
     GitHubRepositoryCheckout,
     GitTreeMode,
