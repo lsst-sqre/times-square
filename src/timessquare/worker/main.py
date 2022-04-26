@@ -7,9 +7,11 @@ from typing import Any, Dict
 
 import httpx
 import structlog
+from safir.dependencies.db_session import db_session_dependency
 from safir.logging import configure_logging
 
 from timessquare.config import config
+from timessquare.dependencies.redis import redis_dependency
 
 from .functions import (
     ping,
@@ -40,6 +42,13 @@ async def startup(ctx: Dict[Any, Any]) -> None:
     ctx["logger"] = logger
     logger.info("Start up complete")
 
+    # Set up FastAPI dependencies; we can use them "manually" with
+    # arq to provide resources similarly to FastAPI endpoints
+    await db_session_dependency.initialize(
+        config.database_url, config.database_password.get_secret_value()
+    )
+    await redis_dependency.initialize(config.redis_url)
+
 
 async def shutdown(ctx: Dict[Any, Any]) -> None:
     """Runs during worker shut-down to resources."""
@@ -48,6 +57,9 @@ async def shutdown(ctx: Dict[Any, Any]) -> None:
     else:
         logger = structlog.get_logger("timessquare")
     logger.info("Running worker shutdown.")
+
+    await db_session_dependency.aclose()
+    await redis_dependency.close()
 
     try:
         await ctx["http_client"].aclose()
