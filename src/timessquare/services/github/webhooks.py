@@ -10,6 +10,12 @@ from gidgethub.sansio import Event
 from safir.dependencies.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
+from timessquare.domain.githubwebhook import (
+    GitHubAppInstallationRepositoriesEventModel,
+    GitHubPullRequestEventModel,
+    GitHubPushEventModel,
+)
+
 __all__ = ["router"]
 
 
@@ -43,6 +49,13 @@ async def handle_push_event(
         repo=event.data["repository"]["full_name"],
     )
 
+    # Parse webhook payload
+    payload = GitHubPushEventModel.parse_obj(event.data)
+
+    # Only process push events for the default branch
+    if payload.ref == f"refs/heads/{payload.repository.default_branch}":
+        arq_queue.enqueue("repo_push", payload=payload)
+
 
 @router.register("installation_repositories", action="added")
 async def handle_repositories_added(
@@ -70,6 +83,11 @@ async def handle_repositories_added(
         repos=event.data["repositories_added"],
     )
 
+    payload = GitHubAppInstallationRepositoriesEventModel.parse_obj(event.data)
+
+    for repo in payload.repositories_added:
+        arq_queue.enqueue("repo_added", payload=payload, repo=repo)
+
 
 @router.register("installation_repositories", action="removed")
 async def handle_repositories_removed(
@@ -96,6 +114,11 @@ async def handle_repositories_removed(
         "GitHub installation_repositories removed event",
         repos=event.data["repositories_removed"],
     )
+
+    payload = GitHubAppInstallationRepositoriesEventModel.parse_obj(event.data)
+
+    for repo in payload.repositories_removed:
+        arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
 
 
 @router.register("pull_request", action="opened")
@@ -125,6 +148,13 @@ async def handle_pr_opened(
         repo=event.data["repository"]["full_name"],
     )
 
+    payload = GitHubPullRequestEventModel.parse_obj(event.data)
+
+    arq_queue.enqueue(
+        "pull_request_sync",
+        payload=payload,
+    )
+
 
 @router.register("pull_request", action="synchronized")
 async def handle_pr_sync(
@@ -151,6 +181,13 @@ async def handle_pr_sync(
         "GitHub pull_request synchronized event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
+    )
+
+    payload = GitHubPullRequestEventModel.parse_obj(event.data)
+
+    arq_queue.enqueue(
+        "pull_request_sync",
+        payload=payload,
     )
 
 

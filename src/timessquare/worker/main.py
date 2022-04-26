@@ -11,7 +11,13 @@ from safir.logging import configure_logging
 
 from timessquare.config import config
 
-from .functions import ping
+from .functions import (
+    ping,
+    pull_request_sync,
+    repo_added,
+    repo_push,
+    repo_removed,
+)
 
 
 async def startup(ctx: Dict[Any, Any]) -> None:
@@ -57,7 +63,7 @@ class WorkerSettings:
     See `arq.worker.Worker` for details on these attributes.
     """
 
-    functions = [ping]
+    functions = [ping, repo_push, repo_added, repo_removed, pull_request_sync]
 
     redis_settings = config.arq_redis_settings
 
