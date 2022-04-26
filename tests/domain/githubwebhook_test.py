@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from timessquare.domain.githubwebhook import GitHubPushEventModel
+from timessquare.domain.githubwebhook import (
+    GitHubAppInstallationRepositoriesEventModel,
+    GitHubPushEventModel,
+)
 
 
 def test_push_event() -> None:
@@ -15,3 +18,16 @@ def test_push_event() -> None:
 
     assert data.ref == "refs/tags/simple-tag"
     assert data.repository.name == "Hello-World"
+
+
+def test_installation_repositories_event() -> None:
+    data_path = Path(__file__).parent.joinpath(
+        "../data/github_webhooks/installation_repositories.json"
+    )
+    data = GitHubAppInstallationRepositoriesEventModel.parse_raw(
+        data_path.read_text()
+    )
+
+    assert data.action == "added"
+    assert data.repositories_added[0].name == "Space"
+    assert data.repositories_added[0].owner_name == "Codertocat"

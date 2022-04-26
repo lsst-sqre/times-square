@@ -6,6 +6,8 @@ GitHub webhook payloads.
 
 from __future__ import annotations
 
+from typing import List
+
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -87,3 +89,38 @@ class GitHubPushEventModel(BaseModel):
     after: str = Field(
         title="The SHA of the most recent commit on ref after the push."
     )
+
+
+class AppInstallationRepoModel(BaseModel):
+    """A pydantic model for repository objects used by
+    `GitHubAppInstallationRepositoriesEventModel`.
+    """
+
+    name: str
+
+    full_name: str
+
+    @property
+    def owner_name(self) -> str:
+        return self.full_name.split("/")[0]
+
+
+class GitHubAppInstallationRepositoriesEventModel(BaseModel):
+    """A Pydantic model for a "installation_repositories" webhook.
+
+    https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#installation_repositories
+    """
+
+    action: str = Field(
+        title="Action performed", description="Either 'added' or 'removed'."
+    )
+
+    repositories_added: List[AppInstallationRepoModel] = Field(
+        title="Repositories added"
+    )
+
+    repositories_removed: List[AppInstallationRepoModel] = Field(
+        title="Repositories removed"
+    )
+
+    installation: GitHubAppInstallationModel
