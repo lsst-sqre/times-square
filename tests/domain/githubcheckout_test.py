@@ -11,8 +11,8 @@ import respx
 from gidgethub.httpx import GitHubAPI
 from httpx import Response
 
+from timessquare.domain.githubapi import GitHubBlobModel
 from timessquare.domain.githubcheckout import (
-    GitBlobModel,
     GitHubRepositoryCheckout,
     GitTreeMode,
     RecursiveGitTreeModel,
@@ -41,12 +41,12 @@ def test_recursive_git_tree_model_rsp_broadcast() -> None:
 
 def test_git_blob_model_rsp_broadcast() -> None:
     """Test that a git blob, as retrieved from the GitTreeItem.url attribute
-    can be parsed by GitBlobModel.
+    can be parsed by GitHubBlobModel.
     """
     json_path = Path(__file__).parent.joinpath(
         "../data/rsp_broadcast/readme_blob.json"
     )
-    blob = GitBlobModel.parse_raw(json_path.read_text())
+    blob = GitHubBlobModel.parse_raw(json_path.read_text())
     assert blob.sha == "8e977bc4a1503adb11e3fe06e0ddcf759ad59a91"
     assert blob.encoding == "base64"
     assert blob.decode().startswith(

@@ -4,7 +4,6 @@ Square notebooks based on GitHub's Git Tree API for a specific git ref SHA.
 
 from __future__ import annotations
 
-from base64 import b64decode
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
@@ -397,37 +396,3 @@ class RecursiveGitTreeModel(BaseModel):
                 sidecar_git_tree_sha=yaml_item.sha,
             )
             yield tree_ref
-
-
-class GitBlobModel(BaseModel):
-    """A Pydantic model for a blob, returned the GitHub blob endpoint
-
-    See https://docs.github.com/en/rest/git/blobs#get-a-blob
-    """
-
-    content: str = Field(title="Encoded content")
-
-    encoding: str = Field(
-        title="Content encoding", description="Typically is base64"
-    )
-
-    url: HttpUrl = Field(title="API url of this resource")
-
-    sha: str = Field(title="Git sha of tree object")
-
-    size: int = Field(title="Size of the content in bytes")
-
-    def decode(self) -> str:
-        """Decode content.
-
-        Currently supports these encodings:
-
-        - base64
-        """
-        if self.encoding == "base64":
-            return b64decode(self.content).decode()
-        else:
-            raise NotImplementedError(
-                f"GitHub blbo content encoding {self.encoding} "
-                f"is unknown by GitBlobModel for url {self.url}"
-            )
