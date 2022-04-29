@@ -4,13 +4,16 @@ Square notebooks based on GitHub's Git Tree API for a specific git ref SHA.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 from gidgethub.httpx import GitHubAPI
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, root_validator
+
+from .githubapi import GitHubBlobModel
+from .page import PageParameterSchema, PersonModel
 
 
 @dataclass
@@ -84,6 +87,41 @@ class GitHubRepositoryCheckout:
         )
         return RecursiveGitTreeModel.parse_obj(response)
 
+    async def load_notebook(
+        self,
+        *,
+        notebook_ref: RepositoryNotebookTreeRef,
+        github_client: GitHubAPI,
+    ) -> RepositoryNotebookModel:
+        """Load a notebook from GitHub."""
+        # get the sidecar file and parse
+        sidecar_blob = await self.load_git_blob(
+            github_client=github_client, sha=notebook_ref.sidecar_git_tree_sha
+        )
+        sidecar_file = NotebookSidecarFile.parse_raw(sidecar_blob.decode())
+
+        # Get the source content
+        source_blob = await self.load_git_blob(
+            github_client=github_client, sha=notebook_ref.notebook_git_tree_sha
+        )
+
+        return RepositoryNotebookModel(
+            notebook_source_path=notebook_ref.notebook_source_path,
+            sidecar_path=notebook_ref.sidecar_path,
+            notebook_git_tree_sha=notebook_ref.notebook_git_tree_sha,
+            sidecar_git_tree_sha=notebook_ref.sidecar_git_tree_sha,
+            notebook_source=source_blob.decode(),
+            sidecar=sidecar_file,
+        )
+
+    async def load_git_blob(
+        self, *, github_client: GitHubAPI, sha: str
+    ) -> GitHubBlobModel:
+        data = await github_client.getitem(
+            self.trees_url, url_vars={"sha": sha}
+        )
+        return GitHubBlobModel.parse_obj(data)
+
 
 @dataclass(kw_only=True)
 class RepositoryNotebookTreeRef:
@@ -145,6 +183,29 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
         else:
             return dirname
 
+    def get_display_path_prefix(
+        self, checkout: GitHubRepositoryCheckout
+    ) -> str:
+        return str(
+            PurePosixPath(self.path_prefix).relative_to(checkout.settings.root)
+        )
+
+    def get_display_path(self, checkout: GitHubRepositoryCheckout) -> str:
+        """The display path to correlate this GitHub-backed notebook with
+        existing pages.
+
+        See also
+        --------
+        timessquare.domain.page.PageModel.display_path
+        """
+        display_prefix = self.get_display_path_prefix(checkout)
+        name_stem = PurePosixPath(
+            PurePosixPath(self.notebook_source_path).name
+        ).stem
+        return "/".join(
+            [checkout.owner_name, checkout.name, display_prefix, name_stem]
+        )
+
     @property
     def ipynb(self) -> str:
         """The ipynb file, based on the ``notebook_source`` and including
@@ -169,7 +230,18 @@ class RepositorySettingsFile(BaseModel):
     )
 
     ignore: List[str] = Field(
-        title="Paths to ignore (supports globs)", default_factory=list
+        title="Paths to ignore (supports globs)",
+        default_factory=list,
+        description="Relative to the repository root.",
+    )
+
+    root: str = Field(
+        "",
+        title="Root directory where Times Square notebooks are located.",
+        description=(
+            "An empty string corresponds to the root being the same as "
+            "the repository root."
+        ),
     )
 
     enabled: bool = Field(
@@ -191,7 +263,7 @@ class SidecarPersonModel(BaseModel):
 
     username: Optional[str] = Field(title="RSP username")
 
-    affilation_name: Optional[str] = Field(
+    affiliation_name: Optional[str] = Field(
         title="Display name of a person's main affiliation"
     )
 
@@ -209,6 +281,24 @@ class SidecarPersonModel(BaseModel):
             )
         return values
 
+    def to_person_model(self) -> PersonModel:
+        """Convert to the domain version of this object."""
+        if self.name is not None:
+            display_name = self.name
+        elif self.username is not None:
+            display_name = self.username
+        else:
+            # Shouldn't be possible thanks to the model validator
+            raise RuntimeError("Cannot resolve a display name for person")
+
+        return PersonModel(
+            name=display_name,
+            username=self.username,
+            affiliation_name=self.affiliation_name,
+            email=self.email,
+            slack_name=self.slack_name,
+        )
+
 
 class JsonSchemaTypeEnum(str, Enum):
     """JSON schema types that are supported."""
@@ -220,7 +310,12 @@ class JsonSchemaTypeEnum(str, Enum):
 
 
 class ParameterSchemaModel(BaseModel):
-    """A Pydantic model for a notebook's parameter schema value."""
+    """A Pydantic model for a notebook's parameter schema value.
+
+    This model represents how a parameter is formatted in JSON. The
+    corresponding domain model that's actually used by the PageModel is
+    `PageParameterSchema`.
+    """
 
     type: JsonSchemaTypeEnum = Field(
         title="The JSON schema type.",
@@ -255,6 +350,11 @@ class ParameterSchemaModel(BaseModel):
     multipleOf: Optional[Union[int, float]] = Field(
         None, title="Required factor for number of integer types."
     )
+
+    def to_parameter_schema(self, name: str) -> PageParameterSchema:
+        return PageParameterSchema.create_and_validate(
+            name=name, json_schema=asdict(self)
+        )
 
 
 class NotebookSidecarFile(BaseModel):
@@ -293,6 +393,17 @@ class NotebookSidecarFile(BaseModel):
     parameters: Dict[str, ParameterSchemaModel] = Field(
         title="Parameters and their schemas", default_factory=dict
     )
+
+    def export_parameters(self) -> Dict[str, PageParameterSchema]:
+        """Export the `parameters` attribute to `PageParameterSchema` used
+        by the PageModel.
+        """
+        return {
+            k: v.to_parameter_schema(k) for k, v in self.parameters.items()
+        }
+
+    def export_authors(self) -> List[PersonModel]:
+        return [a.to_person_model() for a in self.authors]
 
 
 class GitTreeMode(str, Enum):

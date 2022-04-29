@@ -62,6 +62,38 @@ class PageStore:
         )
         self._session.add(new_page)
 
+    async def update_page(self, page: PageModel) -> None:
+        """Update an existing page."""
+        statement = select(SqlPage).where(SqlPage.name == page.name).limit(1)
+        sql_page = await self._session.scalar(statement)
+        if sql_page is None:
+            # FIXME raise an database integrity error instead?
+            return None
+
+        parameters_json = {
+            name: parameter.schema
+            for name, parameter in page.parameters.items()
+        }
+        authors_json = [a.to_dict() for a in page.authors]
+        date_deleted = (
+            datetime_to_db(page.date_deleted) if page.date_deleted else None
+        )
+
+        # These are all fields that are considered "updatable", which is a
+        # subset of all columns in SqlPage
+        sql_page.ipynb = page.ipynb
+        sql_page.parameters = parameters_json
+        sql_page.title = page.title
+        sql_page.authors = authors_json
+        sql_page.tags = page.tags
+        sql_page.date_deleted = date_deleted
+        sql_page.description = page.description
+        sql_page.cache_ttl = page.cache_ttl
+        sql_page.repository_source_filename = page.repository_source_filename
+        sql_page.repository_sidecar_filename = page.repository_sidecar_filename
+        sql_page.repository_source_sha = page.repository_source_sha
+        sql_page.repository_sidecar_sha = page.repository_sidecar_sha
+
     async def get(self, name: str) -> Optional[PageModel]:
         """Get a page based on the API slug (name), or get `None` if the
         page does not exist.
@@ -72,6 +104,22 @@ class PageStore:
             return None
 
         return self._rehydrate_page_from_sql(sql_page)
+
+    async def list_pages_for_repository(
+        self, *, owner: str, name: str
+    ) -> List[PageModel]:
+        """Get all pages backed by a specific GitHub repository."""
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.github_owner == owner)
+            .where(SqlPage.github_repo == name)
+            .where(SqlPage.date_deleted is None)
+        )
+        result = await self._session.execute(statement)
+        return [
+            self._rehydrate_page_from_sql(sql_page)
+            for sql_page in result.scalars()
+        ]
 
     def _rehydrate_page_from_sql(self, sql_page: SqlPage) -> PageModel:
         """Create a page domain model from the SQL result."""

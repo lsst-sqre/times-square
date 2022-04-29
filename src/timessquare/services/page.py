@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional
 
 from httpx import AsyncClient
@@ -73,8 +74,10 @@ class PageService:
             tags=tags,
             authors=authors,
         )
-        self._page_store.add(page)
+        return self.add_page(page)
 
+    def add_page(self, page: PageModel) -> str:
+        self._page_store.add(page)
         return page.name
 
     async def get_page(self, name: str) -> PageModel:
@@ -87,6 +90,23 @@ class PageService:
     async def get_page_summaries(self) -> List[PageSummaryModel]:
         """Get page summaries."""
         return await self._page_store.list_page_summaries()
+
+    async def get_pages_for_repo(
+        self, owner: str, name: str
+    ) -> List[PageModel]:
+        """Get all pages backed by a specific GitHub repository."""
+        return await self._page_store.list_pages_for_repository(
+            owner=owner, name=name
+        )
+
+    async def update_page(self, page: PageModel) -> None:
+        """Update the page in the database."""
+        await self._page_store.update_page(page)
+
+    async def soft_delete_page(self, page: PageModel) -> None:
+        """Soft delete a page by setting its date_deleted field."""
+        page.date_deleted = datetime.now(timezone.utc)
+        await self._page_store.update_page(page)
 
     async def render_page_template(
         self, name: str, parameters: Mapping[str, Any]
