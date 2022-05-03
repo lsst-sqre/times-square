@@ -16,9 +16,6 @@ from safir.metadata import get_metadata
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
-from timessquare.services.github.client import (
-    create_github_installation_client,
-)
 from timessquare.services.github.webhooks import router as webhook_router
 
 __all__ = ["get_index", "external_router", "Index", "post_github_webhook"]
@@ -101,26 +98,8 @@ async def post_github_webhook(
     logger = logger.bind(github_delivery=event.delivery_id)
 
     logger.debug("Received GitHub webhook", payload=event.data)
-    try:
-        installation_id = event.data["installation"]["id"]
-    except AttributeError:
-        return Response(
-            "Did not find installation.id in the webhook event payload",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-    github_client = await create_github_installation_client(
-        http_client=http_client, installation_id=installation_id
-    )
     # Give GitHub some time to reach internal consistency.
     await asyncio.sleep(1)
-    await webhook_router.dispatch(event, github_client, logger, arq_queue)
+    await webhook_router.dispatch(event, logger, arq_queue)
 
-    logger.debug(
-        "GH requests remaining",
-        remaining=(
-            github_client.rate_limit.remaining
-            if github_client.rate_limit is not None
-            else "unknown"
-        ),
-    )
     return Response(status_code=status.HTTP_202_ACCEPTED)

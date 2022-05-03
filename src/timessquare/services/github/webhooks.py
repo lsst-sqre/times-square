@@ -4,7 +4,6 @@ endpoint.
 
 from __future__ import annotations
 
-from gidgethub.httpx import GitHubAPI
 from gidgethub.routing import Router
 from gidgethub.sansio import Event
 from safir.dependencies.arq import ArqQueue
@@ -26,7 +25,6 @@ router = Router()
 @router.register("push")
 async def handle_push_event(
     event: Event,
-    github_client: GitHubAPI,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
@@ -36,8 +34,6 @@ async def handle_push_event(
     ----------
     event : `gidgethub.sansio.Event`
          The parsed event payload.
-    github_client : `gidgethub.httpx.GitHubAPI`
-        The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
     arq_queue : `safir.dependencies.arq.ArqQueue`
@@ -60,7 +56,6 @@ async def handle_push_event(
 @router.register("installation_repositories", action="added")
 async def handle_repositories_added(
     event: Event,
-    github_client: GitHubAPI,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
@@ -71,8 +66,6 @@ async def handle_repositories_added(
     ----------
     event : `gidgethub.sansio.Event`
          The parsed event payload.
-    github_client : `gidgethub.httpx.GitHubAPI`
-        The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
     arq_queue : `safir.dependencies.arq.ArqQueue`
@@ -92,7 +85,6 @@ async def handle_repositories_added(
 @router.register("installation_repositories", action="removed")
 async def handle_repositories_removed(
     event: Event,
-    github_client: GitHubAPI,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
@@ -103,8 +95,6 @@ async def handle_repositories_removed(
     ----------
     event : `gidgethub.sansio.Event`
          The parsed event payload.
-    github_client : `gidgethub.httpx.GitHubAPI`
-        The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
     arq_queue : `safir.dependencies.arq.ArqQueue`
@@ -124,7 +114,6 @@ async def handle_repositories_removed(
 @router.register("pull_request", action="opened")
 async def handle_pr_opened(
     event: Event,
-    github_client: GitHubAPI,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
@@ -135,8 +124,6 @@ async def handle_pr_opened(
     ----------
     event : `gidgethub.sansio.Event`
          The parsed event payload.
-    github_client : `gidgethub.httpx.GitHubAPI`
-        The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
     arq_queue : `safir.dependencies.arq.ArqQueue`
@@ -159,7 +146,6 @@ async def handle_pr_opened(
 @router.register("pull_request", action="synchronized")
 async def handle_pr_sync(
     event: Event,
-    github_client: GitHubAPI,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
@@ -170,8 +156,6 @@ async def handle_pr_sync(
     ----------
     event : `gidgethub.sansio.Event`
          The parsed event payload.
-    github_client : `gidgethub.httpx.GitHubAPI`
-        The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
     arq_queue : `safir.dependencies.arq.ArqQueue`
@@ -194,7 +178,6 @@ async def handle_pr_sync(
 @router.register("ping")
 async def handle_ping(
     event: Event,
-    github_client: GitHubAPI,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
@@ -205,8 +188,6 @@ async def handle_ping(
     ----------
     event : `gidgethub.sansio.Event`
          The parsed event payload.
-    github_client : `gidgethub.httpx.GitHubAPI`
-        The GitHub API client, pre-authorized as an app installation.
     logger
         The logger instance
     arq_queue : `safir.dependencies.arq.ArqQueue`
