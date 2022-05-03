@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.logging import configure_logging
@@ -61,6 +62,9 @@ async def startup_event() -> None:
         config.database_url, config.database_password.get_secret_value()
     )
     await redis_dependency.initialize(config.redis_url)
+    await arq_dependency.initialize(
+        mode=config.arq_mode, redis_settings=config.arq_redis_settings
+    )
     app.add_middleware(XForwardedMiddleware)
 
 
