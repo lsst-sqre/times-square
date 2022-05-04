@@ -50,7 +50,7 @@ async def handle_installation_created(
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
 
     for repo in payload.repositories:
-        arq_queue.enqueue("repo_added", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_added", payload=payload, repo=repo)
 
 
 @router.register("installation", action="unsuspend")
@@ -80,7 +80,7 @@ async def handle_installation_unsuspend(
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
 
     for repo in payload.repositories:
-        arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
 
 
 @router.register("installation", action="deleted")
@@ -110,7 +110,7 @@ async def handle_installation_deleted(
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
 
     for repo in payload.repositories:
-        arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
 
 
 @router.register("installation_repositories", action="added")
@@ -139,7 +139,7 @@ async def handle_repositories_added(
     payload = GitHubAppInstallationRepositoriesEventModel.parse_obj(event.data)
 
     for repo in payload.repositories_added:
-        arq_queue.enqueue("repo_added", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_added", payload=payload, repo=repo)
 
 
 @router.register("installation_repositories", action="removed")
@@ -168,7 +168,7 @@ async def handle_repositories_removed(
     payload = GitHubAppInstallationRepositoriesEventModel.parse_obj(event.data)
 
     for repo in payload.repositories_removed:
-        arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
 
 
 @router.register("push")
@@ -199,7 +199,7 @@ async def handle_push_event(
 
     # Only process push events for the default branch
     if payload.ref == f"refs/heads/{payload.repository.default_branch}":
-        arq_queue.enqueue("repo_push", payload=payload)
+        await arq_queue.enqueue("repo_push", payload=payload)
 
 
 @router.register("pull_request", action="opened")
@@ -228,7 +228,7 @@ async def handle_pr_opened(
 
     payload = GitHubPullRequestEventModel.parse_obj(event.data)
 
-    arq_queue.enqueue(
+    await arq_queue.enqueue(
         "pull_request_sync",
         payload=payload,
     )
@@ -260,7 +260,7 @@ async def handle_pr_sync(
 
     payload = GitHubPullRequestEventModel.parse_obj(event.data)
 
-    arq_queue.enqueue(
+    await arq_queue.enqueue(
         "pull_request_sync",
         payload=payload,
     )
