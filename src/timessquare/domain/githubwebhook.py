@@ -60,6 +60,23 @@ class AppInstallationRepoModel(BaseModel):
         return self.full_name.split("/")[0]
 
 
+class GitHubAppInstallationEventModel(BaseModel):
+    """A Pydantic model for an "installation" webhook.
+
+    https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#installation
+    """
+
+    action: str = Field(
+        title="Action performed", description="Either 'added' or 'removed'."
+    )
+
+    repositories: List[AppInstallationRepoModel] = Field(
+        title="Repositories accessible to this installation"
+    )
+
+    installation: GitHubAppInstallationModel
+
+
 class GitHubAppInstallationRepositoriesEventModel(BaseModel):
     """A Pydantic model for a "installation_repositories" webhook.
 

@@ -10,6 +10,7 @@ from safir.dependencies.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 from timessquare.domain.githubwebhook import (
+    GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
     GitHubPullRequestEventModel,
     GitHubPushEventModel,
@@ -22,13 +23,14 @@ router = Router()
 """GitHub webhook router."""
 
 
-@router.register("push")
-async def handle_push_event(
+@router.register("installation", action="created")
+async def handle_installation_created(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
-    """Handle the ``push`` webhook event from GitHub.
+    """Handle the ``installation`` (created) webhook event from
+    GitHub.
 
     Parameters
     ----------
@@ -39,18 +41,76 @@ async def handle_push_event(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    logger.debug(
-        "GitHub push event",
-        git_ref=event.data["ref"],
-        repo=event.data["repository"]["full_name"],
+    logger.info(
+        "GitHub installation created event",
+        owner=event.data["installation"]["account"]["login"],
+        repos=event.data["repositories"],
     )
 
-    # Parse webhook payload
-    payload = GitHubPushEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
 
-    # Only process push events for the default branch
-    if payload.ref == f"refs/heads/{payload.repository.default_branch}":
-        arq_queue.enqueue("repo_push", payload=payload)
+    for repo in payload.repositories:
+        arq_queue.enqueue("repo_added", payload=payload, repo=repo)
+
+
+@router.register("installation", action="unsuspend")
+async def handle_installation_unsuspend(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``installation`` (unsuspend) webhook event from
+    GitHub.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    logger.info(
+        "GitHub installation unsuspend event",
+        owner=event.data["installation"]["account"]["login"],
+        repos=event.data["repositories"],
+    )
+
+    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+
+    for repo in payload.repositories:
+        arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
+
+
+@router.register("installation", action="deleted")
+async def handle_installation_deleted(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``installation`` (deleted) webhook event from
+    GitHub.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    logger.info(
+        "GitHub installation deleted event",
+        owner=event.data["installation"]["account"]["login"],
+        repos=event.data["repositories"],
+    )
+
+    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+
+    for repo in payload.repositories:
+        arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
 
 
 @router.register("installation_repositories", action="added")
@@ -109,6 +169,37 @@ async def handle_repositories_removed(
 
     for repo in payload.repositories_removed:
         arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
+
+
+@router.register("push")
+async def handle_push_event(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``push`` webhook event from GitHub.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    logger.debug(
+        "GitHub push event",
+        git_ref=event.data["ref"],
+        repo=event.data["repository"]["full_name"],
+    )
+
+    # Parse webhook payload
+    payload = GitHubPushEventModel.parse_obj(event.data)
+
+    # Only process push events for the default branch
+    if payload.ref == f"refs/heads/{payload.repository.default_branch}":
+        arq_queue.enqueue("repo_push", payload=payload)
 
 
 @router.register("pull_request", action="opened")

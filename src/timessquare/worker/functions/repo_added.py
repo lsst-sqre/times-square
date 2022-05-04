@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from safir.dependencies.db_session import db_session_dependency
 
 from timessquare.domain.githubwebhook import (
     AppInstallationRepoModel,
+    GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
 )
 from timessquare.worker.servicefactory import create_github_repo_service
@@ -14,7 +15,10 @@ from timessquare.worker.servicefactory import create_github_repo_service
 async def repo_added(
     ctx: Dict[Any, Any],
     *,
-    payload: GitHubAppInstallationRepositoriesEventModel,
+    payload: Union[
+        GitHubAppInstallationRepositoriesEventModel,
+        GitHubAppInstallationEventModel,
+    ],
     repo: AppInstallationRepoModel,
 ) -> str:
     """Process repo_added queue tasks, triggered by Times Square app
