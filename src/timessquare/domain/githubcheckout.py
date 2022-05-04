@@ -62,6 +62,12 @@ class GitHubRepositoryCheckout:
     URL variable is ``sha``.
     """
 
+    blobs_url: str
+    """Templated GitHub API URL for the Git blobs API.
+
+    URL variable is ``sha``.
+    """
+
     @property
     def full_name(self) -> str:
         """The full repository name (owner/repo format)."""
@@ -119,7 +125,7 @@ class GitHubRepositoryCheckout:
         self, *, github_client: GitHubAPI, sha: str
     ) -> GitHubBlobModel:
         data = await github_client.getitem(
-            self.trees_url, url_vars={"sha": sha}
+            self.blobs_url, url_vars={"sha": sha}
         )
         return GitHubBlobModel.parse_obj(data)
 

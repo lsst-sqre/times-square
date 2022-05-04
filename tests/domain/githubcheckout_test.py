@@ -85,6 +85,10 @@ async def test_repository_git_tree(
             "https://api.github.com/repos/lsst-sqre/rsp_broadcast/git/trees/"
             "46372dfa5a432026d68d262899755ef0333ef8c0"
         ),
+        blobs_url=(
+            "https://api.github.com/repos/lsst-sqre/rsp_broadcast/git/blobs/"
+            "46372dfa5a432026d68d262899755ef0333ef8c0"
+        ),
     )
 
     # respx_mock

@@ -67,6 +67,13 @@ class GitHubRepositoryModel(BaseModel):
         ),
     )
 
+    blobs_url: str = Field(
+        title="URI template for the Git blobs API",
+        example=(
+            "https://github.com/lsst-sqre/times-square-demo/git/blobs{/sha}"
+        ),
+    )
+
 
 class GitHubPullRequestModel(BaseModel):
     """A Pydantic model for a GitHub Pull Request.

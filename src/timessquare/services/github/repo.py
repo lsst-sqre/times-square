@@ -130,6 +130,7 @@ class GitHubRepoService:
             git_ref=git_ref,
             head_sha=head_sha,
             trees_url=repo.trees_url,
+            blobs_url=repo.blobs_url,
         )
         return checkout
 
