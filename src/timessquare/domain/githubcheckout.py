@@ -148,6 +148,10 @@ class RepositoryNotebookTreeRef:
     sidecar_git_tree_sha: str
     """Git sha of the sidecar file."""
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Export as a dictionary."""
+        return asdict(self)
+
 
 @dataclass(kw_only=True)
 class RepositoryNotebookModel(RepositoryNotebookTreeRef):

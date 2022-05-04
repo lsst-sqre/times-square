@@ -174,6 +174,9 @@ class GitHubRepoService:
 
         tree = await checkout.get_git_tree(self._github_client)
         for notebook_ref in tree.find_notebooks(checkout.settings):
+            self._logger.info(
+                "Loading notebook to sync", notebook_ref=notebook_ref.to_dict()
+            )
             notebook = await checkout.load_notebook(
                 notebook_ref=notebook_ref, github_client=self._github_client
             )
