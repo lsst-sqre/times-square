@@ -9,7 +9,7 @@ called.
 
 from __future__ import annotations
 
-from importlib.metadata import metadata
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,7 +43,7 @@ configure_logging(
 app = FastAPI(
     title="Times Square",
     description=Path(__file__).parent.joinpath("description.md").read_text(),
-    version=metadata("times-square").get("Version", "0.0.0"),
+    version=version("times-square"),
     openapi_url=f"{config.path_prefix}/openapi.json",
     docs_url=f"{config.path_prefix}/docs",
     redoc_url=f"{config.path_prefix}/redoc",
