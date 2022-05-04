@@ -24,3 +24,4 @@ gidgethub
 markdown-it-py[linkify,plugins]
 mdformat
 mdformat-gfm
+PyYAML
