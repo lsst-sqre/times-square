@@ -21,6 +21,15 @@ from timessquare.domain.githubcheckout import (
 )
 
 
+def test_settings_file_load() -> None:
+    json_path = Path(__file__).parent.joinpath(
+        "../data/times-square-demo/settings-blob.json"
+    )
+    blob = GitHubBlobModel.parse_raw(json_path.read_text())
+    settings = RepositorySettingsFile.parse_yaml(blob.decode())
+    assert settings.enabled is True
+
+
 def test_recursive_git_tree_model_rsp_broadcast() -> None:
     """Test that an object returned by the GitHub Git Tree API with
     recursive=1 can be parsed by RecursiveGitTreeModel.

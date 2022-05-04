@@ -134,6 +134,6 @@ class GitHubBlobModel(BaseModel):
             return b64decode(self.content).decode()
         else:
             raise NotImplementedError(
-                f"GitHub blbo content encoding {self.encoding} "
+                f"GitHub blob content encoding {self.encoding} "
                 f"is unknown by GitHubBlobModel for url {self.url}"
             )

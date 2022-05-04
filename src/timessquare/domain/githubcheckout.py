@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Union
 
+import yaml
 from gidgethub.httpx import GitHubAPI
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, root_validator
 
@@ -98,7 +99,7 @@ class GitHubRepositoryCheckout:
         sidecar_blob = await self.load_git_blob(
             github_client=github_client, sha=notebook_ref.sidecar_git_tree_sha
         )
-        sidecar_file = NotebookSidecarFile.parse_raw(sidecar_blob.decode())
+        sidecar_file = NotebookSidecarFile.parse_yaml(sidecar_blob.decode())
 
         # Get the source content
         source_blob = await self.load_git_blob(
@@ -255,6 +256,11 @@ class RepositorySettingsFile(BaseModel):
         ),
     )
 
+    @classmethod
+    def parse_yaml(cls, content: str) -> RepositorySettingsFile:
+        """Create a RepositorySettingsFile from the YAML content."""
+        return cls.parse_obj(yaml.safe_load(content))
+
 
 class SidecarPersonModel(BaseModel):
     """A Pydantic model for a person's identity encoded in YAML."""
@@ -393,6 +399,11 @@ class NotebookSidecarFile(BaseModel):
     parameters: Dict[str, ParameterSchemaModel] = Field(
         title="Parameters and their schemas", default_factory=dict
     )
+
+    @classmethod
+    def parse_yaml(cls, content: str) -> NotebookSidecarFile:
+        """Create a NotebookSidecarFile from the YAML content."""
+        return cls.parse_obj(yaml.safe_load(content))
 
     def export_parameters(self) -> Dict[str, PageParameterSchema]:
         """Export the `parameters` attribute to `PageParameterSchema` used

@@ -145,7 +145,7 @@ class GitHubRepoService:
         )
         content_data = GitHubBlobModel.parse_obj(data)
         file_content = content_data.decode()
-        return RepositorySettingsFile.parse_raw(file_content)
+        return RepositorySettingsFile.parse_yaml(file_content)
 
     async def sync_checkout(self, checkout: GitHubRepositoryCheckout) -> None:
         """Sync a "checkout" of a GitHub repository.
