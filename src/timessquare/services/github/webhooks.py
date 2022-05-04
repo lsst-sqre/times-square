@@ -131,7 +131,7 @@ async def handle_repositories_added(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    logger.debug(
+    logger.info(
         "GitHub installation_repositories added event",
         repos=event.data["repositories_added"],
     )
@@ -160,7 +160,7 @@ async def handle_repositories_removed(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    logger.debug(
+    logger.info(
         "GitHub installation_repositories removed event",
         repos=event.data["repositories_removed"],
     )
@@ -188,7 +188,7 @@ async def handle_push_event(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    logger.debug(
+    logger.info(
         "GitHub push event",
         git_ref=event.data["ref"],
         repo=event.data["repository"]["full_name"],
@@ -220,7 +220,7 @@ async def handle_pr_opened(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    logger.debug(
+    logger.info(
         "GitHub pull_request opened event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
@@ -252,7 +252,7 @@ async def handle_pr_sync(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    logger.debug(
+    logger.info(
         "GitHub pull_request synchronized event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
