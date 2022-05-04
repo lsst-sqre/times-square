@@ -80,7 +80,7 @@ async def handle_installation_unsuspend(
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
 
     for repo in payload.repositories:
-        await arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_added", payload=payload, repo=repo)
 
 
 @router.register("installation", action="deleted")
@@ -104,13 +104,41 @@ async def handle_installation_deleted(
     logger.info(
         "GitHub installation deleted event",
         owner=event.data["installation"]["account"]["login"],
-        repos=event.data["repositories"],
     )
 
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
 
     for repo in payload.repositories:
-        await arq_queue.enqueue("repo_deleted", payload=payload, repo=repo)
+        await arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
+
+
+@router.register("installation", action="suspend")
+async def handle_installation_suspend(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``installation`` (suspend) webhook event from
+    GitHub.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    logger.info(
+        "GitHub installation suspended event",
+        owner=event.data["installation"]["account"]["login"],
+    )
+
+    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+
+    for repo in payload.repositories:
+        await arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
 
 
 @router.register("installation_repositories", action="added")
