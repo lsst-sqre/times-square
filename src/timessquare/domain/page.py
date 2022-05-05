@@ -391,6 +391,8 @@ class PageModel:
             cell.source = template.render()
 
         # Modify notebook metadata to include values
+        if "times-square" not in notebook.metadata.keys():
+            notebook.metadata["times-square"] = {}
         notebook.metadata["times-square"]["values"] = values
 
         # Render notebook back to a string and return
