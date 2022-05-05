@@ -108,6 +108,11 @@ class PageService:
         page.date_deleted = datetime.now(timezone.utc)
         await self._page_store.update_page(page)
 
+    async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
+        """Soft delete all pages backed by a specific GitHub repository."""
+        for page in await self.get_pages_for_repo(owner=owner, name=name):
+            await self.soft_delete_page(page)
+
     async def render_page_template(
         self, name: str, parameters: Mapping[str, Any]
     ) -> str:

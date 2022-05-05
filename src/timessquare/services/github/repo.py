@@ -86,14 +86,6 @@ class GitHubRepoService:
         )
         await self.sync_checkout(checkout)
 
-    async def delete_repository(self, owner: str, repo_name: str) -> None:
-        """Run a soft-delete on all content from a GitHub repository.
-
-        This service method is usually called when the GitHub App is
-        uninstalled from a repository.
-        """
-        pass
-
     async def check_pull_request(
         self, pr_payload: GitHubPullRequestModel
     ) -> None:
