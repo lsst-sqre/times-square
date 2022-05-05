@@ -20,6 +20,21 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     demo_path = data_path / "demo.ipynb"
     page_req_data = {"title": "Demo", "ipynb": demo_path.read_text()}
 
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=Response(
+            202,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "LSST",
+                "enqueue_time": datetime.utcnow().isoformat(),
+                "status": "queued",
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
+                ),
+            },
+        )
+    )
+
     r = await client.post(f"{config.path_prefix}/v1/pages", json=page_req_data)
     assert r.status_code == 201
     page_url = r.headers["location"]

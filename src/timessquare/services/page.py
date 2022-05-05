@@ -52,7 +52,7 @@ class PageService:
         self._http_client = http_client
         self._logger = logger
 
-    def create_page_with_notebook_from_upload(
+    async def create_page_with_notebook_from_upload(
         self,
         ipynb: str,
         title: str,
@@ -74,10 +74,11 @@ class PageService:
             tags=tags,
             authors=authors,
         )
-        return self.add_page(page)
+        return await self.add_page(page)
 
-    def add_page(self, page: PageModel) -> str:
+    async def add_page(self, page: PageModel) -> str:
         self._page_store.add(page)
+        await self._request_notebook_execution_for_page_defaults(page)
         return page.name
 
     async def get_page(self, name: str) -> PageModel:
@@ -102,6 +103,21 @@ class PageService:
     async def update_page(self, page: PageModel) -> None:
         """Update the page in the database."""
         await self._page_store.update_page(page)
+        await self._request_notebook_execution_for_page_defaults(page)
+
+    async def _request_notebook_execution_for_page_defaults(
+        self, page: PageModel
+    ) -> None:
+        """Request noteburst execution of with page's default values.
+
+        This is useful for the `add_page` and `update_page` methods to start
+        notebook execution as soon as possible.
+        """
+        resolved_parameters = page.resolve_and_validate_parameters({})
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_parameters, page=page
+        )
+        await self._request_noteburst_execution(page_instance)
 
     async def soft_delete_page(self, page: PageModel) -> None:
         """Soft delete a page by setting its date_deleted field."""

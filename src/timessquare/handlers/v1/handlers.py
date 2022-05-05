@@ -156,7 +156,7 @@ async def post_page(
     authors = [a.to_domain() for a in request_data.authors]
 
     async with context.session.begin():
-        page_name = page_service.create_page_with_notebook_from_upload(
+        page_name = await page_service.create_page_with_notebook_from_upload(
             title=request_data.title,
             ipynb=request_data.ipynb,
             uploader_username=username,

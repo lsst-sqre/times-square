@@ -249,7 +249,7 @@ class GitHubRepoService:
             tags=notebook.sidecar.tags,
             authors=notebook.sidecar.export_authors(),
         )
-        self._page_service.add_page(page)
+        await self._page_service.add_page(page)
 
     async def update_page(
         self, *, notebook: RepositoryNotebookModel, page: PageModel
