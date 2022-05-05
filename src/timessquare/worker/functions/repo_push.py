@@ -14,7 +14,11 @@ async def repo_push(
     """Process repo_push queue tasks, triggered by push events on GitHub
     repositories.
     """
-    logger = ctx["logger"].bind(task="repo_push")
+    logger = ctx["logger"].bind(
+        task="repo_push",
+        github_owner=payload.repository.owner.login,
+        github_repo=payload.repository.name,
+    )
     logger.info("Running repo_push")
 
     async for db_session in db_session_dependency():

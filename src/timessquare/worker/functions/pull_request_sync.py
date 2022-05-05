@@ -19,7 +19,11 @@ async def pull_request_sync(
     This function runs a CI testing service for Times Square content and
     configuration.
     """
-    logger = ctx["logger"].bind(task="pull_request_sync")
+    logger = ctx["logger"].bind(
+        task="pull_request_sync",
+        github_owner=payload.repository.owner.login,
+        github_repo=payload.repository.name,
+    )
     logger.info("Running pull_request_sync")
 
     async for db_session in db_session_dependency():

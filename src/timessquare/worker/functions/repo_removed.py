@@ -27,7 +27,11 @@ async def repo_removed(
     When the Times Square app is uninstalled from a repository, Times Square
     drops its content.
     """
-    logger = ctx["logger"].bind(task="repo_removed")
+    logger = ctx["logger"].bind(
+        task="repo_removed",
+        github_owner=repo.owner_name,
+        github_repo=repo.name,
+    )
     logger.info("Running repo_removed")
 
     async for db_session in db_session_dependency():

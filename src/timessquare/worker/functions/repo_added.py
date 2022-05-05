@@ -27,7 +27,9 @@ async def repo_added(
     When Times Square is "installed" on a repository, Times Square displays
     its notebook content.
     """
-    logger = ctx["logger"].bind(task="repo_added")
+    logger = ctx["logger"].bind(
+        task="repo_added", github_owner=repo.owner_name, github_repo=repo.name
+    )
     logger.info("Running repo_added")
 
     async for db_session in db_session_dependency():
