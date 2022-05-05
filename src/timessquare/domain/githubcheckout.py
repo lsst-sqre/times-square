@@ -369,7 +369,7 @@ class ParameterSchemaModel(BaseModel):
 
     def to_parameter_schema(self, name: str) -> PageParameterSchema:
         return PageParameterSchema.create_and_validate(
-            name=name, json_schema=self.dict()
+            name=name, json_schema=self.dict(exclude_none=True)
         )
 
 

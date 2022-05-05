@@ -15,6 +15,7 @@ from timessquare.domain.githubapi import GitHubBlobModel
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     GitTreeMode,
+    NotebookSidecarFile,
     RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
     RepositorySettingsFile,
@@ -119,3 +120,11 @@ async def test_recursive_git_tree_find_notebooks() -> None:
     for notebook_ref in repo_tree.find_notebooks(settings2):
         notebook_refs2.append(notebook_ref)
     assert len(notebook_refs2) == 1
+
+
+def test_load_sidecar() -> None:
+    sidecar_path = Path(__file__).parent.joinpath(
+        "../data/times-square-demo/demo.yaml"
+    )
+    sidecar = NotebookSidecarFile.parse_yaml(sidecar_path.read_text())
+    sidecar.export_parameters()
