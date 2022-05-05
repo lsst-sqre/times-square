@@ -113,7 +113,7 @@ class PageStore:
             select(SqlPage)
             .where(SqlPage.github_owner == owner)
             .where(SqlPage.github_repo == name)
-            .where(SqlPage.date_deleted is None)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
         )
         result = await self._session.execute(statement)
         return [
@@ -170,7 +170,11 @@ class PageStore:
         """
         # TODO consider adding other fields like title, description,
         # date-updated, etc.. Anything that index UIs might find useful.
-        statement = select(SqlPage.name, SqlPage.title).order_by(SqlPage.name)
+        statement = (
+            select(SqlPage.name, SqlPage.title)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .order_by(SqlPage.name)
+        )
         result = await self._session.execute(statement)
         return [
             PageSummaryModel(name=name, title=title)
