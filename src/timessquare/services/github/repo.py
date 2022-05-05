@@ -172,6 +172,9 @@ class GitHubRepoService:
             )
         }
         found_display_paths: List[str] = []
+        self._logger.debug(
+            "Syncing checkout", existing_display_paths=existing_pages.keys()
+        )
 
         tree = await checkout.get_git_tree(self._github_client)
         for notebook_ref in tree.find_notebooks(checkout.settings):
@@ -183,8 +186,13 @@ class GitHubRepoService:
             )
             display_path = notebook.get_display_path(checkout)
             found_display_paths.append(display_path)
+            self._logger.debug("Display path", display_path=display_path)
 
             if display_path in existing_pages.keys():
+                self._logger.debug(
+                    "Notebook corresponds to existing page",
+                    display_path=display_path,
+                )
                 # update existing page
                 page = existing_pages[display_path]
                 if (
@@ -193,11 +201,23 @@ class GitHubRepoService:
                     or notebook.sidecar_git_tree_sha
                     != page.repository_sidecar_sha
                 ):
+                    self._logger.debug(
+                        "Notebook content has updated",
+                        display_path=display_path,
+                    )
                     await self.update_page(
                         notebook=notebook, page=existing_pages[display_path]
                     )
+                else:
+                    self._logger.debug(
+                        "Notebook content is the same; skipping",
+                        display_path=display_path,
+                    )
             else:
                 # add new page
+                self._logger.debug(
+                    "Creating new page for notebook", display_path=display_path
+                )
                 await self.create_new_page(
                     checkout=checkout, notebook=notebook
                 )
