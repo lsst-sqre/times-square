@@ -12,11 +12,16 @@ starlette
 uvicorn[standard]
 
 # Other dependencies.
-safir[db]
-pydantic
+git+https://github.com/lsst-sqre/safir.git@tickets/DM-34473#egg=safir[db,arq]
+pydantic[email]
 click
 nbformat
 nbconvert
 jsonschema
 jinja2
 aioredis
+gidgethub
+markdown-it-py[linkify,plugins]
+mdformat
+mdformat-gfm
+PyYAML

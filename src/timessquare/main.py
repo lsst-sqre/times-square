@@ -9,12 +9,13 @@ called.
 
 from __future__ import annotations
 
-from importlib.metadata import metadata
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.logging import configure_logging
@@ -42,7 +43,7 @@ configure_logging(
 app = FastAPI(
     title="Times Square",
     description=Path(__file__).parent.joinpath("description.md").read_text(),
-    version=metadata("times-square").get("Version", "0.0.0"),
+    version=version("times-square"),
     openapi_url=f"{config.path_prefix}/openapi.json",
     docs_url=f"{config.path_prefix}/docs",
     redoc_url=f"{config.path_prefix}/redoc",
@@ -61,6 +62,9 @@ async def startup_event() -> None:
         config.database_url, config.database_password.get_secret_value()
     )
     await redis_dependency.initialize(config.redis_url)
+    await arq_dependency.initialize(
+        mode=config.arq_mode, redis_settings=config.arq_redis_settings
+    )
     app.add_middleware(XForwardedMiddleware)
 
 

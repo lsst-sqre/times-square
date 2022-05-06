@@ -19,3 +19,4 @@ uvicorn
 sqlalchemy[mypy]
 holdup
 respx
+types-PyYAML

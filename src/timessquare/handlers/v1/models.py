@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
 from fastapi import Request
-from pydantic import AnyHttpUrl, BaseModel, Field
+from markdown_it import MarkdownIt
+from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field
 from safir.metadata import Metadata as SafirMetadata
 
 from timessquare.domain.nbhtml import NbHtmlModel
-from timessquare.domain.page import PageModel, PageSummaryModel
+from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
 
 
 class Index(BaseModel):
@@ -25,8 +27,45 @@ page_name_field = Field(
     ...,
     example="summit-weather",
     title="Page name",
-    description="The name is used as the page's URL slug.",
+    description="The name is used as the page's API URL slug.",
 )
+
+page_title_field = Field(
+    ...,
+    example="Summit Weather",
+    title="Page title",
+    description="The display title (plain text).",
+)
+
+page_description_field = Field(
+    ...,
+    title="Page description",
+    descrition=(
+        "The description is available as both HTML and GitHub-flavored "
+        "Markdown."
+    ),
+)
+
+page_cache_ttl_field = Field(
+    None,
+    example=864000,
+    title="Page title",
+    description="The display title (plain text).",
+)
+
+page_date_added_field = Field(
+    ...,
+    title="Date added",
+    description="Date when the page was originally added.",
+)
+
+page_authors_field = Field(
+    default_factory=list,
+    title="Page authors",
+    description="Authors of the page",
+)
+
+page_tags_field = Field(default_factory=list, title="Tags (keywords)")
 
 page_url_field = Field(
     ...,
@@ -87,10 +126,97 @@ ipynb_field = Field(
 )
 
 
+class FormattedText(BaseModel):
+    """Text that is formatted in both markdown and HTML."""
+
+    gfm: str = Field(title="The GitHub-flavored Markdown-formatted text.")
+
+    html: str = Field(title="The HTML-formatted text.")
+
+    @classmethod
+    def from_gfm(cls, gfm_text: str, inline: bool = False) -> FormattedText:
+        """Create formatted text from GitHub-flavored markdown.
+
+        Parameters
+        ----------
+        gfm_text : `str`
+            GitHub flavored markdown.
+        inline : `bool`
+            If `True`, no paragraph tags are added to the HTML content.
+
+        Returns
+        -------
+        `FormattedText`
+            The formatted text, containing both markdown and HTML renderings.
+        """
+        md_parser = MarkdownIt("gfm-like")
+        if inline:
+            html_text = md_parser.renderInline(gfm_text)
+        else:
+            html_text = md_parser.render(gfm_text)
+        return cls(gfm=gfm_text, html=html_text)
+
+
+class Person(BaseModel):
+    """A description of a person, such as an author."""
+
+    name: str = Field(..., example="Vera Rubin", title="Display name")
+
+    username: Optional[str] = Field(None, example="vera", title="RSP username")
+    """A person's RSP username."""
+
+    affiliation_name: Optional[str] = Field(None, example="Rubin/AURA")
+    """Display name of a person's main affiliation."""
+
+    email: Optional[EmailStr] = Field(None, title="Email")
+    """A person's email."""
+
+    slack_name: Optional[str] = Field(None, title="LSSTC Slack username")
+    """A person's Slack handle."""
+
+    @classmethod
+    def from_domain(cls, *, person: PersonModel) -> Person:
+        return cls(
+            name=person.name,
+            username=person.username,
+            affiliation_name=person.affiliation_name,
+            slack_name=person.slack_name,
+        )
+
+    def to_domain(self) -> PersonModel:
+        return PersonModel(
+            name=self.name,
+            username=self.username,
+            email=self.email,
+            slack_name=self.slack_name,
+        )
+
+
 class Page(BaseModel):
     """A webpage that is rendered from a parameterized notebook."""
 
     name: str = page_name_field
+
+    title: str = page_title_field
+
+    description: Optional[FormattedText] = page_description_field
+
+    cache_ttl: Optional[int] = page_cache_ttl_field
+
+    date_added: datetime = page_date_added_field
+
+    authors: List[Person] = page_authors_field
+
+    tags: List[str] = page_tags_field
+
+    uploader_username: Optional[str] = Field(
+        ...,
+        title="Username of person that uploaded the page.",
+        description=(
+            "This field is only set for user uploads, not for GitHub-backed "
+            "pages."
+        ),
+    )
 
     self_url: AnyHttpUrl = page_url_field
 
@@ -111,8 +237,24 @@ class Page(BaseModel):
             name: parameter.schema
             for name, parameter in page.parameters.items()
         }
+
+        if page.description is not None:
+            description = FormattedText.from_gfm(page.description)
+        else:
+            description = None
+
+        authors = [Person.from_domain(person=p) for p in page.authors]
+
         return cls(
             name=page.name,
+            title=page.title,
+            description=description,
+            cache_ttl=page.cache_ttl,
+            date_added=page.date_added,
+            authors=authors,
+            tags=page.tags,
+            uploader_username=page.uploader_username,
+            parameters=parameters,
             self_url=request.url_for("get_page", page=page.name),
             source_url=request.url_for("get_page_source", page=page.name),
             rendered_url=request.url_for(
@@ -122,7 +264,6 @@ class Page(BaseModel):
             html_status_url=request.url_for(
                 "get_page_html_status", page=page.name
             ),
-            parameters=parameters,
         )
 
 
@@ -130,6 +271,8 @@ class PageSummary(BaseModel):
     """Summary information about a Page."""
 
     name: str = page_name_field
+
+    title: str = page_title_field
 
     self_url: AnyHttpUrl = page_url_field
 
@@ -140,6 +283,7 @@ class PageSummary(BaseModel):
         """Create a PageSummary response from the domain model."""
         return cls(
             name=summary.name,
+            title=summary.title,
             self_url=request.url_for("get_page", page=summary.name),
         )
 
@@ -197,6 +341,21 @@ class HtmlStatus(BaseModel):
 class PostPageRequest(BaseModel):
     """A payload for creating a new page."""
 
-    name: str = page_name_field
+    title: str = page_title_field
 
     ipynb: str = ipynb_field
+
+    authors: List[Person] = page_authors_field
+
+    tags: List[str] = page_tags_field
+
+    # This description is different from the output, page_description_field,
+    # because a user only ever submits markdown, whereas the API serves up
+    # both markdown and pre-rendered HTML
+    description: Optional[str] = Field(
+        None,
+        title="Page description",
+        description="The description can use Markdown formatting.",
+    )
+
+    cache_ttl: Optional[int] = page_cache_ttl_field

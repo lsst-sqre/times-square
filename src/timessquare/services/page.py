@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional
 
 from httpx import AsyncClient
@@ -18,6 +19,7 @@ from timessquare.domain.page import (
     PageInstanceModel,
     PageModel,
     PageSummaryModel,
+    PersonModel,
 )
 from timessquare.exceptions import PageNotFoundError
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
@@ -50,12 +52,34 @@ class PageService:
         self._http_client = http_client
         self._logger = logger
 
-    def create_page_with_notebook(self, name: str, ipynb: str) -> None:
+    async def create_page_with_notebook_from_upload(
+        self,
+        ipynb: str,
+        title: str,
+        uploader_username: str,
+        description: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        authors: Optional[List[PersonModel]] = None,
+    ) -> str:
         """Create a page resource given the parameterized Jupyter Notebook
         content.
         """
-        page = PageModel.create(name=name, ipynb=ipynb)
+        page = PageModel.create_from_api_upload(
+            title=title,
+            ipynb=ipynb,
+            uploader_username=uploader_username,
+            description=description,
+            cache_ttl=cache_ttl,
+            tags=tags,
+            authors=authors,
+        )
+        return await self.add_page(page)
+
+    async def add_page(self, page: PageModel) -> str:
         self._page_store.add(page)
+        await self._request_notebook_execution_for_page_defaults(page)
+        return page.name
 
     async def get_page(self, name: str) -> PageModel:
         """Get the page from the data store, given its name."""
@@ -67,6 +91,43 @@ class PageService:
     async def get_page_summaries(self) -> List[PageSummaryModel]:
         """Get page summaries."""
         return await self._page_store.list_page_summaries()
+
+    async def get_pages_for_repo(
+        self, owner: str, name: str
+    ) -> List[PageModel]:
+        """Get all pages backed by a specific GitHub repository."""
+        return await self._page_store.list_pages_for_repository(
+            owner=owner, name=name
+        )
+
+    async def update_page(self, page: PageModel) -> None:
+        """Update the page in the database."""
+        await self._page_store.update_page(page)
+        await self._request_notebook_execution_for_page_defaults(page)
+
+    async def _request_notebook_execution_for_page_defaults(
+        self, page: PageModel
+    ) -> None:
+        """Request noteburst execution of with page's default values.
+
+        This is useful for the `add_page` and `update_page` methods to start
+        notebook execution as soon as possible.
+        """
+        resolved_parameters = page.resolve_and_validate_parameters({})
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_parameters, page=page
+        )
+        await self._request_noteburst_execution(page_instance)
+
+    async def soft_delete_page(self, page: PageModel) -> None:
+        """Soft delete a page by setting its date_deleted field."""
+        page.date_deleted = datetime.now(timezone.utc)
+        await self._page_store.update_page(page)
+
+    async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
+        """Soft delete all pages backed by a specific GitHub repository."""
+        for page in await self.get_pages_for_repo(owner=owner, name=name):
+            await self.soft_delete_page(page)
 
     async def render_page_template(
         self, name: str, parameters: Mapping[str, Any]

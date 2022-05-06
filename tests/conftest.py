@@ -8,6 +8,7 @@ import pytest_asyncio
 import structlog
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
+from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
 from safir.database import create_database_engine, initialize_database
 
@@ -36,5 +37,14 @@ async def app() -> AsyncIterator[FastAPI]:
 @pytest_asyncio.fixture
 async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     """Return an ``httpx.AsyncClient`` configured to talk to the test app."""
-    async with AsyncClient(app=app, base_url="https://example.com/") as client:
+    base = "https://example.com/"
+    headers = {"X-Auth-Request-User": "testuser"}
+    async with AsyncClient(app=app, base_url=base, headers=headers) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def github_client() -> AsyncIterator[GitHubAPI]:
+    """Return a HTTPX GitHub API client."""
+    async with AsyncClient() as client:
+        yield GitHubAPI(client, "lsst-sqre/times-square")

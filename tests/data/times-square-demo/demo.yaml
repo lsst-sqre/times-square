@@ -1,0 +1,20 @@
+authors:
+  - name: Jonathan Sick
+    slack: jonathansick
+tags:
+  - demo
+parameters:
+  A:
+    type: number
+    description: Amplitude
+    default: 4
+    minimum: 0
+  lambda:
+    type: number
+    description: Wavelength
+    default: 2
+    minimum: 0
+  y0:
+    type: number
+    description: Y-axis offset
+    default: 0
