@@ -1,6 +1,18 @@
 Change log
 ==========
 
+0.4.0 (unreleased)
+------------------
+
+Times Square now supports sourcing Jupyter Notebooks from GitHub repositories, in addition to its original mode of API-sourced  notebooks.
+To do this, Times Square acts as a GitHub App integration, and receives webhook events from GitHub.
+When the Times Square app is installed in a GitHub repository, or a push to the default branch is accomplished, Times Square syncs Jupyter Notebooks from that repository into its page store.
+
+Times Square-enabled GitHub repositories feature a ``times-square.yaml`` file that provides settings for the repository as a whole (such as switching the repository on or off) and setting the root path for notebooks.
+Each notebook (``ipynb`` file) also has a corresponding YAML sidecar file that provides metadata for individual notebooks, including the title, description, tags, authors, and the parameter schemas.
+
+To efficiently process webhook events, Times Square now operates an arq (Redis-backed) distributed queue.
+
 0.3.0 (2022-03-31)
 ------------------
 
