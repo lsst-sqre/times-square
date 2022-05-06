@@ -262,13 +262,13 @@ async def handle_pr_opened(
     )
 
 
-@router.register("pull_request", action="synchronized")
+@router.register("pull_request", action="synchronize")
 async def handle_pr_sync(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
 ) -> None:
-    """Handle the ``pull_request`` (synchronized) webhook event from
+    """Handle the ``pull_request`` (synchronize) webhook event from
     GitHub.
 
     Parameters
@@ -281,7 +281,7 @@ async def handle_pr_sync(
         An arq queue client.
     """
     logger.info(
-        "GitHub pull_request synchronized event",
+        "GitHub pull_request synchronize event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
     )
