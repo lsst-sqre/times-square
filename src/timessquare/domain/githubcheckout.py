@@ -197,9 +197,13 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
     def get_display_path_prefix(
         self, checkout: GitHubRepositoryCheckout
     ) -> str:
-        return str(
+        prefix = str(
             PurePosixPath(self.path_prefix).relative_to(checkout.settings.root)
         )
+        if prefix == ".":
+            return ""
+        else:
+            return prefix
 
     def get_display_path(self, checkout: GitHubRepositoryCheckout) -> str:
         """The display path to correlate this GitHub-backed notebook with
@@ -213,9 +217,12 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
         name_stem = PurePosixPath(
             PurePosixPath(self.notebook_source_path).name
         ).stem
-        return "/".join(
-            [checkout.owner_name, checkout.name, display_prefix, name_stem]
-        )
+        if display_prefix:
+            return "/".join(
+                [checkout.owner_name, checkout.name, display_prefix, name_stem]
+            )
+        else:
+            return "/".join([checkout.owner_name, checkout.name, name_stem])
 
     @property
     def ipynb(self) -> str:
