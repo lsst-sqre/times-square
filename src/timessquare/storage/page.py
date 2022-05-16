@@ -9,6 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_scoped_session
 
 from timessquare.dbschema.page import SqlPage
+from timessquare.domain.githubtree import (
+    GitHubNode,
+    GitHubNodeType,
+    GitHubTreeInput,
+)
 from timessquare.domain.page import (
     PageModel,
     PageParameterSchema,
@@ -180,3 +185,56 @@ class PageStore:
             PageSummaryModel(name=name, title=title)
             for name, title in result.all()
         ]
+
+    async def get_github_tree(self) -> List[GitHubNode]:
+        """Get the tree of GitHub-backed pages, organized hierarchically by
+        owner/repository/directory/page.
+        """
+        owners_statement = (
+            select(SqlPage.github_owner)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .distinct(SqlPage.github_owner)
+        )
+        result = await self._session.execute(owners_statement)
+
+        nodes: List[GitHubNode] = []
+        for owner_name in result.scalars():
+            node = await self._generate_node_for_owner(owner_name)
+            nodes.append(node)
+
+        return nodes
+
+    async def _generate_node_for_owner(self, owner_name: str) -> GitHubNode:
+        statement = (
+            select(
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                SqlPage.repository_display_path_prefix,
+                SqlPage.title,
+                SqlPage.repository_source_filename,
+            )
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_owner == owner_name)
+            .order_by(
+                SqlPage.github_owner.asc(),
+                SqlPage.github_repo.asc(),
+                SqlPage.repository_display_path_prefix,
+                SqlPage.title,
+            )
+        )
+        result = await self._session.execute(statement)
+
+        tree_inputs = [
+            GitHubTreeInput.from_sql_row(*row) for row in result.all()
+        ]
+
+        owner_node = GitHubNode(
+            node_type=GitHubNodeType.owner,
+            title=owner_name,
+            path=owner_name,
+            contents=[],
+        )
+        for tree_input in tree_inputs:
+            owner_node.insert_input(tree_input)
+
+        return owner_node

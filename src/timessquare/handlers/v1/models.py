@@ -11,6 +11,7 @@ from markdown_it import MarkdownIt
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field
 from safir.metadata import Metadata as SafirMetadata
 
+from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
 
@@ -359,3 +360,13 @@ class PostPageRequest(BaseModel):
     )
 
     cache_ttl: Optional[int] = page_cache_ttl_field
+
+
+class GitHubTreeRoot(BaseModel):
+    """The GitHub-backed pages, organized hierarchically."""
+
+    contents: List[GitHubNode]
+
+    @classmethod
+    def from_tree(cls, *, tree: List[GitHubNode]) -> GitHubTreeRoot:
+        return cls(contents=tree)

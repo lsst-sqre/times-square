@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
+from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.noteburstjob import (
     NoteburstJobModel,
@@ -114,6 +115,10 @@ class PageService:
         return await self._page_store.list_pages_for_repository(
             owner=owner, name=name
         )
+
+    async def get_github_tree(self) -> List[GitHubNode]:
+        """Get the tree of GitHub-backed pages."""
+        return await self._page_store.get_github_tree()
 
     async def update_page(self, page: PageModel) -> None:
         """Update the page in the database."""
