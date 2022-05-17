@@ -289,3 +289,34 @@ async def get_github_tree(
     async with context.session.begin():
         github_tree = await page_service.get_github_tree()
     return GitHubTreeRoot.from_tree(tree=github_tree)
+
+
+@v1_router.get(
+    "/github/{display_path:path}",
+    response_model=Page,
+    summary="Metadata for GitHub-backed page",
+    name="get_github_page",
+)
+async def get_github_page(
+    display_path: str, context: RequestContext = Depends(context_dependency)
+) -> Page:
+    """Get the metadata for a GitHub-backed page.
+
+    This endpoint provides the same data as ``GET /v1/pages/:page``, but
+    is queried via the page's GitHub "display path" rather than the opaque
+    page slug. A display path is a POSIX-like "/"-separated path consisting
+    of components:
+
+    - GitHub owner (organization or username)
+    - Github repository
+    - Directory name or names (as appropriate)
+    - Page filename stem
+    """
+    page_service = context.page_service
+    async with context.session.begin():
+        page_domain = await page_service.get_github_backed_page(display_path)
+
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page_domain.name
+        )
+        return Page.from_domain(page=page_domain, request=context.request)

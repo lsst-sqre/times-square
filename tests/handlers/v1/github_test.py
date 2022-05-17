@@ -160,3 +160,17 @@ async def test_github(client: AsyncClient) -> None:
             },
         ],
     }
+
+    r = await client.get(
+        f"{config.path_prefix}/v1/github/lsst-sqre/times-square-demo/demo"
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["title"] == "Demo"
+
+    # A directory; there shouldn't be a resolved path at the moment
+    r = await client.get(
+        f"{config.path_prefix}/v1/github/"
+        f"lsst-sqre/times-square-demo/matplotlib"
+    )
+    assert r.status_code == 404

@@ -114,6 +114,35 @@ class PageStore:
 
         return self._rehydrate_page_from_sql(sql_page)
 
+    async def get_github_backed_page(
+        self, display_path: str
+    ) -> Optional[PageModel]:
+        """Get a GitHub-backed page based on the display path, or get `None`
+        if the page does not exist.
+        """
+        path_parts = display_path.split("/")
+        github_owner = path_parts[0]
+        github_repo = path_parts[1]
+        path_stem = path_parts[-1]
+        if len(path_parts) > 3:
+            path_prefix = "/".join(path_parts[2:-1])
+        else:
+            path_prefix = ""
+
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.github_owner == github_owner)
+            .where(SqlPage.github_repo == github_repo)
+            .where(SqlPage.repository_path_stem == path_stem)
+            .where(SqlPage.repository_display_path_prefix == path_prefix)
+            .limit(1)
+        )
+        sql_page = await self._session.scalar(statement)
+        if sql_page is None:
+            return None
+
+        return self._rehydrate_page_from_sql(sql_page)
+
     async def list_pages_for_repository(
         self, *, owner: str, name: str
     ) -> List[PageModel]:

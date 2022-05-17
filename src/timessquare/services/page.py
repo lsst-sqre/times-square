@@ -104,6 +104,13 @@ class PageService:
             raise PageNotFoundError(name)
         return page
 
+    async def get_github_backed_page(self, display_path: str) -> PageModel:
+        """Get the page based on its display path."""
+        page = await self._page_store.get_github_backed_page(display_path)
+        if page is None:
+            raise PageNotFoundError(display_path)
+        return page
+
     async def get_page_summaries(self) -> List[PageSummaryModel]:
         """Get page summaries."""
         return await self._page_store.list_page_summaries()
