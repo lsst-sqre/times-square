@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import PurePosixPath
 from typing import List
 
 from pydantic import BaseModel, Field
@@ -111,15 +110,13 @@ class GitHubTreeInput:
         github_repo: str,
         path_prefix: str,
         title: str,
-        source_filename: str,
+        path_stem: str,
     ) -> GitHubTreeInput:
         path_segments = [github_owner, github_repo]
         if path_prefix:
             path_segments.extend(path_prefix.split("/"))
 
-        stem = PurePosixPath(source_filename).stem
-
-        return cls(path_segments=path_segments, stem=stem, title=title)
+        return cls(path_segments=path_segments, stem=path_stem, title=title)
 
     def to_node(self) -> GitHubNode:
         return GitHubNode(

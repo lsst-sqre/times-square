@@ -229,8 +229,12 @@ class GitHubRepoService:
         """Create a new page based on the notebook tree ref."""
         display_path_prefix = notebook.get_display_path_prefix(checkout)
 
-        source_filename = PurePosixPath(notebook.notebook_source_path).name
-        sidecar_filename = PurePosixPath(notebook.sidecar_path).name
+        source_path = PurePosixPath(notebook.notebook_source_path)
+        sidecar_path = PurePosixPath(notebook.sidecar_path)
+        path_stem = source_path.stem
+        n = len(path_stem)
+        source_ext = source_path.name[n:]
+        sidecar_ext = sidecar_path.name[n:]
 
         page = PageModel.create_from_repo(
             ipynb=notebook.ipynb,
@@ -240,8 +244,9 @@ class GitHubRepoService:
             github_repo=checkout.name,
             repository_path_prefix=notebook.path_prefix,
             repository_display_path_prefix=display_path_prefix,
-            repository_source_filename=source_filename,
-            repository_sidecar_filename=sidecar_filename,
+            repository_path_stem=path_stem,
+            repository_source_extension=source_ext,
+            repository_sidecar_extension=sidecar_ext,
             repository_source_sha=notebook.notebook_git_tree_sha,
             repository_sidecar_sha=notebook.sidecar_git_tree_sha,
             description=notebook.sidecar.description,
@@ -255,8 +260,12 @@ class GitHubRepoService:
         self, *, notebook: RepositoryNotebookModel, page: PageModel
     ) -> None:
         """Update an existing page."""
-        source_filename = PurePosixPath(notebook.notebook_source_path).name
-        sidecar_filename = PurePosixPath(notebook.sidecar_path).name
+        source_path = PurePosixPath(notebook.notebook_source_path)
+        sidecar_path = PurePosixPath(notebook.sidecar_path)
+        path_stem = source_path.stem
+        n = len(path_stem)
+        source_ext = source_path.name[n:]
+        sidecar_ext = sidecar_path.name[n:]
 
         # The only PageModel attributes we don't update are those that are
         # set automatically like Page model and those that affect the display
@@ -268,10 +277,10 @@ class GitHubRepoService:
         page.tags = notebook.sidecar.tags
         page.description = notebook.sidecar.description
         page.cache_ttl = notebook.sidecar.cache_ttl
-        # The extensions might change, but we resolve then to the same
+        # The extensions might change, but we resolve them to the same
         # display path and thus the same page
-        page.repository_source_filename = source_filename
-        page.repository_sidecar_filename = sidecar_filename
+        page.repository_source_extension = source_ext
+        page.repository_sidecar_extension = sidecar_ext
         page.repository_source_sha = notebook.notebook_git_tree_sha
         page.repository_sidecar_sha = notebook.sidecar_git_tree_sha
 

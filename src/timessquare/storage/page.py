@@ -60,8 +60,9 @@ class PageStore:
             github_repo=page.github_repo,
             repository_path_prefix=page.repository_path_prefix,
             repository_display_path_prefix=page.repository_display_path_prefix,
-            repository_source_filename=page.repository_source_filename,
-            repository_sidecar_filename=page.repository_sidecar_filename,
+            repository_path_stem=page.repository_path_stem,
+            repository_source_extension=page.repository_source_extension,
+            repository_sidecar_extension=page.repository_sidecar_extension,
             repository_source_sha=page.repository_source_sha,
             repository_sidecar_sha=page.repository_sidecar_sha,
         )
@@ -94,8 +95,11 @@ class PageStore:
         sql_page.date_deleted = date_deleted
         sql_page.description = page.description
         sql_page.cache_ttl = page.cache_ttl
-        sql_page.repository_source_filename = page.repository_source_filename
-        sql_page.repository_sidecar_filename = page.repository_sidecar_filename
+        sql_page.repository_path_stem = page.repository_path_stem
+        sql_page.repository_source_extension = page.repository_source_extension
+        sql_page.repository_sidecar_extension = (
+            page.repository_sidecar_extension
+        )
         sql_page.repository_source_sha = page.repository_source_sha
         sql_page.repository_sidecar_sha = page.repository_sidecar_sha
 
@@ -159,8 +163,9 @@ class PageStore:
             repository_display_path_prefix=(
                 sql_page.repository_display_path_prefix
             ),
-            repository_source_filename=sql_page.repository_source_filename,
-            repository_sidecar_filename=sql_page.repository_sidecar_filename,
+            repository_path_stem=sql_page.repository_path_stem,
+            repository_source_extension=sql_page.repository_source_extension,
+            repository_sidecar_extension=sql_page.repository_sidecar_extension,
             repository_source_sha=sql_page.repository_source_sha,
             repository_sidecar_sha=sql_page.repository_sidecar_sha,
         )
@@ -211,7 +216,7 @@ class PageStore:
                 SqlPage.github_repo,
                 SqlPage.repository_display_path_prefix,
                 SqlPage.title,
-                SqlPage.repository_source_filename,
+                SqlPage.repository_path_stem,
             )
             .where(SqlPage.date_deleted == None)  # noqa: E711
             .where(SqlPage.github_owner == owner_name)
