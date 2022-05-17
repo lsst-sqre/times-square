@@ -76,9 +76,24 @@ class PageService:
         )
         return await self.add_page(page)
 
-    async def add_page(self, page: PageModel) -> str:
+    async def add_page(self, page: PageModel, *, execute: bool = True) -> str:
+        """Add a page to the page store.
+
+        Parameters
+        ----------
+        page: `PageModel`
+            The page model.
+        execute : `bool`
+            Set this to `False` to disable the automatic noteburst execution
+            of pages (useful for testing scenarios).
+
+        Notes
+        -----
+        For API uploads, use `create_page_with_notebook_from_upload` instead.
+        """
         self._page_store.add(page)
-        await self._request_notebook_execution_for_page_defaults(page)
+        if execute:
+            await self._request_notebook_execution_for_page_defaults(page)
         return page.name
 
     async def get_page(self, name: str) -> PageModel:
