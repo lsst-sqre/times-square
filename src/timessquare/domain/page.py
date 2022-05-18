@@ -293,6 +293,34 @@ class PageModel:
         else:
             return None
 
+    @property
+    def repository_source_path(self) -> Optional[str]:
+        source_filename = self.repository_source_filename
+        if source_filename is None:
+            return None
+        if self.repository_path_prefix is None:
+            return None
+
+        return str(
+            PurePosixPath(self.repository_path_prefix).joinpath(
+                source_filename
+            )
+        )
+
+    @property
+    def repository_sidecar_path(self) -> Optional[str]:
+        sidecar_filename = self.repository_sidecar_filename
+        if sidecar_filename is None:
+            return None
+        if self.repository_path_prefix is None:
+            return None
+
+        return str(
+            PurePosixPath(self.repository_path_prefix).joinpath(
+                sidecar_filename
+            )
+        )
+
     @staticmethod
     def read_ipynb(source: str) -> nbformat.NotebookNode:
         """Parse Jupyter Notebook source into `~NotebookNode` for

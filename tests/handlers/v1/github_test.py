@@ -167,6 +167,10 @@ async def test_github(client: AsyncClient) -> None:
     assert r.status_code == 200
     data = r.json()
     assert data["title"] == "Demo"
+    assert data["github"]["owner"] == "lsst-sqre"
+    assert data["github"]["repository"] == "times-square-demo"
+    assert data["github"]["source_path"] == "demo.ipynb"
+    assert data["github"]["sidecar_path"] == "demo.yaml"
 
     # A directory; there shouldn't be a resolved path at the moment
     r = await client.get(
