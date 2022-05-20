@@ -13,6 +13,14 @@ Each notebook (``ipynb`` file) also has a corresponding YAML sidecar file that p
 
 To efficiently process webhook events, Times Square now operates an arq (Redis-backed) distributed queue.
 
+New API endpoints:
+
+- ``GET /github/webhook`` receives webhook events from GitHub (this should not require Gafaelfawr auth since webhooks are internally authenticated)
+- ``GET /v1/github`` provides a hierarchical tree of GitHub-backed pages within their GitHub organization, repository, and directory contexts. This endpoint powers Squareone's navigational view.
+- ``GET /v1/github/:path`` provides the same data as ``/v1/pages/:page``, but uses the GitHub *display path* as the path argument. An example of a display is ``lsst-sqre/times-square-demo/matplotlib/gaussian2d``.
+
+The ``GET /v1/github`` and ``GET /v1/pages/:page`` endpoints both include a new ``github`` field with metadata specific to GitHub-backed pages.
+
 0.3.0 (2022-03-31)
 ------------------
 
