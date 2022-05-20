@@ -92,14 +92,27 @@ class SqlPage(Base):
     Square notebooks in a repository.
     """
 
-    repository_source_filename: Optional[str] = Column(Unicode(255))
-    """The filename (without prefix) of the source file in the GitHub
-    repository for GitHub-backed pages.
+    repository_path_stem: Optional[str] = Column(Unicode(255))
+    """The filename stem (without prefix and without extension) of the
+    source file in the GitHub repository for GitHub-backed pages.
+
+    The repository_source_filename_extension and
+    repository_sidecar_filename_extension columns provide the extensions for
+    the corresponding files.
     """
 
-    repository_sidecar_filename: Optional[str] = Column(Unicode(255))
-    """The filename (without prefix) of the sidecar YAML file in the GitHub
+    repository_source_extension: Optional[str] = Column(Unicode(255))
+    """The filename extension of the source file in the GitHub
     repository for GitHub-backed pages.
+
+    Combine with repository_path_stem to get the file path.
+    """
+
+    repository_sidecar_extension: Optional[str] = Column(Unicode(255))
+    """The filename extension of the sidecar YAML file in the GitHub
+    repository for GitHub-backed pages.
+
+    Combine with repository_path_stem to get the file path.
     """
 
     repository_source_sha: Optional[str] = Column(Unicode(40))

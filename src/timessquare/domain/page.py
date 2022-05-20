@@ -105,14 +105,23 @@ class PageModel:
     Square notebooks in a repository.
     """
 
-    repository_source_filename: Optional[str] = None
-    """The filename (without prefix) of the source file in the GitHub
-    repository for GitHub-backed pages.
+    repository_path_stem: Optional[str] = None
+    """The file name stem (without directory prefix and without extensions)
+    for both the source and sidecar file
+
+    Use `repository_source_extension` or `repository_sidecar_extension` to
+    get the corresponding file name (or see the dynamic properties
+    `repository_source_filename` or `repository_sidecar_filename`
     """
 
-    repository_sidecar_filename: Optional[str] = None
-    """The filename (without prefix) of the sidecar YAML file in the GitHub
-    repository for GitHub-backed pages.
+    repository_source_extension: Optional[str] = None
+    """The filename extension of the source file in the GitHub repository for
+    GitHub-backed pages.
+    """
+
+    repository_sidecar_extension: Optional[str] = None
+    """The filename extension of the sidecar YAML file in the GitHub repository
+    for GitHub-backed pages.
     """
 
     repository_source_sha: Optional[str] = None
@@ -175,8 +184,9 @@ class PageModel:
         github_repo: str,
         repository_path_prefix: str,
         repository_display_path_prefix: str,
-        repository_source_filename: str,
-        repository_sidecar_filename: str,
+        repository_path_stem: str,
+        repository_source_extension: str,
+        repository_sidecar_extension: str,
         repository_source_sha: str,
         repository_sidecar_sha: str,
         description: Optional[str] = None,
@@ -201,8 +211,9 @@ class PageModel:
             github_repo=github_repo,
             repository_path_prefix=repository_path_prefix,
             repository_display_path_prefix=repository_display_path_prefix,
-            repository_source_filename=repository_source_filename,
-            repository_sidecar_filename=repository_sidecar_filename,
+            repository_path_stem=repository_path_stem,
+            repository_source_extension=repository_source_extension,
+            repository_sidecar_extension=repository_sidecar_extension,
             repository_source_sha=repository_source_sha,
             repository_sidecar_sha=repository_sidecar_sha,
         )
@@ -215,8 +226,9 @@ class PageModel:
         """
         if (
             self.repository_display_path_prefix is not None
-            and self.repository_source_filename is not None
-            and self.repository_sidecar_filename is not None
+            and self.repository_path_stem is not None
+            and self.repository_source_extension is not None
+            and self.repository_sidecar_extension is not None
             and self.repository_source_sha is not None
             and self.repository_sidecar_sha is not None
             and self.repository_display_path_prefix is not None
@@ -242,22 +254,72 @@ class PageModel:
         - repo owner
         - repo name
         - `repository_display_path_prefix`
-        - the `repository_source_filename` without the extension.
+        - `repository_path_stem.
 
         For API-sourced pages, the display path is the `name` (UUID4
         identifier).
         """
         if self.github_backed:
             assert self.repository_display_path_prefix is not None
-            assert self.repository_source_filename is not None
+            assert self.repository_path_stem is not None
             path = str(
                 PurePosixPath(self.repository_display_path_prefix).joinpath(
-                    PurePosixPath(self.repository_source_filename).stem
+                    self.repository_path_stem
                 )
             )
             return f"{self.github_owner}/{self.github_repo}/{path}"
         else:
             return self.name
+
+    @property
+    def repository_source_filename(self) -> Optional[str]:
+        """The filename (without prefix) of the source file in the GitHub
+        repository for GitHub-backed pages.
+        """
+        if self.repository_path_stem and self.repository_source_extension:
+            return self.repository_path_stem + self.repository_source_extension
+        else:
+            return None
+
+    @property
+    def repository_sidecar_filename(self) -> Optional[str]:
+        """The filename (without prefix) of the sidecar YAML file in the GitHub
+        repository for GitHub-backed pages.
+        """
+        if self.repository_path_stem and self.repository_sidecar_extension:
+            return (
+                self.repository_path_stem + self.repository_sidecar_extension
+            )
+        else:
+            return None
+
+    @property
+    def repository_source_path(self) -> Optional[str]:
+        source_filename = self.repository_source_filename
+        if source_filename is None:
+            return None
+        if self.repository_path_prefix is None:
+            return None
+
+        return str(
+            PurePosixPath(self.repository_path_prefix).joinpath(
+                source_filename
+            )
+        )
+
+    @property
+    def repository_sidecar_path(self) -> Optional[str]:
+        sidecar_filename = self.repository_sidecar_filename
+        if sidecar_filename is None:
+            return None
+        if self.repository_path_prefix is None:
+            return None
+
+        return str(
+            PurePosixPath(self.repository_path_prefix).joinpath(
+                sidecar_filename
+            )
+        )
 
     @staticmethod
     def read_ipynb(source: str) -> nbformat.NotebookNode:

@@ -12,7 +12,14 @@ from timessquare.dependencies.requestcontext import (
     context_dependency,
 )
 
-from .models import HtmlStatus, Index, Page, PageSummary, PostPageRequest
+from .models import (
+    GitHubTreeRoot,
+    HtmlStatus,
+    Index,
+    Page,
+    PageSummary,
+    PostPageRequest,
+)
 
 __all__ = ["v1_router"]
 
@@ -260,3 +267,56 @@ async def get_page_html_status(
         html = await page_service.get_html(name=page, parameters=parameters)
 
     return HtmlStatus.from_html(html=html, request=context.request)
+
+
+@v1_router.get(
+    "/github",
+    summary="Get a tree of GitHub-backed pages",
+    name="get_github_tree",
+    response_model=GitHubTreeRoot,
+)
+async def get_github_tree(
+    context: RequestContext = Depends(context_dependency),
+) -> GitHubTreeRoot:
+    """Get the tree of GitHub-backed pages.
+
+    This endpoint is primarily intended to be used by Squareone to power
+    its navigational view of GitHub pages. Pages are included in the
+    hierarchical structure of GitHub organization, repository, directories
+    (as necessary) and finally the page itself.
+    """
+    page_service = context.page_service
+    async with context.session.begin():
+        github_tree = await page_service.get_github_tree()
+    return GitHubTreeRoot.from_tree(tree=github_tree)
+
+
+@v1_router.get(
+    "/github/{display_path:path}",
+    response_model=Page,
+    summary="Metadata for GitHub-backed page",
+    name="get_github_page",
+)
+async def get_github_page(
+    display_path: str, context: RequestContext = Depends(context_dependency)
+) -> Page:
+    """Get the metadata for a GitHub-backed page.
+
+    This endpoint provides the same data as ``GET /v1/pages/:page``, but
+    is queried via the page's GitHub "display path" rather than the opaque
+    page slug. A display path is a POSIX-like "/"-separated path consisting
+    of components:
+
+    - GitHub owner (organization or username)
+    - Github repository
+    - Directory name or names (as appropriate)
+    - Page filename stem
+    """
+    page_service = context.page_service
+    async with context.session.begin():
+        page_domain = await page_service.get_github_backed_page(display_path)
+
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page_domain.name
+        )
+        return Page.from_domain(page=page_domain, request=context.request)

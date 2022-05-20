@@ -11,6 +11,7 @@ from markdown_it import MarkdownIt
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field
 from safir.metadata import Metadata as SafirMetadata
 
+from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
 
@@ -192,6 +193,31 @@ class Person(BaseModel):
         )
 
 
+class GitHubSourceMetadata(BaseModel):
+    """Information about a page's source on GitHub."""
+
+    owner: str = Field(title="GitHub owner name (organization or username)")
+
+    repository: str = Field(title="GitHub repository name")
+
+    source_path: str = Field(title="Repository path of the source notebook")
+
+    sidecar_path: str = Field(title="Repository path of the sidecar YAML file")
+
+    @classmethod
+    def from_domain(cls, *, page: PageModel) -> GitHubSourceMetadata:
+        assert page.github_owner is not None
+        assert page.github_repo is not None
+        sidecar_path = page.repository_sidecar_path
+        source_path = page.repository_source_path
+        return cls(
+            owner=page.github_owner,
+            repository=page.github_repo,
+            source_path=source_path,
+            sidecar_path=sidecar_path,
+        )
+
+
 class Page(BaseModel):
     """A webpage that is rendered from a parameterized notebook."""
 
@@ -230,6 +256,15 @@ class Page(BaseModel):
 
     parameters: Dict[str, Dict[str, Any]] = page_parameters_field
 
+    github: Optional[GitHubSourceMetadata] = Field(
+        ...,
+        title="Repository source metadata for GitHub-backed pages",
+        description=(
+            "This field is only set for GitHub-backed pages, not user/API "
+            "uploads."
+        ),
+    )
+
     @classmethod
     def from_domain(cls, *, page: PageModel, request: Request) -> Page:
         """Create a page resource from the domain model."""
@@ -244,6 +279,11 @@ class Page(BaseModel):
             description = None
 
         authors = [Person.from_domain(person=p) for p in page.authors]
+
+        if page.github_backed:
+            github_metadata = GitHubSourceMetadata.from_domain(page=page)
+        else:
+            github_metadata = None
 
         return cls(
             name=page.name,
@@ -264,6 +304,7 @@ class Page(BaseModel):
             html_status_url=request.url_for(
                 "get_page_html_status", page=page.name
             ),
+            github=github_metadata,
         )
 
 
@@ -359,3 +400,13 @@ class PostPageRequest(BaseModel):
     )
 
     cache_ttl: Optional[int] = page_cache_ttl_field
+
+
+class GitHubTreeRoot(BaseModel):
+    """The GitHub-backed pages, organized hierarchically."""
+
+    contents: List[GitHubNode]
+
+    @classmethod
+    def from_tree(cls, *, tree: List[GitHubNode]) -> GitHubTreeRoot:
+        return cls(contents=tree)

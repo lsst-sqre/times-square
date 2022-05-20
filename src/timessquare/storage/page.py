@@ -9,6 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_scoped_session
 
 from timessquare.dbschema.page import SqlPage
+from timessquare.domain.githubtree import (
+    GitHubNode,
+    GitHubNodeType,
+    GitHubTreeInput,
+)
 from timessquare.domain.page import (
     PageModel,
     PageParameterSchema,
@@ -55,8 +60,9 @@ class PageStore:
             github_repo=page.github_repo,
             repository_path_prefix=page.repository_path_prefix,
             repository_display_path_prefix=page.repository_display_path_prefix,
-            repository_source_filename=page.repository_source_filename,
-            repository_sidecar_filename=page.repository_sidecar_filename,
+            repository_path_stem=page.repository_path_stem,
+            repository_source_extension=page.repository_source_extension,
+            repository_sidecar_extension=page.repository_sidecar_extension,
             repository_source_sha=page.repository_source_sha,
             repository_sidecar_sha=page.repository_sidecar_sha,
         )
@@ -89,8 +95,11 @@ class PageStore:
         sql_page.date_deleted = date_deleted
         sql_page.description = page.description
         sql_page.cache_ttl = page.cache_ttl
-        sql_page.repository_source_filename = page.repository_source_filename
-        sql_page.repository_sidecar_filename = page.repository_sidecar_filename
+        sql_page.repository_path_stem = page.repository_path_stem
+        sql_page.repository_source_extension = page.repository_source_extension
+        sql_page.repository_sidecar_extension = (
+            page.repository_sidecar_extension
+        )
         sql_page.repository_source_sha = page.repository_source_sha
         sql_page.repository_sidecar_sha = page.repository_sidecar_sha
 
@@ -99,6 +108,35 @@ class PageStore:
         page does not exist.
         """
         statement = select(SqlPage).where(SqlPage.name == name).limit(1)
+        sql_page = await self._session.scalar(statement)
+        if sql_page is None:
+            return None
+
+        return self._rehydrate_page_from_sql(sql_page)
+
+    async def get_github_backed_page(
+        self, display_path: str
+    ) -> Optional[PageModel]:
+        """Get a GitHub-backed page based on the display path, or get `None`
+        if the page does not exist.
+        """
+        path_parts = display_path.split("/")
+        github_owner = path_parts[0]
+        github_repo = path_parts[1]
+        path_stem = path_parts[-1]
+        if len(path_parts) > 3:
+            path_prefix = "/".join(path_parts[2:-1])
+        else:
+            path_prefix = ""
+
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.github_owner == github_owner)
+            .where(SqlPage.github_repo == github_repo)
+            .where(SqlPage.repository_path_stem == path_stem)
+            .where(SqlPage.repository_display_path_prefix == path_prefix)
+            .limit(1)
+        )
         sql_page = await self._session.scalar(statement)
         if sql_page is None:
             return None
@@ -154,8 +192,9 @@ class PageStore:
             repository_display_path_prefix=(
                 sql_page.repository_display_path_prefix
             ),
-            repository_source_filename=sql_page.repository_source_filename,
-            repository_sidecar_filename=sql_page.repository_sidecar_filename,
+            repository_path_stem=sql_page.repository_path_stem,
+            repository_source_extension=sql_page.repository_source_extension,
+            repository_sidecar_extension=sql_page.repository_sidecar_extension,
             repository_source_sha=sql_page.repository_source_sha,
             repository_sidecar_sha=sql_page.repository_sidecar_sha,
         )
@@ -180,3 +219,56 @@ class PageStore:
             PageSummaryModel(name=name, title=title)
             for name, title in result.all()
         ]
+
+    async def get_github_tree(self) -> List[GitHubNode]:
+        """Get the tree of GitHub-backed pages, organized hierarchically by
+        owner/repository/directory/page.
+        """
+        owners_statement = (
+            select(SqlPage.github_owner)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .distinct(SqlPage.github_owner)
+        )
+        result = await self._session.execute(owners_statement)
+
+        nodes: List[GitHubNode] = []
+        for owner_name in result.scalars():
+            node = await self._generate_node_for_owner(owner_name)
+            nodes.append(node)
+
+        return nodes
+
+    async def _generate_node_for_owner(self, owner_name: str) -> GitHubNode:
+        statement = (
+            select(
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                SqlPage.repository_display_path_prefix,
+                SqlPage.title,
+                SqlPage.repository_path_stem,
+            )
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_owner == owner_name)
+            .order_by(
+                SqlPage.github_owner.asc(),
+                SqlPage.github_repo.asc(),
+                SqlPage.repository_display_path_prefix,
+                SqlPage.title,
+            )
+        )
+        result = await self._session.execute(statement)
+
+        tree_inputs = [
+            GitHubTreeInput.from_sql_row(*row) for row in result.all()
+        ]
+
+        owner_node = GitHubNode(
+            node_type=GitHubNodeType.owner,
+            title=owner_name,
+            path=owner_name,
+            contents=[],
+        )
+        for tree_input in tree_inputs:
+            owner_node.insert_input(tree_input)
+
+        return owner_node

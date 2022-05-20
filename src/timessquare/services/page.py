@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
+from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.noteburstjob import (
     NoteburstJobModel,
@@ -76,9 +77,24 @@ class PageService:
         )
         return await self.add_page(page)
 
-    async def add_page(self, page: PageModel) -> str:
+    async def add_page(self, page: PageModel, *, execute: bool = True) -> str:
+        """Add a page to the page store.
+
+        Parameters
+        ----------
+        page: `PageModel`
+            The page model.
+        execute : `bool`
+            Set this to `False` to disable the automatic noteburst execution
+            of pages (useful for testing scenarios).
+
+        Notes
+        -----
+        For API uploads, use `create_page_with_notebook_from_upload` instead.
+        """
         self._page_store.add(page)
-        await self._request_notebook_execution_for_page_defaults(page)
+        if execute:
+            await self._request_notebook_execution_for_page_defaults(page)
         return page.name
 
     async def get_page(self, name: str) -> PageModel:
@@ -86,6 +102,13 @@ class PageService:
         page = await self._page_store.get(name)
         if page is None:
             raise PageNotFoundError(name)
+        return page
+
+    async def get_github_backed_page(self, display_path: str) -> PageModel:
+        """Get the page based on its display path."""
+        page = await self._page_store.get_github_backed_page(display_path)
+        if page is None:
+            raise PageNotFoundError(display_path)
         return page
 
     async def get_page_summaries(self) -> List[PageSummaryModel]:
@@ -99,6 +122,10 @@ class PageService:
         return await self._page_store.list_pages_for_repository(
             owner=owner, name=name
         )
+
+    async def get_github_tree(self) -> List[GitHubNode]:
+        """Get the tree of GitHub-backed pages."""
+        return await self._page_store.get_github_tree()
 
     async def update_page(self, page: PageModel) -> None:
         """Update the page in the database."""
