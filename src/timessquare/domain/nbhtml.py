@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any, Dict
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 from traitlets.config import Config
 
 from .noteburstjob import NoteburstJobResponseModel
-from .page import PageInstanceModel
+from .page import PageInstanceIdModel, PageInstanceModel
 
 
 class NbHtmlModel(BaseModel):
@@ -50,6 +51,9 @@ class NbHtmlModel(BaseModel):
     date_rendered: datetime
     """The time when the notebook was rendered to HTML (UTC)."""
 
+    hide_code: bool
+    """Whether the html includes code input cells."""
+
     @classmethod
     def create_from_noteburst_result(
         cls,
@@ -57,6 +61,7 @@ class NbHtmlModel(BaseModel):
         page_instance: PageInstanceModel,
         ipynb: str,
         noteburst_result: NoteburstJobResponseModel,
+        display_settings: NbDisplaySettings,
     ) -> NbHtmlModel:
         if not noteburst_result.start_time:
             raise RuntimeError(
@@ -69,7 +74,8 @@ class NbHtmlModel(BaseModel):
         td = noteburst_result.finish_time - noteburst_result.start_time
 
         config = Config()
-        config.HTMLExporter.exclude_input = True
+        if display_settings.hide_code:
+            config.HTMLExporter.exclude_input = True
         config.HTMLExporter.exclude_input_prompt = True
         config.HTMLExporter.exclude_output_prompt = True
         exporter = HTMLExporter(config=config)
@@ -87,4 +93,28 @@ class NbHtmlModel(BaseModel):
             date_executed=noteburst_result.finish_time,
             date_rendered=datetime.utcnow(),
             execution_duration=td,
+            hide_code=display_settings.hide_code,
         )
+
+    def create_key(self) -> NbHtmlKey:
+        """Create a storage key."""
+        return NbHtmlKey(
+            name=self.page_name,
+            values=dict(self.values),
+            hide_code=self.hide_code,
+        )
+
+
+@dataclass
+class NbHtmlKey(PageInstanceIdModel):
+    """A domain model for the redis key for an NbHtmlModel instance."""
+
+    hide_code: bool
+    """Whether the html includes code input cells."""
+
+
+@dataclass(frozen=True)
+class NbDisplaySettings:
+    """A model for display settings for an HTML rendering of a notebook."""
+
+    hide_code: bool
