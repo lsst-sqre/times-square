@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from base64 import b64encode
 from typing import AsyncIterable, Generic, Optional, Type, TypeVar
 
 import aioredis
@@ -54,12 +52,7 @@ class RedisStore(Generic[T]):
             The unique redis key for this combination of page name and
             parameter values for a given datastore.
         """
-        encoded_parameters_key = b64encode(
-            json.dumps(
-                {k: p for k, p in page_id.values.items()}, sort_keys=True
-            ).encode("utf-8")
-        ).decode("utf-8")
-        return f"{self._key_prefix}/{page_id.name}/{encoded_parameters_key}"
+        return f"{self._key_prefix}/{page_id.cache_key}"
 
     async def store(
         self,

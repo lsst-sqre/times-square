@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -195,13 +196,19 @@ class PageService:
         except Exception:
             raise ValueError("hide_code query parameter must be 1 or 0")
         display_settings = NbDisplaySettings(hide_code=hide_code)
+        self._logger.debug(
+            "Resolved display settings",
+            display_settings=asdict(display_settings),
+        )
 
         page = await self.get_page(name)
         resolved_values = page.resolve_and_validate_values(query_params)
 
         # First try to get HTML from redis cache
         page_key = NbHtmlKey(
-            name=page.name, values=resolved_values, hide_code=hide_code
+            name=page.name,
+            values=resolved_values,
+            display_settings=display_settings,
         )
         nbhtml = await self._html_store.get(page_key)
         if nbhtml is not None:
@@ -352,7 +359,9 @@ class PageService:
             # FIXME make lifetime a setting of page for pages that aren't
             # idempotent.
             await self._html_store.store_nbhtml(nbhtml=nbhtml, lifetime=None)
-            self._logger.debug("Stored new HTML")
+            self._logger.debug(
+                "Stored new HTML", display_settings=asdict(matrix_key)
+            )
 
         await self._job_store.delete(page_instance)
         self._logger.debug("Deleted old job record")

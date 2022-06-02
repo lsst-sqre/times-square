@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from base64 import b64encode
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any, Dict
@@ -101,7 +103,7 @@ class NbHtmlModel(BaseModel):
         return NbHtmlKey(
             name=self.page_name,
             values=dict(self.values),
-            hide_code=self.hide_code,
+            display_settings=NbDisplaySettings(hide_code=self.hide_code),
         )
 
 
@@ -109,8 +111,12 @@ class NbHtmlModel(BaseModel):
 class NbHtmlKey(PageInstanceIdModel):
     """A domain model for the redis key for an NbHtmlModel instance."""
 
-    hide_code: bool
-    """Whether the html includes code input cells."""
+    display_settings: NbDisplaySettings
+
+    @property
+    def cache_key(self) -> str:
+        key_prefix = super().cache_key
+        return f"{key_prefix}/{self.display_settings.cache_key}"
 
 
 @dataclass(frozen=True)
@@ -118,3 +124,11 @@ class NbDisplaySettings:
     """A model for display settings for an HTML rendering of a notebook."""
 
     hide_code: bool
+
+    @property
+    def cache_key(self) -> str:
+        return b64encode(
+            json.dumps(
+                {k: p for k, p in asdict(self).items()}, sort_keys=True
+            ).encode("utf-8")
+        ).decode("utf-8")

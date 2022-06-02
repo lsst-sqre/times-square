@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from base64 import b64encode
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -608,6 +609,9 @@ class PageSummaryModel:
 class PageInstanceIdModel:
     """The domain model that identifies an instance of a page through the
     page's name and values of parameters.
+
+    The `cache_key` property produces a reproducible key string, useful as
+    a Redis key.
     """
 
     name: str
@@ -619,6 +623,15 @@ class PageInstanceIdModel:
     Keys are parameter names, and values are the parameter values.
     The values are cast as Python types (`PageParameterSchema.cast_value`).
     """
+
+    @property
+    def cache_key(self) -> str:
+        encoded_values_key = b64encode(
+            json.dumps(
+                {k: p for k, p in self.values.items()}, sort_keys=True
+            ).encode("utf-8")
+        ).decode("utf-8")
+        return f"{self.name}/{encoded_values_key}"
 
 
 @dataclass
