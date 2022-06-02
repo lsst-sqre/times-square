@@ -140,9 +140,9 @@ class PageService:
         This is useful for the `add_page` and `update_page` methods to start
         notebook execution as soon as possible.
         """
-        resolved_parameters = page.resolve_and_validate_parameters({})
+        resolved_values = page.resolve_and_validate_values({})
         page_instance = PageInstanceModel(
-            name=page.name, values=resolved_parameters, page=page
+            name=page.name, values=resolved_values, page=page
         )
         await self._request_noteburst_execution(page_instance)
 
@@ -157,7 +157,7 @@ class PageService:
             await self.soft_delete_page(page)
 
     async def render_page_template(
-        self, name: str, parameters: Mapping[str, Any]
+        self, name: str, values: Mapping[str, Any]
     ) -> str:
         """Render a page's jupyter notebook, with the given parameter values.
 
@@ -165,17 +165,17 @@ class PageService:
         ----------
         name : `str`
             Name (URL slug) of the page.
-        parameters : `dict`
-            Parameter values, keyed by parameter names. If parameters are
+        values : `dict`
+            Parameter values, keyed by parameter names. If values are
             missing, the default value is used instead.
         """
         page = await self.get_page(name)
-        resolved_parameters = page.resolve_and_validate_parameters(parameters)
-        rendered_notebook = page.render_parameters(resolved_parameters)
+        resolved_values = page.resolve_and_validate_values(values)
+        rendered_notebook = page.render_parameters(resolved_values)
         return rendered_notebook
 
     async def get_html(
-        self, *, name: str, parameters: Mapping[str, Any]
+        self, *, name: str, values: Mapping[str, Any]
     ) -> Optional[NbHtmlModel]:
         """Get the HTML for a page given a set of parameter values, first
         from a cache or triggering a rendering if not available.
@@ -187,7 +187,7 @@ class PageService:
             not presently available.
         """
         page = await self.get_page(name)
-        resolved_parameters = page.resolve_and_validate_parameters(parameters)
+        resolved_parameters = page.resolve_and_validate_values(values)
 
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_parameters, page=page
@@ -207,13 +207,13 @@ class PageService:
     async def _get_html_from_noteburst_job(
         self, page_instance: PageInstanceModel
     ) -> Optional[NbHtmlModel]:
-        """Convert a noteburst job for a given page and parameters into
+        """Convert a noteburst job for a given page and parameter values into
         HTML (caching that HTML as well), and triggering a new noteburst
 
         Parameters
         ----------
         page_instance : `PageInstanceModel`
-            The page instance (consisting of resolved parameters).
+            The page instance (consisting of resolved parameter values).
 
         Returns
         -------

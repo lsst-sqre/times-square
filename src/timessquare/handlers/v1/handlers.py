@@ -241,9 +241,9 @@ async def get_page_html(
 ) -> HTMLResponse:
     """Get the rendered HTML of a notebook."""
     page_service = context.page_service
-    parameters = context.request.query_params
+    parameter_values = context.request.query_params
     async with context.session.begin():
-        html = await page_service.get_html(name=page, parameters=parameters)
+        html = await page_service.get_html(name=page, values=parameter_values)
 
     if not html:
         raise HTTPException(status_code=404, detail="HTML not available")
@@ -262,9 +262,9 @@ async def get_page_html_status(
     context: RequestContext = Depends(context_dependency),
 ) -> HtmlStatus:
     page_service = context.page_service
-    parameters = context.request.query_params
+    parameter_values = context.request.query_params
     async with context.session.begin():
-        html = await page_service.get_html(name=page, parameters=parameters)
+        html = await page_service.get_html(name=page, values=parameter_values)
 
     return HtmlStatus.from_html(html=html, request=context.request)
 

@@ -388,8 +388,8 @@ class PageModel:
         if parameter_name_pattern.match(name) is None:
             raise ParameterNameValidationError(name)
 
-    def resolve_and_validate_parameters(
-        self, requested_parameters: Mapping[str, Any]
+    def resolve_and_validate_values(
+        self, requested_values: Mapping[str, Any]
     ) -> Dict[str, Any]:
         """Resolve and validate parameter values for a notebook based on
         a possibly incomplete user request.
@@ -404,7 +404,7 @@ class PageModel:
         # the default. Avoid extraneous parameters from the request for
         # security.
         resolved_values = {
-            name: requested_parameters.get(name, schema.default)
+            name: requested_values.get(name, schema.default)
             for name, schema in self.parameters.items()
         }
 
@@ -431,11 +431,11 @@ class PageModel:
         specified parameter values.
 
         **Note**: parameter values are not validated. Use
-        resolve_and_validate_parameters first.
+        resolve_and_validate_values first.
 
         Parameters
         ----------
-        requested_parameters : `dict`
+        values : `dict`
             Parameter values.
 
         Returns

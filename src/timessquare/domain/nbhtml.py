@@ -30,7 +30,7 @@ class NbHtmlModel(BaseModel):
     html_hash: str
     """A sha256 hash of the HTML content."""
 
-    parameters: Dict[str, Any]
+    values: Dict[str, Any]
     """The parameter values, keyed by parameter name.
 
     Values are native Python types (i.e., string values for parameters
@@ -73,7 +73,7 @@ class NbHtmlModel(BaseModel):
             page_name=page_id.name,
             html=html,
             html_hash=html_hash.hexdigest(),
-            parameters=page_id.values,
+            values=page_id.values,
             date_executed=noteburst_result.finish_time,
             date_rendered=datetime.utcnow(),
             execution_duration=td,

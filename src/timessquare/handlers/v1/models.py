@@ -369,7 +369,7 @@ class HtmlStatus(BaseModel):
 
             return cls(available=False, html_url=html_url, html_hash=None)
         else:
-            qs = urlencode(html.parameters)
+            qs = urlencode(html.values)
             if qs:
                 html_url = f"{base_html_url}?{qs}"
             else:

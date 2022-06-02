@@ -37,6 +37,6 @@ class NbHtmlCacheStore(RedisStore[NbHtmlModel]):
             indefinitely.
         """
         page_id = PageInstanceIdModel(
-            name=nbhtml.page_name, values=dict(nbhtml.parameters)
+            name=nbhtml.page_name, values=dict(nbhtml.values)
         )
         await super().store(page_id, nbhtml, lifetime=lifetime)
