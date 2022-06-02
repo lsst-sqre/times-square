@@ -14,8 +14,6 @@ import jinja2
 import jsonschema.exceptions
 import nbformat
 from jsonschema import Draft202012Validator
-from nbconvert.exporters.html import HTMLExporter
-from traitlets.config import Config
 
 from timessquare.exceptions import (
     PageNotebookFormatError,
@@ -460,18 +458,6 @@ class PageModel:
 
         # Render notebook back to a string and return
         return PageModel.write_ipynb(notebook)
-
-    def render_html(self, ipynb: str) -> str:
-        """Render a notebook into HTML."""
-        config = Config()
-        config.HTMLExporter.exclude_input = True
-        config.HTMLExporter.exclude_input_prompt = True
-        config.HTMLExporter.exclude_output_prompt = True
-        exporter = HTMLExporter(config=config)
-
-        notebook = PageModel.read_ipynb(ipynb)
-        html, resources = exporter.from_notebook_node(notebook)
-        return html
 
 
 @dataclass

@@ -242,10 +242,9 @@ class PageService:
             if noteburst_response.status == NoteburstJobStatus.complete:
                 ipynb = noteburst_response.ipynb
                 assert ipynb
-                html = page_instance.page.render_html(ipynb)
                 nbhtml = NbHtmlModel.create_from_noteburst_result(
-                    page_id=page_instance,
-                    html=html,
+                    page_instance=page_instance,
+                    ipynb=ipynb,
                     noteburst_result=noteburst_response,
                 )
                 # FIXME make lifetime a setting of page for pages that aren't

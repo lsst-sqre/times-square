@@ -6,10 +6,12 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any, Dict
 
+from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel
+from traitlets.config import Config
 
 from .noteburstjob import NoteburstJobResponseModel
-from .page import PageInstanceIdModel
+from .page import PageInstanceModel
 
 
 class NbHtmlModel(BaseModel):
@@ -52,8 +54,8 @@ class NbHtmlModel(BaseModel):
     def create_from_noteburst_result(
         cls,
         *,
-        page_id: PageInstanceIdModel,
-        html: str,
+        page_instance: PageInstanceModel,
+        ipynb: str,
         noteburst_result: NoteburstJobResponseModel,
     ) -> NbHtmlModel:
         if not noteburst_result.start_time:
@@ -66,14 +68,22 @@ class NbHtmlModel(BaseModel):
             )
         td = noteburst_result.finish_time - noteburst_result.start_time
 
+        config = Config()
+        config.HTMLExporter.exclude_input = True
+        config.HTMLExporter.exclude_input_prompt = True
+        config.HTMLExporter.exclude_output_prompt = True
+        exporter = HTMLExporter(config=config)
+        notebook = page_instance.page.read_ipynb(ipynb)
+        html, resources = exporter.from_notebook_node(notebook)
+
         html_hash = sha256()
         html_hash.update(html.encode())
 
         return cls(
-            page_name=page_id.name,
+            page_name=page_instance.name,
             html=html,
             html_hash=html_hash.hexdigest(),
-            values=page_id.values,
+            values=page_instance.values,
             date_executed=noteburst_result.finish_time,
             date_rendered=datetime.utcnow(),
             execution_duration=td,
