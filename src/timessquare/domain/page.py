@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from base64 import b64encode
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -14,7 +15,6 @@ import jinja2
 import jsonschema.exceptions
 import nbformat
 from jsonschema import Draft202012Validator
-from nbconvert.exporters.html import HTMLExporter
 
 from timessquare.exceptions import (
     PageNotebookFormatError,
@@ -387,8 +387,8 @@ class PageModel:
         if parameter_name_pattern.match(name) is None:
             raise ParameterNameValidationError(name)
 
-    def resolve_and_validate_parameters(
-        self, requested_parameters: Mapping[str, Any]
+    def resolve_and_validate_values(
+        self, requested_values: Mapping[str, Any]
     ) -> Dict[str, Any]:
         """Resolve and validate parameter values for a notebook based on
         a possibly incomplete user request.
@@ -403,7 +403,7 @@ class PageModel:
         # the default. Avoid extraneous parameters from the request for
         # security.
         resolved_values = {
-            name: requested_parameters.get(name, schema.default)
+            name: requested_values.get(name, schema.default)
             for name, schema in self.parameters.items()
         }
 
@@ -430,11 +430,11 @@ class PageModel:
         specified parameter values.
 
         **Note**: parameter values are not validated. Use
-        resolve_and_validate_parameters first.
+        resolve_and_validate_values first.
 
         Parameters
         ----------
-        requested_parameters : `dict`
+        values : `dict`
             Parameter values.
 
         Returns
@@ -459,13 +459,6 @@ class PageModel:
 
         # Render notebook back to a string and return
         return PageModel.write_ipynb(notebook)
-
-    def render_html(self, ipynb: str) -> str:
-        """Render a notebook into HTML."""
-        notebook = PageModel.read_ipynb(ipynb)
-        exporter = HTMLExporter()
-        html, resources = exporter.from_notebook_node(notebook)
-        return html
 
 
 @dataclass
@@ -616,6 +609,9 @@ class PageSummaryModel:
 class PageInstanceIdModel:
     """The domain model that identifies an instance of a page through the
     page's name and values of parameters.
+
+    The `cache_key` property produces a reproducible key string, useful as
+    a Redis key.
     """
 
     name: str
@@ -627,6 +623,15 @@ class PageInstanceIdModel:
     Keys are parameter names, and values are the parameter values.
     The values are cast as Python types (`PageParameterSchema.cast_value`).
     """
+
+    @property
+    def cache_key(self) -> str:
+        encoded_values_key = b64encode(
+            json.dumps(
+                {k: p for k, p in self.values.items()}, sort_keys=True
+            ).encode("utf-8")
+        ).decode("utf-8")
+        return f"{self.name}/{encoded_values_key}"
 
 
 @dataclass

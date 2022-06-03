@@ -7,7 +7,6 @@ from typing import Optional
 import aioredis
 
 from timessquare.domain.nbhtml import NbHtmlModel
-from timessquare.domain.page import PageInstanceIdModel
 
 from .redisbase import RedisStore
 
@@ -36,7 +35,5 @@ class NbHtmlCacheStore(RedisStore[NbHtmlModel]):
             The lifetime for the record in seconds. `None` to cache the record
             indefinitely.
         """
-        page_id = PageInstanceIdModel(
-            name=nbhtml.page_name, values=dict(nbhtml.parameters)
-        )
-        await super().store(page_id, nbhtml, lifetime=lifetime)
+        key = nbhtml.create_key()
+        await super().store(key, nbhtml, lifetime=lifetime)
