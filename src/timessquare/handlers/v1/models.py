@@ -369,7 +369,14 @@ class HtmlStatus(BaseModel):
 
             return cls(available=False, html_url=html_url, html_hash=None)
         else:
-            qs = urlencode(html.values)
+            query_params: Dict[str, Any] = {}
+            query_params.update(html.values)
+            # Add display settings
+            if html.hide_code:
+                query_params["ts_hide_code"] = "1"
+            else:
+                query_params["ts_hide_code"] = "0"
+            qs = urlencode(query_params)
             if qs:
                 html_url = f"{base_html_url}?{qs}"
             else:
