@@ -247,7 +247,9 @@ async def get_page_html(
         )
 
     if not html:
-        raise HTTPException(status_code=404, detail="HTML not available")
+        raise HTTPException(
+            status_code=404, detail="Computing the notebook..."
+        )
 
     return HTMLResponse(html.html)
 
