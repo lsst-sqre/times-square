@@ -17,7 +17,7 @@ from pydantic import (
     SecretStr,
     validator,
 )
-from safir.dependencies.arq import ArqMode
+from safir.arq import ArqMode
 
 __all__ = ["Config", "Profile", "LogLevel"]
 
