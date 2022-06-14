@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from gidgethub.routing import Router
 from gidgethub.sansio import Event
-from safir.dependencies.arq import ArqQueue
+from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 from timessquare.domain.githubwebhook import (

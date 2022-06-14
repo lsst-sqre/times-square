@@ -1,10 +1,10 @@
 Change log
 ==========
 
-0.4.0 (unreleased)
+0.4.0 (2022-05-14)
 ------------------
 
-Times Square now supports sourcing Jupyter Notebooks from GitHub repositories, in addition to its original mode of API-sourced  notebooks.
+Times Square now supports sourcing Jupyter Notebooks from GitHub repositories, in addition to its original mode of API-sourced notebooks.
 To do this, Times Square acts as a GitHub App integration, and receives webhook events from GitHub.
 When the Times Square app is installed in a GitHub repository, or a push to the default branch is accomplished, Times Square syncs Jupyter Notebooks from that repository into its page store.
 
