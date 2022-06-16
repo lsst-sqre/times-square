@@ -10,7 +10,12 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from .githubapi import GitHubPullRequestModel, GitHubRepositoryModel
+from .githubapi import (
+    GitHubCheckRunModel,
+    GitHubCheckSuiteModel,
+    GitHubPullRequestModel,
+    GitHubRepositoryModel,
+)
 
 
 class GitHubAppInstallationModel(BaseModel):
@@ -120,3 +125,42 @@ class GitHubPullRequestEventModel(BaseModel):
     number: int = Field(title="Pull request number")
 
     pull_request: GitHubPullRequestModel
+
+
+class GitHubCheckSuiteEventModel(BaseModel):
+    """A Pydantic model for the "check_suite" webhook payload.
+
+    https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
+    """
+
+    action: str = Field(
+        title="Action performed",
+        description="Either requested or rerequested.",
+    )
+
+    check_suite: GitHubCheckSuiteModel
+
+    repository: GitHubRepositoryModel
+
+    installation: GitHubAppInstallationModel
+
+
+class GitHubCheckRunEventModel(BaseModel):
+    """A Pydantic model for the "check_run" webhook payload.
+
+    https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_run
+    """
+
+    action: str = Field(
+        title="The action that was performed.",
+        description=(
+            "Many event types are possible: created, completed, rerequested, "
+            "rerequested_action"
+        ),
+    )
+
+    repository: GitHubRepositoryModel
+
+    installation: GitHubAppInstallationModel
+
+    check_run: GitHubCheckRunModel
