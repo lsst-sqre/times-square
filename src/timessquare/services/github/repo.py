@@ -6,6 +6,7 @@ with the Page service for managing page domain models.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import PurePosixPath
 from typing import List
 
@@ -15,6 +16,8 @@ from structlog.stdlib import BoundLogger
 from timessquare.domain.githubapi import (
     GitHubBlobModel,
     GitHubBranchModel,
+    GitHubCheckRunConclusion,
+    GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
 from timessquare.domain.githubcheckout import (
@@ -23,6 +26,8 @@ from timessquare.domain.githubcheckout import (
     RepositorySettingsFile,
 )
 from timessquare.domain.githubwebhook import (
+    GitHubCheckRunEventModel,
+    GitHubCheckSuiteEventModel,
     GitHubPullRequestModel,
     GitHubPushEventModel,
 )
@@ -285,3 +290,58 @@ class GitHubRepoService:
         page.repository_sidecar_sha = notebook.sidecar_git_tree_sha
 
         await self._page_service.update_page(page)
+
+    async def create_check_run(
+        self, *, payload: GitHubCheckSuiteEventModel
+    ) -> None:
+        """Create a new GitHub check run suite, given a new Check Suite.
+
+        NOTE: currently we're assuming that check suites are automatically
+        created when created a check run. See
+        https://docs.github.com/en/rest/checks/runs#create-a-check-run
+        """
+        await self._create_yaml_config_check_run(
+            owner=payload.repository.owner.login,
+            repo=payload.repository.name,
+            head_sha=payload.check_suite.head_sha,
+        )
+
+    async def create_rerequested_check_run(
+        self, *, payload: GitHubCheckRunEventModel
+    ) -> None:
+        """Run a GitHub check run that was rerequested."""
+        await self._create_yaml_config_check_run(
+            owner=payload.repository.owner.login,
+            repo=payload.repository.name,
+            head_sha=payload.check_run.head_sha,
+        )
+
+    async def _create_yaml_config_check_run(
+        self, *, owner: str, repo: str, head_sha: str
+    ) -> None:
+        await self._github_client.post(
+            "repos/{owner}/{repo}/check-runs",
+            url_vars={"owner": owner, "repo": repo},
+            data={"name": "YAML configurations", "head_sha": head_sha},
+        )
+
+    async def compute_check_run(
+        self, *, payload: GitHubCheckRunEventModel
+    ) -> None:
+        """Compute a GitHub check run."""
+        # Set the check run to in-progress
+        await self._github_client.patch(
+            payload.check_run.url,
+            data={"status": GitHubCheckRunStatus.in_progress},
+        )
+
+        await asyncio.sleep(30)
+
+        # Set the check run to complete
+        await self._github_client.patch(
+            payload.check_run.url,
+            data={
+                "status": GitHubCheckRunStatus.completed,
+                "conclusion": GitHubCheckRunConclusion.success,
+            },
+        )
