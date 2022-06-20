@@ -17,6 +17,7 @@ from timessquare.domain.githubapi import (
     GitHubBlobModel,
     GitHubBranchModel,
     GitHubCheckRunConclusion,
+    GitHubCheckRunModel,
     GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
@@ -319,19 +320,24 @@ class GitHubRepoService:
     async def _create_yaml_config_check_run(
         self, *, owner: str, repo: str, head_sha: str
     ) -> None:
-        await self._github_client.post(
+        data = await self._github_client.post(
             "repos/{owner}/{repo}/check-runs",
             url_vars={"owner": owner, "repo": repo},
             data={"name": "YAML configurations", "head_sha": head_sha},
         )
+        check_run = GitHubCheckRunModel.parse_obj(data)
+        await self._compute_check_run(check_run)
 
     async def compute_check_run(
         self, *, payload: GitHubCheckRunEventModel
     ) -> None:
         """Compute a GitHub check run."""
+        await self._compute_check_run(payload.check_run)
+
+    async def _compute_check_run(self, check_run: GitHubCheckRunModel) -> None:
         # Set the check run to in-progress
         await self._github_client.patch(
-            payload.check_run.url,
+            check_run.url,
             data={"status": GitHubCheckRunStatus.in_progress},
         )
 
@@ -339,7 +345,7 @@ class GitHubRepoService:
 
         # Set the check run to complete
         await self._github_client.patch(
-            payload.check_run.url,
+            check_run.url,
             data={
                 "status": GitHubCheckRunStatus.completed,
                 "conclusion": GitHubCheckRunConclusion.success,
