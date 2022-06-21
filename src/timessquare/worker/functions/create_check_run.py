@@ -19,7 +19,7 @@ async def create_check_run(
         github_owner=payload.repository.owner.login,
         github_repo=payload.repository.name,
     )
-    logger.info("Running create_check_run")
+    logger.info("Running create_check_run", payload=payload.dict())
 
     async for db_session in db_session_dependency():
         github_repo_service = await create_github_repo_service(
