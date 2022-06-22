@@ -43,8 +43,9 @@ class GitHubRepositoryCheckout:
     settings: RepositorySettingsFile
     """Repository settings, read from times-square.yaml."""
 
-    git_ref: str
-    """The "checked-out" full git ref.
+    git_ref: Optional[str]
+    """The "checked-out" full git ref, or `None` if a checkout of a bare
+    commit.
 
     Examples:
 
