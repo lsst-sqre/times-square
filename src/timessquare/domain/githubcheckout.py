@@ -13,7 +13,7 @@ import yaml
 from gidgethub.httpx import GitHubAPI
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, root_validator
 
-from .githubapi import GitHubBlobModel
+from .githubapi import GitHubBlobModel, GitHubRepositoryModel
 from .page import PageParameterSchema, PersonModel
 
 
@@ -68,6 +68,32 @@ class GitHubRepositoryCheckout:
 
     URL variable is ``sha``.
     """
+
+    @classmethod
+    async def create(
+        cls,
+        *,
+        github_client: GitHubAPI,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        git_ref: Optional[str] = None,
+    ) -> GitHubRepositoryCheckout:
+        uri = repo.contents_url + "{?ref}"
+        data = await github_client.getitem(
+            uri, url_vars={"path": "times-square.yaml", "ref": head_sha}
+        )
+        content_data = GitHubBlobModel.parse_obj(data)
+        file_content = content_data.decode()
+        settings = RepositorySettingsFile.parse_yaml(file_content)
+        return cls(
+            owner_name=repo.owner.login,
+            name=repo.name,
+            settings=settings,
+            git_ref=git_ref,
+            head_sha=head_sha,
+            trees_url=repo.trees_url,
+            blobs_url=repo.blobs_url,
+        )
 
     @property
     def full_name(self) -> str:

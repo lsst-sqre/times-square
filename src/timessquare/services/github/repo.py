@@ -73,7 +73,8 @@ class GitHubRepoService:
         branch = await self.request_github_branch(
             url_template=repo.branches_url, branch=repo.default_branch
         )
-        checkout = await self.create_checkout(
+        checkout = await GitHubRepositoryCheckout.create(
+            github_client=self._github_client,
             repo=repo,
             git_ref=f"refs/heads/{branch.name}",
             head_sha=branch.commit.sha,
@@ -85,7 +86,8 @@ class GitHubRepoService:
         push_payload: GitHubPushEventModel,
     ) -> None:
         """Synchronize based on a GitHub push event."""
-        checkout = await self.create_checkout(
+        checkout = await GitHubRepositoryCheckout.create(
+            github_client=self._github_client,
             repo=push_payload.repository,
             git_ref=push_payload.ref,
             head_sha=push_payload.after,
