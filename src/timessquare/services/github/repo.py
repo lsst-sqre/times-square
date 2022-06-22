@@ -6,7 +6,6 @@ with the Page service for managing page domain models.
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import PurePosixPath
 from typing import List
 
@@ -16,7 +15,6 @@ from structlog.stdlib import BoundLogger
 from timessquare.domain.githubapi import (
     GitHubBlobModel,
     GitHubBranchModel,
-    GitHubCheckRunConclusion,
     GitHubCheckRunModel,
     GitHubCheckRunStatus,
     GitHubRepositoryModel,
@@ -26,6 +24,7 @@ from timessquare.domain.githubcheckout import (
     RepositoryNotebookModel,
     RepositorySettingsFile,
 )
+from timessquare.domain.githubcheckrun import GitHubConfigsCheck
 from timessquare.domain.githubwebhook import (
     GitHubCheckRunEventModel,
     GitHubCheckSuiteEventModel,
@@ -304,8 +303,7 @@ class GitHubRepoService:
         https://docs.github.com/en/rest/checks/runs#create-a-check-run
         """
         await self._create_yaml_config_check_run(
-            owner=payload.repository.owner.login,
-            repo=payload.repository.name,
+            repo=payload.repository,
             head_sha=payload.check_suite.head_sha,
         )
 
@@ -314,42 +312,56 @@ class GitHubRepoService:
     ) -> None:
         """Run a GitHub check run that was rerequested."""
         await self._create_yaml_config_check_run(
-            owner=payload.repository.owner.login,
-            repo=payload.repository.name,
+            repo=payload.repository,
             head_sha=payload.check_run.head_sha,
         )
 
     async def _create_yaml_config_check_run(
-        self, *, owner: str, repo: str, head_sha: str
+        self, *, repo: GitHubRepositoryModel, head_sha: str
     ) -> None:
         data = await self._github_client.post(
             "repos/{owner}/{repo}/check-runs",
-            url_vars={"owner": owner, "repo": repo},
+            url_vars={"owner": repo.owner.login, "repo": repo.name},
             data={"name": "YAML configurations", "head_sha": head_sha},
         )
         check_run = GitHubCheckRunModel.parse_obj(data)
-        await self._compute_check_run(check_run)
+        await self._compute_check_run(check_run=check_run, repo=repo)
 
     async def compute_check_run(
         self, *, payload: GitHubCheckRunEventModel
     ) -> None:
         """Compute a GitHub check run."""
-        await self._compute_check_run(payload.check_run)
+        await self._compute_check_run(
+            repo=payload.repository, check_run=payload.check_run
+        )
 
-    async def _compute_check_run(self, check_run: GitHubCheckRunModel) -> None:
+    async def _compute_check_run(
+        self, *, repo: GitHubRepositoryModel, check_run: GitHubCheckRunModel
+    ) -> None:
+        """Compute the YAML validation check run."""
         # Set the check run to in-progress
         await self._github_client.patch(
             check_run.url,
             data={"status": GitHubCheckRunStatus.in_progress},
         )
 
-        await asyncio.sleep(30)
+        config_check = await GitHubConfigsCheck.validate_repo(
+            github_client=self._github_client,
+            repo=repo,
+            head_sha=check_run.head_sha,
+        )
 
         # Set the check run to complete
         await self._github_client.patch(
             check_run.url,
             data={
                 "status": GitHubCheckRunStatus.completed,
-                "conclusion": GitHubCheckRunConclusion.success,
+                "conclusion": config_check.conclusion,
+                "output": {
+                    "title": config_check.title,
+                    "summary": config_check.summary,
+                    "text": config_check.text,
+                    "annotations": config_check.export_truncated_annotations(),
+                },
             },
         )
