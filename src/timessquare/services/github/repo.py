@@ -15,6 +15,8 @@ from structlog.stdlib import BoundLogger
 from timessquare.domain.githubapi import (
     GitHubBlobModel,
     GitHubBranchModel,
+    GitHubCheckRunModel,
+    GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
 from timessquare.domain.githubcheckout import (
@@ -22,7 +24,10 @@ from timessquare.domain.githubcheckout import (
     RepositoryNotebookModel,
     RepositorySettingsFile,
 )
+from timessquare.domain.githubcheckrun import GitHubConfigsCheck
 from timessquare.domain.githubwebhook import (
+    GitHubCheckRunEventModel,
+    GitHubCheckSuiteEventModel,
     GitHubPullRequestModel,
     GitHubPushEventModel,
 )
@@ -67,7 +72,8 @@ class GitHubRepoService:
         branch = await self.request_github_branch(
             url_template=repo.branches_url, branch=repo.default_branch
         )
-        checkout = await self.create_checkout(
+        checkout = await GitHubRepositoryCheckout.create(
+            github_client=self._github_client,
             repo=repo,
             git_ref=f"refs/heads/{branch.name}",
             head_sha=branch.commit.sha,
@@ -79,7 +85,8 @@ class GitHubRepoService:
         push_payload: GitHubPushEventModel,
     ) -> None:
         """Synchronize based on a GitHub push event."""
-        checkout = await self.create_checkout(
+        checkout = await GitHubRepositoryCheckout.create(
+            github_client=self._github_client,
             repo=push_payload.repository,
             git_ref=push_payload.ref,
             head_sha=push_payload.after,
@@ -285,3 +292,76 @@ class GitHubRepoService:
         page.repository_sidecar_sha = notebook.sidecar_git_tree_sha
 
         await self._page_service.update_page(page)
+
+    async def create_check_run(
+        self, *, payload: GitHubCheckSuiteEventModel
+    ) -> None:
+        """Create a new GitHub check run suite, given a new Check Suite.
+
+        NOTE: currently we're assuming that check suites are automatically
+        created when created a check run. See
+        https://docs.github.com/en/rest/checks/runs#create-a-check-run
+        """
+        await self._create_yaml_config_check_run(
+            repo=payload.repository,
+            head_sha=payload.check_suite.head_sha,
+        )
+
+    async def create_rerequested_check_run(
+        self, *, payload: GitHubCheckRunEventModel
+    ) -> None:
+        """Run a GitHub check run that was rerequested."""
+        await self._create_yaml_config_check_run(
+            repo=payload.repository,
+            head_sha=payload.check_run.head_sha,
+        )
+
+    async def _create_yaml_config_check_run(
+        self, *, repo: GitHubRepositoryModel, head_sha: str
+    ) -> None:
+        data = await self._github_client.post(
+            "repos/{owner}/{repo}/check-runs",
+            url_vars={"owner": repo.owner.login, "repo": repo.name},
+            data={"name": "YAML configurations", "head_sha": head_sha},
+        )
+        check_run = GitHubCheckRunModel.parse_obj(data)
+        await self._compute_check_run(check_run=check_run, repo=repo)
+
+    async def compute_check_run(
+        self, *, payload: GitHubCheckRunEventModel
+    ) -> None:
+        """Compute a GitHub check run."""
+        await self._compute_check_run(
+            repo=payload.repository, check_run=payload.check_run
+        )
+
+    async def _compute_check_run(
+        self, *, repo: GitHubRepositoryModel, check_run: GitHubCheckRunModel
+    ) -> None:
+        """Compute the YAML validation check run."""
+        # Set the check run to in-progress
+        await self._github_client.patch(
+            check_run.url,
+            data={"status": GitHubCheckRunStatus.in_progress},
+        )
+
+        config_check = await GitHubConfigsCheck.validate_repo(
+            github_client=self._github_client,
+            repo=repo,
+            head_sha=check_run.head_sha,
+        )
+
+        # Set the check run to complete
+        await self._github_client.patch(
+            check_run.url,
+            data={
+                "status": GitHubCheckRunStatus.completed,
+                "conclusion": config_check.conclusion,
+                "output": {
+                    "title": config_check.title,
+                    "summary": config_check.summary,
+                    "text": config_check.text,
+                    "annotations": config_check.export_truncated_annotations(),
+                },
+            },
+        )

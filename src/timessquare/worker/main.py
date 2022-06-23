@@ -14,6 +14,9 @@ from timessquare.config import config
 from timessquare.dependencies.redis import redis_dependency
 
 from .functions import (
+    compute_check_run,
+    create_check_run,
+    create_rerequested_check_run,
     ping,
     pull_request_sync,
     repo_added,
@@ -75,7 +78,16 @@ class WorkerSettings:
     See `arq.worker.Worker` for details on these attributes.
     """
 
-    functions = [ping, repo_push, repo_added, repo_removed, pull_request_sync]
+    functions = [
+        ping,
+        repo_push,
+        repo_added,
+        repo_removed,
+        pull_request_sync,
+        compute_check_run,
+        create_check_run,
+        create_rerequested_check_run,
+    ]
 
     redis_settings = config.arq_redis_settings
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from base64 import b64decode
+from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -144,3 +146,114 @@ class GitHubBlobModel(BaseModel):
                 f"GitHub blob content encoding {self.encoding} "
                 f"is unknown by GitHubBlobModel for url {self.url}"
             )
+
+
+class GitHubCheckSuiteStatus(str, Enum):
+
+    queued = "queued"
+    in_progress = "in_progress"
+    completed = "completed"
+
+
+class GitHubCheckSuiteConclusion(str, Enum):
+
+    success = "success"
+    failure = "failure"
+    neutral = "neutral"
+    cancelled = "cancelled"
+    timed_out = "timed_out"
+    action_required = "action_required"
+    stale = "stale"
+
+
+class GitHubCheckSuiteModel(BaseModel):
+    """A Pydantic model for the "check_suite" field in a check_suite webhook
+    (`GitHubCheckSuiteRequestModel`).
+    """
+
+    id: str = Field(description="Identifier for this check run")
+
+    head_branch: str = Field(
+        title="Head branch",
+        description="Name of the branch the changes are on.",
+    )
+
+    head_sha: str = Field(
+        title="Head sha",
+        description="The SHA of the most recent commit for this check suite.",
+    )
+
+    url: HttpUrl = Field(
+        description="GitHub API URL for the check suite resource."
+    )
+
+    status: GitHubCheckSuiteStatus
+
+    conclusion: Optional[GitHubCheckSuiteConclusion]
+
+
+class GitHubCheckRunStatus(str, Enum):
+    """The check run status."""
+
+    queued = "queued"
+    in_progress = "in_progress"
+    completed = "completed"
+
+
+class GitHubCheckRunConclusion(str, Enum):
+    """The check run conclusion state."""
+
+    success = "success"
+    failure = "failure"
+    neutral = "neutral"
+    cancelled = "cancelled"
+    timed_out = "timed_out"
+    action_required = "action_required"
+    stale = "stale"
+
+
+class GitHubCheckRunAnnotationLevel(str, Enum):
+    """The level of a check run output annotation."""
+
+    notice = "notice"
+    warning = "warning"
+    failure = "failure"
+
+
+class GitHubCheckSuiteId(BaseModel):
+    """Brief information about a check suite in the `GitHubCheckRunModel`."""
+
+    id: str = Field(description="Check suite ID")
+
+
+class GitHubCheckRunModel(BaseModel):
+    """A Pydantic model for the "check_run" field in a check_run webhook
+    payload (`GitHubCheckRunPayloadModel`).
+    """
+
+    id: str = Field(description="Identifier for this check run")
+
+    external_id: Optional[str] = Field(
+        description="Identifier set by the check runner."
+    )
+
+    head_sha: str = Field(
+        title="Head sha",
+        description="The SHA of the most recent commit for this check suite.",
+    )
+
+    status: GitHubCheckRunStatus = Field(
+        description="Status of the check run."
+    )
+
+    conclusion: Optional[GitHubCheckRunConclusion] = Field(
+        description="Conclusion status, if completed."
+    )
+
+    name: str = Field(description="Name of the check run.")
+
+    url: HttpUrl = Field(description="URL of the check run API resource.")
+
+    html_url: HttpUrl = Field(description="URL of the check run webpage.")
+
+    check_suite: GitHubCheckSuiteId

@@ -9,9 +9,12 @@ from gidgethub.sansio import Event
 from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
+from timessquare.config import config
 from timessquare.domain.githubwebhook import (
     GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
+    GitHubCheckRunEventModel,
+    GitHubCheckSuiteEventModel,
     GitHubPullRequestEventModel,
     GitHubPushEventModel,
 )
@@ -290,6 +293,121 @@ async def handle_pr_sync(
 
     await arq_queue.enqueue(
         "pull_request_sync",
+        payload=payload,
+    )
+
+
+@router.register("check_suite")
+async def handle_check_suite_request(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``check_suite`` (requested and rerequested) webhook event
+    from GitHub.
+
+    This handler is responsible for creating a check run. Once GitHub creates
+    the check run, GitHub sends a webhook handled by
+    `handle_check_run_created`.
+
+    The rerequested action occurs when a re-runs the entire check suite from
+    the PR UI. Both "requested" and "rerequested" actions require Times Square
+    to create a new check run.
+
+    https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.arq.ArqQueue`
+        An arq queue client.
+
+    """
+    if event.data["action"] in ("requested", "rerequested"):
+        logger.info(
+            "GitHub check suite request event",
+            repo=event.data["repository"]["full_name"],
+        )
+        payload = GitHubCheckSuiteEventModel.parse_obj(event.data)
+        logger.debug("GitHub check suite request payload", payload=payload)
+
+        # Note that architecturally it might be possible to run this as part
+        # of the webhook handler or a BackgroundTask; but for now it's
+        # implemented as a queued task for uniformity with the other tasks
+        await arq_queue.enqueue(
+            "create_check_run",
+            payload=payload,
+        )
+
+
+@router.register("check_run", action="created")
+async def handle_check_run_created(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``check_run`` (created) webhook event from GitHub.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.arq.ArqQueue`
+        An arq queue client.
+    """
+    # Note that GitHub sends this webhook to any app with permissions to watch
+    # this event; Times Square needs to operate only on its own check run
+    # created events.
+    if (
+        event.data["check_run"]["check_suite"]["app"]["id"]
+        == config.github_app_id
+    ):
+        logger.info(
+            "GitHub check run created event",
+            repo=event.data["repository"]["full_name"],
+        )
+        payload = GitHubCheckRunEventModel.parse_obj(event.data)
+        logger.debug("GitHub check run request payload", payload=payload)
+
+        await arq_queue.enqueue(
+            "compute_check_run",
+            payload=payload,
+        )
+
+
+@router.register("check_run", action="rerequested")
+async def handle_check_run_rerequested(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+) -> None:
+    """Handle the ``check_run`` (rerequested) webhook event from GitHub.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.arq.ArqQueue`
+        An arq queue client.
+    """
+    # Note that GitHub only sends this webhook to the app that's being
+    # re-requested.
+    logger.info(
+        "GitHub check run rerequested event",
+        repo=event.data["repository"]["full_name"],
+    )
+    payload = GitHubCheckRunEventModel.parse_obj(event.data)
+    logger.debug("GitHub check run request payload", payload=payload)
+
+    await arq_queue.enqueue(
+        "create_rerequested_check_run",
         payload=payload,
     )
 

@@ -1,3 +1,6 @@
+from .compute_check_run import compute_check_run
+from .create_check_run import create_check_run
+from .create_rerequested_check_run import create_rerequested_check_run
 from .ping import ping
 from .pull_request_sync import pull_request_sync
 from .repo_added import repo_added
@@ -10,4 +13,7 @@ __all__ = [
     "repo_added",
     "repo_removed",
     "pull_request_sync",
+    "compute_check_run",
+    "create_check_run",
+    "create_rerequested_check_run",
 ]
