@@ -363,7 +363,10 @@ async def handle_check_run_created(
     # Note that GitHub sends this webhook to any app with permissions to watch
     # this event; Times Square needs to operate only on its own check run
     # created events.
-    if event.data["check_run"]["app"]["id"] == config.github_app_id:
+    if (
+        event.data["check_run"]["check_suite"]["app"]["id"]
+        == config.github_app_id
+    ):
         logger.info(
             "GitHub check run created event",
             repo=event.data["repository"]["full_name"],
@@ -394,21 +397,19 @@ async def handle_check_run_rerequested(
     arq_queue : `safir.arq.ArqQueue`
         An arq queue client.
     """
-    # Note that GitHub sends this webhook to any app with permissions to watch
-    # this event; Times Square needs to operate only on its own check run
-    # created events.
-    if event.data["check_run"]["app"]["id"] == config.github_app_id:
-        logger.info(
-            "GitHub check run rerequested event",
-            repo=event.data["repository"]["full_name"],
-        )
-        payload = GitHubCheckRunEventModel.parse_obj(event.data)
-        logger.debug("GitHub check run request payload", payload=payload)
+    # Note that GitHub only sends this webhook to the app that's being
+    # re-requested.
+    logger.info(
+        "GitHub check run rerequested event",
+        repo=event.data["repository"]["full_name"],
+    )
+    payload = GitHubCheckRunEventModel.parse_obj(event.data)
+    logger.debug("GitHub check run request payload", payload=payload)
 
-        await arq_queue.enqueue(
-            "create_reqrequested_check_run",
-            payload=payload,
-        )
+    await arq_queue.enqueue(
+        "create_rerequested_check_run",
+        payload=payload,
+    )
 
 
 @router.register("ping")
