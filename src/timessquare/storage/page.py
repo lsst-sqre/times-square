@@ -58,6 +58,7 @@ class PageStore:
             cache_ttl=page.cache_ttl,
             github_owner=page.github_owner,
             github_repo=page.github_repo,
+            github_commit=page.github_commit,
             repository_path_prefix=page.repository_path_prefix,
             repository_display_path_prefix=page.repository_display_path_prefix,
             repository_path_stem=page.repository_path_stem,
@@ -115,10 +116,17 @@ class PageStore:
         return self._rehydrate_page_from_sql(sql_page)
 
     async def get_github_backed_page(
-        self, display_path: str
+        self, display_path: str, commit: Optional[str] = None
     ) -> Optional[PageModel]:
         """Get a GitHub-backed page based on the display path, or get `None`
         if the page does not exist.
+
+        Parameters
+        ----------
+        display_path : str
+            The GitHub display path, formatted ``owner/repo/file_path``.
+        commit : str, optional
+            The Git commit, if this page is associated with a GitHub Check Run.
         """
         path_parts = display_path.split("/")
         github_owner = path_parts[0]
@@ -135,8 +143,15 @@ class PageStore:
             .where(SqlPage.github_repo == github_repo)
             .where(SqlPage.repository_path_stem == path_stem)
             .where(SqlPage.repository_display_path_prefix == path_prefix)
-            .limit(1)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
         )
+        if commit:
+            statement = statement.where(SqlPage.github_commit == commit)
+        else:
+            statement = statement.where(
+                SqlPage.github_commit == None  # noqa: E711
+            )
+        statement = statement.limit(1)
         sql_page = await self._session.scalar(statement)
         if sql_page is None:
             return None
@@ -144,15 +159,31 @@ class PageStore:
         return self._rehydrate_page_from_sql(sql_page)
 
     async def list_pages_for_repository(
-        self, *, owner: str, name: str
+        self, *, owner: str, name: str, commit: Optional[str] = None
     ) -> List[PageModel]:
-        """Get all pages backed by a specific GitHub repository."""
+        """Get all pages backed by a specific GitHub repository.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner.
+        name : str
+            The repository name.
+        commit : str, optional
+            The commit, if listing pages for a specific GitHub Check Run.
+        """
         statement = (
             select(SqlPage)
             .where(SqlPage.github_owner == owner)
             .where(SqlPage.github_repo == name)
             .where(SqlPage.date_deleted == None)  # noqa: E711
         )
+        if commit:
+            statement = statement.where(SqlPage.github_commit == commit)
+        else:
+            statement = statement.where(
+                SqlPage.github_commit == None  # noqa: E711
+            )
         result = await self._session.execute(statement)
         return [
             self._rehydrate_page_from_sql(sql_page)
@@ -188,6 +219,7 @@ class PageStore:
             cache_ttl=sql_page.cache_ttl,
             github_owner=sql_page.github_owner,
             github_repo=sql_page.github_repo,
+            github_commit=sql_page.github_commit,
             repository_path_prefix=sql_page.repository_path_prefix,
             repository_display_path_prefix=(
                 sql_page.repository_display_path_prefix
@@ -227,6 +259,7 @@ class PageStore:
         owners_statement = (
             select(SqlPage.github_owner)
             .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
             .distinct(SqlPage.github_owner)
         )
         result = await self._session.execute(owners_statement)
@@ -248,6 +281,7 @@ class PageStore:
                 SqlPage.repository_path_stem,
             )
             .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
             .where(SqlPage.github_owner == owner_name)
             .order_by(
                 SqlPage.github_owner.asc(),

@@ -84,6 +84,11 @@ class SqlPage(Base):
     github_repo: Optional[str] = Column(Unicode(255))
     """The GitHub repository name for GitHub-backed pages."""
 
+    github_commit: Optional[str] = Column(Unicode(40))
+    """The SHA of the commit this page corresponds to; only used for pages
+    associated with a GitHub Check Run.
+    """
+
     repository_path_prefix: Optional[str] = Column(Unicode(2048))
     """The repository path prefix, relative to the root of the directory."""
 
