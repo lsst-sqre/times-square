@@ -12,11 +12,14 @@ from .githubapi import (
     GitHubBlobModel,
     GitHubCheckRunAnnotationLevel,
     GitHubCheckRunConclusion,
+    GitHubCheckRunModel,
+    GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     NotebookSidecarFile,
+    RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
 
@@ -86,21 +89,64 @@ class Annotation:
 class GitHubConfigsCheck:
     """A domain model for a YAML configuration GitHub Check run."""
 
-    def __init__(self) -> None:
+    title: str = "YAML config validation"
+
+    external_id: str = "times-square/yaml-check"
+    """The CheckRun external ID field. All check runs of this type
+    share the same external ID.
+    """
+
+    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+        self.check_run = check_run
         self.annotations: List[Annotation] = []
         self.sidecar_files_checked: List[str] = []
 
+        # Optional caching for data reuse
+        self.checkout: Optional[GitHubRepositoryCheckout] = None
+        self.tree: Optional[RecursiveGitTreeModel] = None
+
     @classmethod
-    async def validate_repo(
+    async def create_check_run_and_validate(
         cls,
+        *,
         github_client: GitHubAPI,
         repo: GitHubRepositoryModel,
         head_sha: str,
     ) -> GitHubConfigsCheck:
-        """Create a check run result model for a specific SHA of a GitHub
-        repository containing Times Square notebooks.
+        """Create a GitHubConfigsCheck by first creating a GitHub Check Run,
+        then running a validation via `validate_repo`.
         """
-        check = cls()
+        data = await github_client.post(
+            "repos/{owner}/{repo}/check-runs",
+            url_vars={"owner": repo.owner.login, "repo": repo.name},
+            data={
+                "name": cls.title,
+                "head_sha": head_sha,
+                "external_id": cls.external_id,
+            },
+        )
+        check_run = GitHubCheckRunModel.parse_obj(data)
+        return await cls.validate_repo(
+            check_run=check_run,
+            github_client=github_client,
+            repo=repo,
+            head_sha=head_sha,
+        )
+
+    @classmethod
+    async def validate_repo(
+        cls,
+        *,
+        github_client: GitHubAPI,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        check_run: GitHubCheckRunModel,
+    ) -> GitHubConfigsCheck:
+        """Create a check run result model for a specific SHA of a GitHub
+        repository containing Times Square notebooks given a check run already
+        registered with GitHub.
+        """
+        check = cls(check_run)
 
         try:
             checkout = await GitHubRepositoryCheckout.create(
@@ -123,6 +169,13 @@ class GitHubConfigsCheck:
                 repo=repo,
                 notebook_ref=notebook_ref,
             )
+
+        # Cache this checkout and tree so that the notebook execution check
+        # can reuse them efficiently.
+        check._cache_github_checkout(
+            checkout=checkout,
+            tree=tree,
+        )
 
         return check
 
@@ -161,10 +214,6 @@ class GitHubConfigsCheck:
                 return GitHubCheckRunConclusion.failure
 
         return GitHubCheckRunConclusion.success
-
-    @property
-    def title(self) -> str:
-        return "YAML config validation"
 
     @property
     def summary(self) -> str:
@@ -222,3 +271,35 @@ class GitHubConfigsCheck:
         https://docs.github.com/en/rest/checks/runs#update-a-check-run
         """
         return [a.export() for a in self.annotations[:50]]
+
+    def _cache_github_checkout(
+        self,
+        *,
+        checkout: GitHubRepositoryCheckout,
+        tree: RecursiveGitTreeModel,
+    ) -> None:
+        """Cache the checkout and Git tree (usually obtained in
+        iniitalization so they can be reused elsewhere without getting the
+        resources again from GitHub.
+        """
+        self.checkout = checkout
+        self.tree = tree
+
+    async def submit_conclusion(
+        self,
+        *,
+        github_client: GitHubAPI,
+    ) -> None:
+        await github_client.patch(
+            self.check_run.url,
+            data={
+                "status": GitHubCheckRunStatus.completed,
+                "conclusion": self.conclusion,
+                "output": {
+                    "title": self.title,
+                    "summary": self.summary,
+                    "text": self.text,
+                    "annotations": self.export_truncated_annotations(),
+                },
+            },
+        )
