@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABCMeta, abstractproperty
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -86,7 +87,76 @@ class Annotation:
         return output
 
 
-class GitHubConfigsCheck:
+class GitHubCheck(metaclass=ABCMeta):
+    """A base class for GitHub Check domain models."""
+
+    title: str = "Times Square check"
+
+    external_id: str = "times-square/generic-check"
+    """The CheckRun external ID field. All check runs of this type
+    share the same external ID.
+    """
+
+    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+        self.check_run = check_run
+        self.annotations: List[Annotation] = []
+
+    @property
+    def conclusion(self) -> GitHubCheckRunConclusion:
+        """A conclusion based on the annotations."""
+        for annotation in self.annotations:
+            if (
+                annotation.annotation_level
+                == GitHubCheckRunAnnotationLevel.failure
+            ):
+                return GitHubCheckRunConclusion.failure
+
+        return GitHubCheckRunConclusion.success
+
+    @abstractproperty
+    def summary(self) -> str:
+        """Summary text for the check."""
+        raise NotImplementedError
+
+    @abstractproperty
+    def text(self) -> str:
+        """The text body of the check's message."""
+        raise NotImplementedError
+
+    def export_truncated_annotations(self) -> List[Dict[str, Any]]:
+        """Export the first 50 annotations to objects serializable to
+        GitHub.
+
+        Sending more than 50 annotations requires multiple HTTP requests,
+        which we haven't implemented yet. See
+        https://docs.github.com/en/rest/checks/runs#update-a-check-run
+        """
+        return [a.export() for a in self.annotations[:50]]
+
+    async def submit_conclusion(
+        self,
+        *,
+        github_client: GitHubAPI,
+    ) -> None:
+        """Send a patch result for the check run to GitHub with the final
+        conclusion of the check.
+        """
+        await github_client.patch(
+            self.check_run.url,
+            data={
+                "status": GitHubCheckRunStatus.completed,
+                "conclusion": self.conclusion,
+                "output": {
+                    "title": self.title,
+                    "summary": self.summary,
+                    "text": self.text,
+                    "annotations": self.export_truncated_annotations(),
+                },
+            },
+        )
+
+
+class GitHubConfigsCheck(GitHubCheck):
     """A domain model for a YAML configuration GitHub Check run."""
 
     title: str = "YAML config validation"
@@ -97,13 +167,13 @@ class GitHubConfigsCheck:
     """
 
     def __init__(self, check_run: GitHubCheckRunModel) -> None:
-        self.check_run = check_run
-        self.annotations: List[Annotation] = []
         self.sidecar_files_checked: List[str] = []
 
         # Optional caching for data reuse
         self.checkout: Optional[GitHubRepositoryCheckout] = None
         self.tree: Optional[RecursiveGitTreeModel] = None
+
+        super().__init__(check_run=check_run)
 
     @classmethod
     async def create_check_run_and_validate(
@@ -205,7 +275,6 @@ class GitHubConfigsCheck:
 
     @property
     def conclusion(self) -> GitHubCheckRunConclusion:
-        """Synthesize a conclusion based on the annotations."""
         for annotation in self.annotations:
             if (
                 annotation.annotation_level
@@ -262,16 +331,6 @@ class GitHubConfigsCheck:
                 return False
         return True
 
-    def export_truncated_annotations(self) -> List[Dict[str, Any]]:
-        """Export the first 50 annotations to objects serializable to
-        GitHub.
-
-        Sending more than 50 annotations requires multiple HTTP requests,
-        which we haven't implemented yet. See
-        https://docs.github.com/en/rest/checks/runs#update-a-check-run
-        """
-        return [a.export() for a in self.annotations[:50]]
-
     def _cache_github_checkout(
         self,
         *,
@@ -284,22 +343,3 @@ class GitHubConfigsCheck:
         """
         self.checkout = checkout
         self.tree = tree
-
-    async def submit_conclusion(
-        self,
-        *,
-        github_client: GitHubAPI,
-    ) -> None:
-        await github_client.patch(
-            self.check_run.url,
-            data={
-                "status": GitHubCheckRunStatus.completed,
-                "conclusion": self.conclusion,
-                "output": {
-                    "title": self.title,
-                    "summary": self.summary,
-                    "text": self.text,
-                    "annotations": self.export_truncated_annotations(),
-                },
-            },
-        )
