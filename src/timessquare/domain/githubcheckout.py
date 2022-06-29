@@ -103,7 +103,8 @@ class GitHubRepositoryCheckout:
     async def get_git_tree(
         self, github_client: GitHubAPI
     ) -> RecursiveGitTreeModel:
-        """Get the recursive git tree of the repository from the GitHub API.
+        """Get the recursive git tree of the repository from the GitHub API
+        for this checkout's HEAD SHA (commit).
 
         Parameters
         ----------

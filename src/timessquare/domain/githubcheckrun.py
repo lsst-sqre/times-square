@@ -23,6 +23,8 @@ from .githubcheckout import (
     RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
+from .noteburstjob import NoteburstJobResponseModel, NoteburstJobStatus
+from .page import PageExecutionInfo
 
 
 @dataclass(kw_only=True)
@@ -133,6 +135,13 @@ class GitHubCheck(metaclass=ABCMeta):
         """
         return [a.export() for a in self.annotations[:50]]
 
+    async def submit_in_progress(self, github_client: GitHubAPI) -> None:
+        """Set the check run to "In progress"."""
+        await github_client.patch(
+            self.check_run.url,
+            data={"status": GitHubCheckRunStatus.in_progress},
+        )
+
     async def submit_conclusion(
         self,
         *,
@@ -217,6 +226,7 @@ class GitHubConfigsCheck(GitHubCheck):
         registered with GitHub.
         """
         check = cls(check_run)
+        await check.submit_in_progress(github_client)
 
         try:
             checkout = await GitHubRepositoryCheckout.create(
@@ -343,3 +353,94 @@ class GitHubConfigsCheck(GitHubCheck):
         """
         self.checkout = checkout
         self.tree = tree
+
+
+class NotebookExecutionsCheck(GitHubCheck):
+    """A domain model for a notebook execution GitHub check."""
+
+    title: str = "Notebook execution"
+
+    external_id: str = "times-square/nbexec"
+    """The CheckRun external ID field. All check runs of this type
+    share the same external ID.
+    """
+
+    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+        self.notebook_paths_checked: List[str] = []
+        super().__init__(check_run=check_run)
+
+    def report_noteburst_failure(
+        self, page_execution: PageExecutionInfo
+    ) -> None:
+        path = page_execution.page.repository_source_path
+        assert path is not None
+        annotation = Annotation(
+            path=path,
+            start_line=1,
+            message=page_execution.noteburst_error_message or "",
+            title=(
+                "Noteburst error (status "
+                f"{page_execution.noteburst_error_message})"
+            ),
+            annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        )
+        self.annotations.append(annotation)
+        self.notebook_paths_checked.append(path)
+
+    def report_noteburst_completion(
+        self,
+        *,
+        page_execution: PageExecutionInfo,
+        job_result: NoteburstJobResponseModel,
+    ) -> None:
+        if job_result.status != NoteburstJobStatus.complete:
+            raise ValueError("Noteburst job isn't complete yet")
+        assert job_result.status is not None
+
+        notebook_path = page_execution.page.repository_source_path
+        assert notebook_path is not None
+        self.notebook_paths_checked.append(notebook_path)
+        if not job_result.success:
+            annotation = Annotation(
+                path=notebook_path,
+                start_line=1,
+                message="We couldn't run this notebook successfully.",
+                title="Notebook execution error",
+                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+            )
+            self.annotations.append(annotation)
+
+    @property
+    def summary(self) -> str:
+        notebooks_count = len(self.notebook_paths_checked)
+        if self.conclusion == GitHubCheckRunConclusion.success:
+            text = "Notebooks ran without issue ✅"
+        else:
+            text = "There are some issues 🧐"
+
+        if notebooks_count == 1:
+            text = f"{text} (checked {notebooks_count} notebook)"
+        else:
+            text = f"{text} (checked {notebooks_count} notebooks)"
+
+        return text
+
+    @property
+    def text(self) -> str:
+        text = "| Notebook | Status |\n | --- | :-: |\n"
+
+        notebook_paths = list(set(self.notebook_paths_checked))
+        notebook_paths.sort()
+        for notebook_path in notebook_paths:
+            if self._is_file_ok(notebook_path):
+                text = f"{text}| {notebook_path} | ✅ |\n"
+            else:
+                text = f"{text}| {notebook_path} | ❌ |\n"
+
+        return text
+
+    def _is_file_ok(self, path: str) -> bool:
+        for annotation in self.annotations:
+            if annotation.path == path:
+                return False
+        return True

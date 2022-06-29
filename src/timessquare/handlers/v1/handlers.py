@@ -163,7 +163,7 @@ async def post_page(
     authors = [a.to_domain() for a in request_data.authors]
 
     async with context.session.begin():
-        page_name = await page_service.create_page_with_notebook_from_upload(
+        page_exec = await page_service.create_page_with_notebook_from_upload(
             title=request_data.title,
             ipynb=request_data.ipynb,
             uploader_username=username,
@@ -172,10 +172,10 @@ async def post_page(
             description=request_data.description,
             cache_ttl=request_data.cache_ttl,
         )
-        page = await page_service.get_page(page_name)
+        page = await page_service.get_page(page_exec.name)
 
     context.response.headers["location"] = context.request.url_for(
-        "get_page", page=page_name
+        "get_page", page=page_exec.name
     )
     return Page.from_domain(page=page, request=context.request)
 

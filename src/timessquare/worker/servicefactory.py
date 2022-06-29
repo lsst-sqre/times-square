@@ -32,7 +32,10 @@ async def create_github_repo_service(
         http_client=http_client, logger=logger, db_session=db_session
     )
     return GitHubRepoService(
-        github_client=github_client, page_service=page_service, logger=logger
+        http_client=http_client,
+        github_client=github_client,
+        page_service=page_service,
+        logger=logger,
     )
 
 

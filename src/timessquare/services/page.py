@@ -18,6 +18,7 @@ from timessquare.domain.noteburstjob import (
     NoteburstJobStatus,
 )
 from timessquare.domain.page import (
+    PageExecutionInfo,
     PageInstanceModel,
     PageModel,
     PageSummaryModel,
@@ -63,7 +64,8 @@ class PageService:
         cache_ttl: Optional[int] = None,
         tags: Optional[List[str]] = None,
         authors: Optional[List[PersonModel]] = None,
-    ) -> str:
+        execute: bool = True,
+    ) -> PageExecutionInfo:
         """Create a page resource given the parameterized Jupyter Notebook
         content.
         """
@@ -76,9 +78,11 @@ class PageService:
             tags=tags,
             authors=authors,
         )
-        return await self.add_page(page)
+        return await self.add_page(page, execute=execute)
 
-    async def add_page(self, page: PageModel, *, execute: bool = True) -> str:
+    async def add_page(
+        self, page: PageModel, *, execute: bool = True
+    ) -> PageExecutionInfo:
         """Add a page to the page store.
 
         Parameters
@@ -95,8 +99,11 @@ class PageService:
         """
         self._page_store.add(page)
         if execute:
-            await self._request_notebook_execution_for_page_defaults(page)
-        return page.name
+            return await self._request_notebook_execution_for_page_defaults(
+                page
+            )
+        else:
+            return PageExecutionInfo(name=page.name, values={}, page=page)
 
     async def get_page(self, name: str) -> PageModel:
         """Get the page from the data store, given its name."""
@@ -117,11 +124,11 @@ class PageService:
         return await self._page_store.list_page_summaries()
 
     async def get_pages_for_repo(
-        self, owner: str, name: str
+        self, owner: str, name: str, commit: Optional[str] = None
     ) -> List[PageModel]:
         """Get all pages backed by a specific GitHub repository."""
         return await self._page_store.list_pages_for_repository(
-            owner=owner, name=name
+            owner=owner, name=name, commit=commit
         )
 
     async def get_github_tree(self) -> List[GitHubNode]:
@@ -135,7 +142,7 @@ class PageService:
 
     async def _request_notebook_execution_for_page_defaults(
         self, page: PageModel
-    ) -> None:
+    ) -> PageExecutionInfo:
         """Request noteburst execution of with page's default values.
 
         This is useful for the `add_page` and `update_page` methods to start
@@ -145,7 +152,7 @@ class PageService:
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_values, page=page
         )
-        await self._request_noteburst_execution(page_instance)
+        return await self._request_noteburst_execution(page_instance)
 
     async def soft_delete_page(self, page: PageModel) -> None:
         """Soft delete a page by setting its date_deleted field."""
@@ -302,7 +309,7 @@ class PageService:
 
     async def _request_noteburst_execution(
         self, page_instance: PageInstanceModel
-    ) -> None:
+    ) -> PageExecutionInfo:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
@@ -322,7 +329,14 @@ class PageService:
                 noteburst_body=r.text,
             )
 
-            return None
+            return PageExecutionInfo(
+                name=page_instance.name,
+                values=page_instance.values,
+                page=page_instance.page,
+                noteburst_job=None,
+                noteburst_status_code=r.status_code,
+                noteburst_error_message=r.text,
+            )
 
         response_data = r.json()
         job = NoteburstJobModel.from_noteburst_response(response_data)
@@ -332,6 +346,14 @@ class PageService:
             page_name=page_instance.name,
             parameters=page_instance.values,
             job_url=job.job_url,
+        )
+        return PageExecutionInfo(
+            name=page_instance.name,
+            values=page_instance.values,
+            page=page_instance.page,
+            noteburst_job=job,
+            noteburst_status_code=r.status_code,
+            noteburst_error_message=None,
         )
 
     async def _create_html_matrix(
