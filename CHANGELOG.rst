@@ -1,11 +1,15 @@
 Change log
 ==========
 
-Unreleased
-----------
+0.5.0 (2022-07-04)
+------------------
 
-Times Square now implements GitHub Checks for pull requests for notebook repositories.
-Initially, Times Square validates the structure of YAML configuration files, specifically the ``times-square.yaml`` repository settings as well as the YAML sidecar files that describe each notebook.
+Times Square now implements two GitHub check runs for pull requests on notebook repositories:
+
+- The "YAML config" check validates the structure of YAML configuration files, specifically the ``times-square.yaml`` repository settings as well as the YAML sidecar files that describe each notebook.
+- The "Notebook execution" check actually runs notebooks (given their default parameters) with Noteburst, and ensures that they return without error.
+
+Together, these features will help contributors to Times Square notebook repositories ensure that their contributions work before they merge pull requests.
 
 0.4.0 (2022-05-14)
 ------------------
