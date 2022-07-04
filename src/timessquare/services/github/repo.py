@@ -37,7 +37,7 @@ from timessquare.domain.githubwebhook import (
     GitHubPullRequestModel,
     GitHubPushEventModel,
 )
-from timessquare.domain.noteburstjob import NoteburstJobStatus
+from timessquare.domain.noteburst import NoteburstJobStatus
 from timessquare.domain.page import PageExecutionInfo, PageModel
 
 from ..page import PageService

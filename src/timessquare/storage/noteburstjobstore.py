@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import aioredis
 
-from timessquare.domain.noteburstjob import NoteburstJobModel
+from timessquare.domain.noteburst import NoteburstJobModel
 from timessquare.domain.page import PageInstanceIdModel
 
 from .redisbase import RedisStore
@@ -15,7 +15,7 @@ class NoteburstJobStore(RedisStore[NoteburstJobModel]):
     requests for a given page and set of parameters.
 
     The associated domain model is
-    `timessquare.domain.noteburstjob.NoteburstJobModel`.
+    `timessquare.domain.noteburst.NoteburstJobModel`.
     """
 
     def __init__(self, redis: aioredis.Redis) -> None:
@@ -34,7 +34,7 @@ class NoteburstJobStore(RedisStore[NoteburstJobModel]):
 
         Parameters
         ----------
-        job : `timessquare.domain.noteburstjob.NoteburstJobModel`
+        job : `timessquare.domain.noteburst.NoteburstJobModel`
             The job record.
         page_id : `timessquare.domain.page.PageInstanceIdModel`
             Identifier of the page instance, composed of the page's name

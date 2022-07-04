@@ -23,7 +23,7 @@ from .githubcheckout import (
     RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
-from .noteburstjob import NoteburstJobResponseModel, NoteburstJobStatus
+from .noteburst import NoteburstJobResponseModel, NoteburstJobStatus
 from .page import PageExecutionInfo
 
 

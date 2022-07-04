@@ -29,7 +29,7 @@ from timessquare.exceptions import (
     ParameterSchemaError,
 )
 
-from .noteburstjob import NoteburstJobModel, NoteburstJobResponseModel
+from .noteburst import NoteburstJobModel, NoteburstJobResponseModel
 
 NB_VERSION = 4
 """The notebook format version used for reading and writing notebooks.

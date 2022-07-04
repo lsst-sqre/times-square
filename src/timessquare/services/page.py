@@ -12,7 +12,7 @@ from structlog.stdlib import BoundLogger
 from timessquare.config import config
 from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
-from timessquare.domain.noteburstjob import (
+from timessquare.domain.noteburst import (
     NoteburstJobModel,
     NoteburstJobResponseModel,
     NoteburstJobStatus,

@@ -13,7 +13,7 @@ from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel
 from traitlets.config import Config
 
-from .noteburstjob import NoteburstJobResponseModel
+from .noteburst import NoteburstJobResponseModel
 from .page import PageInstanceIdModel, PageInstanceModel
 
 
