@@ -26,6 +26,8 @@ from timessquare.exceptions import (
     ParameterSchemaError,
 )
 
+from .noteburst import NoteburstJobModel
+
 NB_VERSION = 4
 """The notebook format version used for reading and writing notebooks.
 
@@ -96,6 +98,11 @@ class PageModel:
 
     github_repo: Optional[str] = None
     """The GitHub repository name for GitHub-backed pages."""
+
+    github_commit: Optional[str] = None
+    """The SHA of the commit this page corresponds to; only used for pages
+    associated with a GitHub Check Run.
+    """
 
     repository_path_prefix: Optional[str] = None
     """The repository path prefix, relative to the root of the repository."""
@@ -193,6 +200,7 @@ class PageModel:
         cache_ttl: Optional[int] = None,
         tags: Optional[List[str]] = None,
         authors: Optional[List[PersonModel]] = None,
+        github_commit: Optional[str] = None,
     ) -> PageModel:
         name = uuid4().hex  # random slug for API uploads
         date_added = datetime.now(timezone.utc)
@@ -209,6 +217,7 @@ class PageModel:
             cache_ttl=cache_ttl,
             github_owner=github_owner,
             github_repo=github_repo,
+            github_commit=github_commit,
             repository_path_prefix=repository_path_prefix,
             repository_display_path_prefix=repository_display_path_prefix,
             repository_path_stem=repository_path_stem,
@@ -643,3 +652,17 @@ class PageInstanceModel(PageInstanceIdModel):
 
     page: PageModel
     """The page domain object."""
+
+
+@dataclass(kw_only=True)
+class PageExecutionInfo(PageInstanceModel):
+    """A domain model for information about a new page, including information
+    about the noteburst job that processes the page's default instantiation.
+    """
+
+    noteburst_status_code: int
+
+    noteburst_error_message: Optional[str] = None
+
+    noteburst_job: Optional[NoteburstJobModel] = None
+    """The noteburst job that is processing the new page's default form."""

@@ -40,7 +40,7 @@ async def test_github(client: AsyncClient) -> None:
         logger=get_logger(),
     )
 
-    await page_service.add_page(
+    await page_service.add_page_to_store(
         PageModel(
             name="1",
             ipynb=demo_path.read_text(),
@@ -57,10 +57,9 @@ async def test_github(client: AsyncClient) -> None:
             repository_source_extension=".ipynb",
             repository_source_sha="1" * 40,
             repository_sidecar_sha="1" * 40,
-        ),
-        execute=False,
+        )
     )
-    await page_service.add_page(
+    await page_service.add_page_to_store(
         PageModel(
             name="2",
             ipynb=demo_path.read_text(),
@@ -78,9 +77,8 @@ async def test_github(client: AsyncClient) -> None:
             repository_source_sha="1" * 40,
             repository_sidecar_sha="1" * 40,
         ),
-        execute=False,
     )
-    await page_service.add_page(
+    await page_service.add_page_to_store(
         PageModel(
             name="3",
             ipynb=demo_path.read_text(),
@@ -98,7 +96,6 @@ async def test_github(client: AsyncClient) -> None:
             repository_source_sha="1" * 40,
             repository_sidecar_sha="1" * 40,
         ),
-        execute=False,
     )
 
     await session.commit()

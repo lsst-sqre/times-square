@@ -12,12 +12,13 @@ from structlog.stdlib import BoundLogger
 from timessquare.config import config
 from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
-from timessquare.domain.noteburstjob import (
-    NoteburstJobModel,
+from timessquare.domain.noteburst import (
+    NoteburstApi,
     NoteburstJobResponseModel,
     NoteburstJobStatus,
 )
 from timessquare.domain.page import (
+    PageExecutionInfo,
     PageInstanceModel,
     PageModel,
     PageSummaryModel,
@@ -53,6 +54,7 @@ class PageService:
         self._job_store = job_store
         self._http_client = http_client
         self._logger = logger
+        self.noteburst_api = NoteburstApi(http_client=http_client)
 
     async def create_page_with_notebook_from_upload(
         self,
@@ -63,7 +65,7 @@ class PageService:
         cache_ttl: Optional[int] = None,
         tags: Optional[List[str]] = None,
         authors: Optional[List[PersonModel]] = None,
-    ) -> str:
+    ) -> PageExecutionInfo:
         """Create a page resource given the parameterized Jupyter Notebook
         content.
         """
@@ -76,10 +78,26 @@ class PageService:
             tags=tags,
             authors=authors,
         )
-        return await self.add_page(page)
+        return await self.add_page_and_execute(page)
 
-    async def add_page(self, page: PageModel, *, execute: bool = True) -> str:
+    async def add_page_to_store(self, page: PageModel) -> None:
         """Add a page to the page store.
+
+        Parameters
+        ----------
+        page: `PageModel`
+            The page model.
+
+        Notes
+        -----
+        For API uploads, use `create_page_with_notebook_from_upload` instead.
+        """
+        self._page_store.add(page)
+
+    async def add_page_and_execute(
+        self, page: PageModel, enable_retry: bool = True
+    ) -> PageExecutionInfo:
+        """Add a page to the page store and execute it with defaults.
 
         Parameters
         ----------
@@ -93,10 +111,10 @@ class PageService:
         -----
         For API uploads, use `create_page_with_notebook_from_upload` instead.
         """
-        self._page_store.add(page)
-        if execute:
-            await self._request_notebook_execution_for_page_defaults(page)
-        return page.name
+        await self.add_page_to_store(page)
+        return await self.execute_page_with_defaults(
+            page, enable_retry=enable_retry
+        )
 
     async def get_page(self, name: str) -> PageModel:
         """Get the page from the data store, given its name."""
@@ -117,25 +135,33 @@ class PageService:
         return await self._page_store.list_page_summaries()
 
     async def get_pages_for_repo(
-        self, owner: str, name: str
+        self, owner: str, name: str, commit: Optional[str] = None
     ) -> List[PageModel]:
         """Get all pages backed by a specific GitHub repository."""
         return await self._page_store.list_pages_for_repository(
-            owner=owner, name=name
+            owner=owner, name=name, commit=commit
         )
 
     async def get_github_tree(self) -> List[GitHubNode]:
         """Get the tree of GitHub-backed pages."""
         return await self._page_store.get_github_tree()
 
-    async def update_page(self, page: PageModel) -> None:
+    async def update_page_in_store(self, page: PageModel) -> None:
         """Update the page in the database."""
         await self._page_store.update_page(page)
-        await self._request_notebook_execution_for_page_defaults(page)
+        await self.execute_page_with_defaults(page)
 
-    async def _request_notebook_execution_for_page_defaults(
-        self, page: PageModel
-    ) -> None:
+    async def update_page_and_execute(
+        self, page: PageModel, enable_retry: bool = True
+    ) -> PageExecutionInfo:
+        await self.update_page_in_store(page)
+        return await self.execute_page_with_defaults(
+            page, enable_retry=enable_retry
+        )
+
+    async def execute_page_with_defaults(
+        self, page: PageModel, enable_retry: bool = True
+    ) -> PageExecutionInfo:
         """Request noteburst execution of with page's default values.
 
         This is useful for the `add_page` and `update_page` methods to start
@@ -145,7 +171,9 @@ class PageService:
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_values, page=page
         )
-        await self._request_noteburst_execution(page_instance)
+        return await self.request_noteburst_execution(
+            page_instance, enable_retry=enable_retry
+        )
 
     async def soft_delete_page(self, page: PageModel) -> None:
         """Soft delete a page by setting its date_deleted field."""
@@ -256,7 +284,7 @@ class PageService:
             self._logger.debug("No existing noteburst job available")
             # A record of a noteburst job is not available. Send a request
             # to noteburst.
-            await self._request_noteburst_execution(page_instance)
+            await self.request_noteburst_execution(page_instance)
             return None
 
         r = await self._http_client.get(
@@ -289,7 +317,7 @@ class PageService:
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
             await self._job_store.delete(page_instance)
-            await self._request_noteburst_execution(page_instance)
+            await self.request_noteburst_execution(page_instance)
         else:
             # server error from noteburst
             self._logger.warning(
@@ -300,38 +328,49 @@ class PageService:
             )
         return None
 
-    async def _request_noteburst_execution(
-        self, page_instance: PageInstanceModel
-    ) -> None:
+    async def request_noteburst_execution(
+        self, page_instance: PageInstanceModel, enable_retry: bool = True
+    ) -> PageExecutionInfo:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
         ipynb = page_instance.page.render_parameters(page_instance.values)
-        r = await self._http_client.post(
-            f"{config.environment_url}/noteburst/v1/notebooks/",
-            json={
-                "ipynb": ipynb,
-                "kernel_name": "LSST",  # TODO make a setting per page?
-            },
-            headers=self._noteburst_auth_header,
+        r = await self.noteburst_api.submit_job(
+            ipynb=ipynb, enable_retry=enable_retry
         )
-        if r.status_code != 202:
+        if r.status_code != 202 or r.data is None:
             self._logger.warning(
                 "Error requesting noteburst execution",
                 noteburst_status=r.status_code,
-                noteburst_body=r.text,
+                noteburst_body=r.error,
             )
 
-            return None
+            return PageExecutionInfo(
+                name=page_instance.name,
+                values=page_instance.values,
+                page=page_instance.page,
+                noteburst_job=None,
+                noteburst_status_code=r.status_code,
+                noteburst_error_message=r.error,
+            )
 
-        response_data = r.json()
-        job = NoteburstJobModel.from_noteburst_response(response_data)
-        await self._job_store.store_job(job=job, page_id=page_instance)
+        await self._job_store.store_job(
+            job=r.data.to_job_model(), page_id=page_instance
+        )
         self._logger.info(
             "Requested noteburst notebook execution",
             page_name=page_instance.name,
             parameters=page_instance.values,
-            job_url=job.job_url,
+            job_url=r.data.self_url,
+        )
+        assert r.data is not None
+        return PageExecutionInfo(
+            name=page_instance.name,
+            values=page_instance.values,
+            page=page_instance.page,
+            noteburst_job=r.data.to_job_model(),
+            noteburst_status_code=r.status_code,
+            noteburst_error_message=r.error,
         )
 
     async def _create_html_matrix(

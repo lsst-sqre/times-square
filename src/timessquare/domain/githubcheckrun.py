@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABCMeta, abstractproperty
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -12,13 +13,18 @@ from .githubapi import (
     GitHubBlobModel,
     GitHubCheckRunAnnotationLevel,
     GitHubCheckRunConclusion,
+    GitHubCheckRunModel,
+    GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     NotebookSidecarFile,
+    RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
+from .noteburst import NoteburstJobResponseModel, NoteburstJobStatus
+from .page import PageExecutionInfo
 
 
 @dataclass(kw_only=True)
@@ -83,24 +89,144 @@ class Annotation:
         return output
 
 
-class GitHubConfigsCheck:
+class GitHubCheck(metaclass=ABCMeta):
+    """A base class for GitHub Check domain models."""
+
+    title: str = "Times Square check"
+
+    external_id: str = "times-square/generic-check"
+    """The CheckRun external ID field. All check runs of this type
+    share the same external ID.
+    """
+
+    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+        self.check_run = check_run
+        self.annotations: List[Annotation] = []
+
+    @property
+    def conclusion(self) -> GitHubCheckRunConclusion:
+        """A conclusion based on the annotations."""
+        for annotation in self.annotations:
+            if (
+                annotation.annotation_level
+                == GitHubCheckRunAnnotationLevel.failure
+            ):
+                return GitHubCheckRunConclusion.failure
+
+        return GitHubCheckRunConclusion.success
+
+    @abstractproperty
+    def summary(self) -> str:
+        """Summary text for the check."""
+        raise NotImplementedError
+
+    @abstractproperty
+    def text(self) -> str:
+        """The text body of the check's message."""
+        raise NotImplementedError
+
+    def export_truncated_annotations(self) -> List[Dict[str, Any]]:
+        """Export the first 50 annotations to objects serializable to
+        GitHub.
+
+        Sending more than 50 annotations requires multiple HTTP requests,
+        which we haven't implemented yet. See
+        https://docs.github.com/en/rest/checks/runs#update-a-check-run
+        """
+        return [a.export() for a in self.annotations[:50]]
+
+    async def submit_in_progress(self, github_client: GitHubAPI) -> None:
+        """Set the check run to "In progress"."""
+        await github_client.patch(
+            self.check_run.url,
+            data={"status": GitHubCheckRunStatus.in_progress},
+        )
+
+    async def submit_conclusion(
+        self,
+        *,
+        github_client: GitHubAPI,
+    ) -> None:
+        """Send a patch result for the check run to GitHub with the final
+        conclusion of the check.
+        """
+        await github_client.patch(
+            self.check_run.url,
+            data={
+                "status": GitHubCheckRunStatus.completed,
+                "conclusion": self.conclusion,
+                "output": {
+                    "title": self.title,
+                    "summary": self.summary,
+                    "text": self.text,
+                    "annotations": self.export_truncated_annotations(),
+                },
+            },
+        )
+
+
+class GitHubConfigsCheck(GitHubCheck):
     """A domain model for a YAML configuration GitHub Check run."""
 
-    def __init__(self) -> None:
-        self.annotations: List[Annotation] = []
+    title: str = "YAML config validation"
+
+    external_id: str = "times-square/yaml-check"
+    """The CheckRun external ID field. All check runs of this type
+    share the same external ID.
+    """
+
+    def __init__(self, check_run: GitHubCheckRunModel) -> None:
         self.sidecar_files_checked: List[str] = []
 
+        # Optional caching for data reuse
+        self.checkout: Optional[GitHubRepositoryCheckout] = None
+        self.tree: Optional[RecursiveGitTreeModel] = None
+
+        super().__init__(check_run=check_run)
+
     @classmethod
-    async def validate_repo(
+    async def create_check_run_and_validate(
         cls,
+        *,
         github_client: GitHubAPI,
         repo: GitHubRepositoryModel,
         head_sha: str,
     ) -> GitHubConfigsCheck:
-        """Create a check run result model for a specific SHA of a GitHub
-        repository containing Times Square notebooks.
+        """Create a GitHubConfigsCheck by first creating a GitHub Check Run,
+        then running a validation via `validate_repo`.
         """
-        check = cls()
+        data = await github_client.post(
+            "repos/{owner}/{repo}/check-runs",
+            url_vars={"owner": repo.owner.login, "repo": repo.name},
+            data={
+                "name": cls.title,
+                "head_sha": head_sha,
+                "external_id": cls.external_id,
+            },
+        )
+        check_run = GitHubCheckRunModel.parse_obj(data)
+        return await cls.validate_repo(
+            check_run=check_run,
+            github_client=github_client,
+            repo=repo,
+            head_sha=head_sha,
+        )
+
+    @classmethod
+    async def validate_repo(
+        cls,
+        *,
+        github_client: GitHubAPI,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        check_run: GitHubCheckRunModel,
+    ) -> GitHubConfigsCheck:
+        """Create a check run result model for a specific SHA of a GitHub
+        repository containing Times Square notebooks given a check run already
+        registered with GitHub.
+        """
+        check = cls(check_run)
+        await check.submit_in_progress(github_client)
 
         try:
             checkout = await GitHubRepositoryCheckout.create(
@@ -123,6 +249,13 @@ class GitHubConfigsCheck:
                 repo=repo,
                 notebook_ref=notebook_ref,
             )
+
+        # Cache this checkout and tree so that the notebook execution check
+        # can reuse them efficiently.
+        check._cache_github_checkout(
+            checkout=checkout,
+            tree=tree,
+        )
 
         return check
 
@@ -152,7 +285,6 @@ class GitHubConfigsCheck:
 
     @property
     def conclusion(self) -> GitHubCheckRunConclusion:
-        """Synthesize a conclusion based on the annotations."""
         for annotation in self.annotations:
             if (
                 annotation.annotation_level
@@ -161,10 +293,6 @@ class GitHubConfigsCheck:
                 return GitHubCheckRunConclusion.failure
 
         return GitHubCheckRunConclusion.success
-
-    @property
-    def title(self) -> str:
-        return "YAML config validation"
 
     @property
     def summary(self) -> str:
@@ -213,12 +341,106 @@ class GitHubConfigsCheck:
                 return False
         return True
 
-    def export_truncated_annotations(self) -> List[Dict[str, Any]]:
-        """Export the first 50 annotations to objects serializable to
-        GitHub.
-
-        Sending more than 50 annotations requires multiple HTTP requests,
-        which we haven't implemented yet. See
-        https://docs.github.com/en/rest/checks/runs#update-a-check-run
+    def _cache_github_checkout(
+        self,
+        *,
+        checkout: GitHubRepositoryCheckout,
+        tree: RecursiveGitTreeModel,
+    ) -> None:
+        """Cache the checkout and Git tree (usually obtained in
+        iniitalization so they can be reused elsewhere without getting the
+        resources again from GitHub.
         """
-        return [a.export() for a in self.annotations[:50]]
+        self.checkout = checkout
+        self.tree = tree
+
+
+class NotebookExecutionsCheck(GitHubCheck):
+    """A domain model for a notebook execution GitHub check."""
+
+    title: str = "Notebook execution"
+
+    external_id: str = "times-square/nbexec"
+    """The CheckRun external ID field. All check runs of this type
+    share the same external ID.
+    """
+
+    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+        self.notebook_paths_checked: List[str] = []
+        super().__init__(check_run=check_run)
+
+    def report_noteburst_failure(
+        self, page_execution: PageExecutionInfo
+    ) -> None:
+        path = page_execution.page.repository_source_path
+        assert path is not None
+        annotation = Annotation(
+            path=path,
+            start_line=1,
+            message=page_execution.noteburst_error_message or "",
+            title=(
+                "Noteburst error (status "
+                f"{page_execution.noteburst_error_message})"
+            ),
+            annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        )
+        self.annotations.append(annotation)
+        self.notebook_paths_checked.append(path)
+
+    def report_noteburst_completion(
+        self,
+        *,
+        page_execution: PageExecutionInfo,
+        job_result: NoteburstJobResponseModel,
+    ) -> None:
+        if job_result.status != NoteburstJobStatus.complete:
+            raise ValueError("Noteburst job isn't complete yet")
+        assert job_result.status is not None
+
+        notebook_path = page_execution.page.repository_source_path
+        assert notebook_path is not None
+        self.notebook_paths_checked.append(notebook_path)
+        if not job_result.success:
+            annotation = Annotation(
+                path=notebook_path,
+                start_line=1,
+                message="We couldn't run this notebook successfully.",
+                title="Notebook execution error",
+                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+            )
+            self.annotations.append(annotation)
+
+    @property
+    def summary(self) -> str:
+        notebooks_count = len(self.notebook_paths_checked)
+        if self.conclusion == GitHubCheckRunConclusion.success:
+            text = "Notebooks ran without issue ✅"
+        else:
+            text = "There are some issues 🧐"
+
+        if notebooks_count == 1:
+            text = f"{text} (checked {notebooks_count} notebook)"
+        else:
+            text = f"{text} (checked {notebooks_count} notebooks)"
+
+        return text
+
+    @property
+    def text(self) -> str:
+        text = "| Notebook | Status |\n | --- | :-: |\n"
+
+        notebook_paths = list(set(self.notebook_paths_checked))
+        notebook_paths.sort()
+        for notebook_path in notebook_paths:
+            if self._is_file_ok(notebook_path):
+                text = f"{text}| {notebook_path} | ✅ |\n"
+            else:
+                text = f"{text}| {notebook_path} | ❌ |\n"
+
+        return text
+
+    def _is_file_ok(self, path: str) -> bool:
+        for annotation in self.annotations:
+            if annotation.path == path:
+                return False
+        return True

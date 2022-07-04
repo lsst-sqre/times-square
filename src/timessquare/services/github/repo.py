@@ -6,17 +6,20 @@ with the Page service for managing page domain models.
 
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 from pathlib import PurePosixPath
-from typing import List
+from typing import Deque, List, Optional
 
 from gidgethub.httpx import GitHubAPI
+from httpx import AsyncClient
 from structlog.stdlib import BoundLogger
 
 from timessquare.domain.githubapi import (
     GitHubBlobModel,
     GitHubBranchModel,
+    GitHubCheckRunConclusion,
     GitHubCheckRunModel,
-    GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
 from timessquare.domain.githubcheckout import (
@@ -24,14 +27,18 @@ from timessquare.domain.githubcheckout import (
     RepositoryNotebookModel,
     RepositorySettingsFile,
 )
-from timessquare.domain.githubcheckrun import GitHubConfigsCheck
+from timessquare.domain.githubcheckrun import (
+    GitHubConfigsCheck,
+    NotebookExecutionsCheck,
+)
 from timessquare.domain.githubwebhook import (
     GitHubCheckRunEventModel,
     GitHubCheckSuiteEventModel,
     GitHubPullRequestModel,
     GitHubPushEventModel,
 )
-from timessquare.domain.page import PageModel
+from timessquare.domain.noteburst import NoteburstJobStatus
+from timessquare.domain.page import PageExecutionInfo, PageModel
 
 from ..page import PageService
 
@@ -41,6 +48,8 @@ class GitHubRepoService:
 
     Parameters
     ----------
+    http_client : `AsyncClient`
+        An httpx client.
     github_client : `GitHubAPI`
         A GidgetHub API client that is authenticated as a GitHub app
         installation.
@@ -54,10 +63,12 @@ class GitHubRepoService:
 
     def __init__(
         self,
+        http_client: AsyncClient,
         github_client: GitHubAPI,
         page_service: PageService,
         logger: BoundLogger,
     ) -> None:
+        self._http_client = http_client
         self._github_client = github_client
         self._page_service = page_service
         self._logger = logger
@@ -118,21 +129,6 @@ class GitHubRepoService:
         )
         return GitHubBranchModel.parse_obj(data)
 
-    async def create_checkout(
-        self, *, repo: GitHubRepositoryModel, git_ref: str, head_sha: str
-    ) -> GitHubRepositoryCheckout:
-        settings = await self.load_settings_file(repo=repo, git_ref=head_sha)
-        checkout = GitHubRepositoryCheckout(
-            owner_name=repo.owner.login,
-            name=repo.name,
-            settings=settings,
-            git_ref=git_ref,
-            head_sha=head_sha,
-            trees_url=repo.trees_url,
-            blobs_url=repo.blobs_url,
-        )
-        return checkout
-
     async def load_settings_file(
         self, *, repo: GitHubRepositoryModel, git_ref: str
     ) -> RepositorySettingsFile:
@@ -147,7 +143,10 @@ class GitHubRepoService:
         file_content = content_data.decode()
         return RepositorySettingsFile.parse_yaml(file_content)
 
-    async def sync_checkout(self, checkout: GitHubRepositoryCheckout) -> None:
+    async def sync_checkout(
+        self,
+        checkout: GitHubRepositoryCheckout,
+    ) -> None:
         """Sync a "checkout" of a GitHub repository.
 
         Notes
@@ -167,7 +166,8 @@ class GitHubRepoService:
         existing_pages = {
             page.display_path: page
             for page in await self._page_service.get_pages_for_repo(
-                owner=checkout.owner_name, name=checkout.name
+                owner=checkout.owner_name,
+                name=checkout.name,
             )
         }
         found_display_paths: List[str] = []
@@ -217,9 +217,12 @@ class GitHubRepoService:
                 self._logger.debug(
                     "Creating new page for notebook", display_path=display_path
                 )
-                await self.create_new_page(
+                page = await self.create_page(
                     checkout=checkout, notebook=notebook
                 )
+                # pre-execute that page
+                page_svc = self._page_service
+                await page_svc.execute_page_with_defaults(page)
 
         deleted_paths = set(existing_pages.keys()) - set(found_display_paths)
         self._logger.info("Paths to delete", count=len(deleted_paths))
@@ -227,13 +230,26 @@ class GitHubRepoService:
             page = existing_pages[deleted_path]
             await self._page_service.soft_delete_page(page)
 
-    async def create_new_page(
+    async def create_page(
         self,
         *,
         checkout: GitHubRepositoryCheckout,
         notebook: RepositoryNotebookModel,
-    ) -> None:
-        """Create a new page based on the notebook tree ref."""
+        commit_sha: Optional[str] = None,
+    ) -> PageModel:
+        """Create a new page based on the notebook tree ref.
+
+        Parameters
+        ----------
+        checkout : `GitHubRepositoryCheckout`
+            The repository checkout
+        notebook : `RepositoryNotebookModel`
+            The notebook from the repository that is the basis for the page.
+        commit_sha : `str`, optional
+            If set, this page is associated with a specific commit, rather than
+            the default view of a repository. Commit-specific pages are used
+            to show previews for pull requests and GitHub Check Run results.
+        """
         display_path_prefix = notebook.get_display_path_prefix(checkout)
 
         source_path = PurePosixPath(notebook.notebook_source_path)
@@ -260,8 +276,10 @@ class GitHubRepoService:
             cache_ttl=notebook.sidecar.cache_ttl,
             tags=notebook.sidecar.tags,
             authors=notebook.sidecar.export_authors(),
+            github_commit=commit_sha,
         )
-        await self._page_service.add_page(page)
+        await self._page_service.add_page_to_store(page)
+        return page
 
     async def update_page(
         self, *, notebook: RepositoryNotebookModel, page: PageModel
@@ -291,77 +309,199 @@ class GitHubRepoService:
         page.repository_source_sha = notebook.notebook_git_tree_sha
         page.repository_sidecar_sha = notebook.sidecar_git_tree_sha
 
-        await self._page_service.update_page(page)
+        await self._page_service.update_page_and_execute(page)
 
-    async def create_check_run(
+    async def initiate_check_runs(
         self, *, payload: GitHubCheckSuiteEventModel
     ) -> None:
-        """Create a new GitHub check run suite, given a new Check Suite.
+        """Create a new GitHub check runs, given a new Check Suite.
 
+        Notes
+        -----
         NOTE: currently we're assuming that check suites are automatically
         created when created a check run. See
         https://docs.github.com/en/rest/checks/runs#create-a-check-run
         """
-        await self._create_yaml_config_check_run(
+        # Run the configurations check
+        config_check = await GitHubConfigsCheck.create_check_run_and_validate(
+            github_client=self._github_client,
             repo=payload.repository,
             head_sha=payload.check_suite.head_sha,
         )
+        await config_check.submit_conclusion(github_client=self._github_client)
+
+        repo = payload.repository
+        data = await self._github_client.post(
+            "repos/{owner}/{repo}/check-runs",
+            url_vars={"owner": repo.owner.login, "repo": repo.name},
+            data={
+                "name": NotebookExecutionsCheck.title,
+                "head_sha": payload.check_suite.head_sha,
+                "external_id": NotebookExecutionsCheck.external_id,
+            },
+        )
+        check_run = GitHubCheckRunModel.parse_obj(data)
+        if config_check.conclusion == GitHubCheckRunConclusion.success:
+            await self.run_notebook_check_run(
+                check_run=check_run,
+                repo=payload.repository,
+            )
+        else:
+            # Set the notebook check run to "neutral" indicating that we're
+            # skipping this check.
+            await self._github_client.patch(
+                check_run.url,
+                data={"conclusion": GitHubCheckRunConclusion.neutral},
+            )
 
     async def create_rerequested_check_run(
         self, *, payload: GitHubCheckRunEventModel
     ) -> None:
         """Run a GitHub check run that was rerequested."""
-        await self._create_yaml_config_check_run(
-            repo=payload.repository,
-            head_sha=payload.check_run.head_sha,
-        )
+        external_id = payload.check_run.external_id
+        if external_id == GitHubConfigsCheck.external_id:
+            config_check = await GitHubConfigsCheck.validate_repo(
+                github_client=self._github_client,
+                repo=payload.repository,
+                head_sha=payload.check_run.head_sha,
+                check_run=payload.check_run,
+            )
+            await config_check.submit_conclusion(
+                github_client=self._github_client
+            )
+        elif external_id == NotebookExecutionsCheck.external_id:
+            await self.run_notebook_check_run(
+                check_run=payload.check_run,
+                repo=payload.repository,
+            )
 
-    async def _create_yaml_config_check_run(
-        self, *, repo: GitHubRepositoryModel, head_sha: str
+    async def run_notebook_check_run(
+        self, *, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
     ) -> None:
-        data = await self._github_client.post(
-            "repos/{owner}/{repo}/check-runs",
-            url_vars={"owner": repo.owner.login, "repo": repo.name},
-            data={"name": "YAML configurations", "head_sha": head_sha},
-        )
-        check_run = GitHubCheckRunModel.parse_obj(data)
-        await self._compute_check_run(check_run=check_run, repo=repo)
+        """Run the notebook execution check.
 
-    async def compute_check_run(
-        self, *, payload: GitHubCheckRunEventModel
-    ) -> None:
-        """Compute a GitHub check run."""
-        await self._compute_check_run(
-            repo=payload.repository, check_run=payload.check_run
-        )
+        This check actually creates/updates Page resources, hence it is run
+        at the service layer, rather than in a domain model.
+        """
+        check = NotebookExecutionsCheck(check_run)
+        await check.submit_in_progress(self._github_client)
+        self._logger.debug("Notebook executions check in progress")
 
-    async def _compute_check_run(
-        self, *, repo: GitHubRepositoryModel, check_run: GitHubCheckRunModel
-    ) -> None:
-        """Compute the YAML validation check run."""
-        # Set the check run to in-progress
-        await self._github_client.patch(
-            check_run.url,
-            data={"status": GitHubCheckRunStatus.in_progress},
-        )
-
-        config_check = await GitHubConfigsCheck.validate_repo(
+        checkout = await GitHubRepositoryCheckout.create(
             github_client=self._github_client,
             repo=repo,
             head_sha=check_run.head_sha,
         )
 
-        # Set the check run to complete
-        await self._github_client.patch(
-            check_run.url,
-            data={
-                "status": GitHubCheckRunStatus.completed,
-                "conclusion": config_check.conclusion,
-                "output": {
-                    "title": config_check.title,
-                    "summary": config_check.summary,
-                    "text": config_check.text,
-                    "annotations": config_check.export_truncated_annotations(),
-                },
-            },
-        )
+        # Look for any existing pages for this repo's SHA. If they already
+        # exist it indicates the check is being re-run, so we'll delete those
+        # old pages for this commit
+        for page in await self._page_service.get_pages_for_repo(
+            owner=checkout.owner_name,
+            name=checkout.name,
+            commit=check_run.head_sha,
+        ):
+            await self._page_service.soft_delete_page(page)
+            self._logger.debug(
+                "Deleted existing page for notebook check run",
+                page_name=page.name,
+            )
+
+        tree = await checkout.get_git_tree(self._github_client)
+        pending_pages: Deque[PageExecutionInfo] = deque()
+        for notebook_ref in tree.find_notebooks(checkout.settings):
+            self._logger.debug(
+                "Started notebook execution for notebook",
+                path=notebook_ref.notebook_source_path,
+            )
+            notebook = await checkout.load_notebook(
+                notebook_ref=notebook_ref, github_client=self._github_client
+            )
+            page = await self.create_page(
+                checkout=checkout,
+                notebook=notebook,
+                commit_sha=check_run.head_sha,
+            )
+            page_execution_info = (
+                await self._page_service.execute_page_with_defaults(
+                    page, enable_retry=False  # fail quickly for CI
+                )
+            )
+            if page_execution_info.noteburst_error_message is not None:
+                self._logger.debug(
+                    "Got immediate noteburst error",
+                    path=notebook_ref.notebook_source_path,
+                    error_message=page_execution_info.noteburst_error_message,
+                )
+                check.report_noteburst_failure(page_execution_info)
+            else:
+                pending_pages.append(page_execution_info)
+                self._logger.debug(
+                    "Noteburst result is pending",
+                    path=notebook_ref.notebook_source_path,
+                )
+
+        await asyncio.sleep(5.0)  # pause for noteburst to work
+
+        # Poll for noteburst results
+        # TODO add a timeout to set a null result on the check run if
+        # noteburst doesn't clear the jobs in a reasonable time frame
+        checked_page_count = 0
+        while len(pending_pages) > 0:
+            checked_page_count += 1
+            page_execution = pending_pages.popleft()
+            self._logger.debug(
+                "Polling noteburst job status",
+                path=page_execution.page.repository_source_path,
+            )
+            assert page_execution.noteburst_job is not None
+            r = await self._page_service.noteburst_api.get_job(
+                page_execution.noteburst_job.job_url
+            )
+            if r.status_code >= 400:
+                # This is actually an issue with the noteburst service
+                # rather the notebook; consider adding that nuance to the
+                # GitHub Check
+                check.report_noteburst_failure(page_execution)
+                continue
+
+            job = r.data
+            assert job is not None
+            if job.status == NoteburstJobStatus.complete:
+                self._logger.debug(
+                    "Noteburst job is complete",
+                    path=page_execution.page.repository_source_path,
+                )
+                check.report_noteburst_completion(
+                    page_execution=page_execution, job_result=job
+                )
+                # TODO this is where we could render that noteburst result
+                # to HTML automatically
+            else:
+                # thow it back on the queue
+                self._logger.debug(
+                    "Continuing to check noteburst job",
+                    path=page_execution.page.repository_source_path,
+                )
+                pending_pages.append(page_execution)
+
+            # Once we've gone through all the pages once, pause
+            if checked_page_count >= len(pending_pages):
+                self._logger.debug(
+                    "Pause polling of noteburst jobs",
+                    checked_page_count=checked_page_count,
+                )
+                await asyncio.sleep(2)
+                self._logger.debug(
+                    "Pause finished",
+                    checked_page_count=checked_page_count,
+                )
+                checked_page_count = 0
+            else:
+                self._logger.debug(
+                    "Continuing to poll noteburst jobs",
+                    pending_count=len(pending_pages),
+                    checked_page_count=checked_page_count,
+                )
+
+        await check.submit_conclusion(github_client=self._github_client)

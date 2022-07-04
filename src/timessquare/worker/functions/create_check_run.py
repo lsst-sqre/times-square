@@ -29,5 +29,5 @@ async def create_check_run(
             db_session=db_session,
         )
         async with db_session.begin():
-            await github_repo_service.create_check_run(payload=payload)
+            await github_repo_service.initiate_check_runs(payload=payload)
     return "done"
