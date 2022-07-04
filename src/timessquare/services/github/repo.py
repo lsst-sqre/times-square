@@ -432,6 +432,8 @@ class GitHubRepoService:
                     path=notebook_ref.notebook_source_path,
                 )
 
+        await asyncio.sleep(5.0)  # pause for noteburst to work
+
         # Poll for noteburst results
         # TODO add a timeout to set a null result on the check run if
         # noteburst doesn't clear the jobs in a reasonable time frame
@@ -443,9 +445,19 @@ class GitHubRepoService:
                 "Polling noteburst job status",
                 path=page_execution.page.repository_source_path,
             )
-            job = await page_execution.get_current_job(
-                http_client=self._http_client, logger=self._logger
+            assert page_execution.noteburst_job is not None
+            r = await self._page_service.noteburst_api.get_job(
+                page_execution.noteburst_job.job_url
             )
+            if r.status_code >= 400:
+                # This is actually an issue with the noteburst service
+                # rather the notebook; consider adding that nuance to the
+                # GitHub Check
+                check.report_noteburst_failure(page_execution)
+                continue
+
+            job = r.data
+            assert job is not None
             if job.status == NoteburstJobStatus.complete:
                 self._logger.debug(
                     "Noteburst job is complete",

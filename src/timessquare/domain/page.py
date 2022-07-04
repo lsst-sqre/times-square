@@ -14,11 +14,8 @@ from uuid import uuid4
 import jinja2
 import jsonschema.exceptions
 import nbformat
-from httpx import AsyncClient
 from jsonschema import Draft202012Validator
-from structlog.stdlib import BoundLogger
 
-from timessquare.config import config
 from timessquare.exceptions import (
     PageNotebookFormatError,
     PageParameterError,
@@ -29,7 +26,7 @@ from timessquare.exceptions import (
     ParameterSchemaError,
 )
 
-from .noteburst import NoteburstJobModel, NoteburstJobResponseModel
+from .noteburst import NoteburstJobModel
 
 NB_VERSION = 4
 """The notebook format version used for reading and writing notebooks.
@@ -669,27 +666,3 @@ class PageExecutionInfo(PageInstanceModel):
 
     noteburst_job: Optional[NoteburstJobModel] = None
     """The noteburst job that is processing the new page's default form."""
-
-    async def get_current_job(
-        self,
-        *,
-        http_client: AsyncClient,
-        logger: BoundLogger,
-    ) -> NoteburstJobResponseModel:
-        """Get the current result from noteburst for the job.."""
-        if self.noteburst_job is None:
-            raise ValueError(
-                "PageExecutionInfo does not have noteburst_job set"
-            )
-        r = await http_client.get(
-            self.noteburst_job.job_url,
-            headers={
-                "Authorization": (
-                    f"Bearer {config.gafaelfawr_token.get_secret_value()}"
-                )
-            },
-        )
-        logger.debug(
-            "current job response status", status=r.status_code, body=r.text
-        )
-        return NoteburstJobResponseModel.parse_obj(r.json())

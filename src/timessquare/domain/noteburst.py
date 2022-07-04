@@ -1,14 +1,16 @@
-"""Domain model for a noteburst job (that corresponds to the execution of a
-page's ipynb notebook for a given set of parameters.
-"""
+"""Domain model for the noteburst service integration."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Mapping, Optional
+from typing import Dict, Optional
 
+from httpx import AsyncClient
 from pydantic import AnyHttpUrl, BaseModel
+
+from timessquare.config import config
 
 
 class NoteburstJobModel(BaseModel):
@@ -21,19 +23,6 @@ class NoteburstJobModel(BaseModel):
 
     job_url: AnyHttpUrl
     """The URL of the noteburst job resource."""
-
-    @classmethod
-    def from_noteburst_response(
-        cls, data: Mapping[str, Any]
-    ) -> NoteburstJobModel:
-        """Create a NoteburstJobModel from a noteburst job metadata
-        response.
-        """
-        d = NoteburstJobResponseModel.parse_obj(data)
-        return cls(
-            date_submitted=d.enqueue_time,
-            job_url=d.self_url,
-        )
 
 
 class NoteburstJobStatus(str, Enum):
@@ -77,3 +66,72 @@ class NoteburstJobResponseModel(BaseModel):
     """Whether the execution was successful or not (only set if result is
     available).
     """
+
+    def to_job_model(self) -> NoteburstJobModel:
+        """Export to a `NoteburstJobModel` for storage."""
+        return NoteburstJobModel(
+            date_submitted=self.enqueue_time, job_url=self.self_url
+        )
+
+
+@dataclass
+class NoteburstApiResult:
+
+    data: Optional[NoteburstJobResponseModel]
+
+    status_code: int
+
+    error: Optional[str] = None
+
+
+class NoteburstApi:
+    """A client for the noteburst noteburst execution service API."""
+
+    def __init__(self, http_client: AsyncClient) -> None:
+        self._http_client = http_client
+
+    async def submit_job(
+        self, *, ipynb: str, kernel: str = "LSST", enable_retry: bool = True
+    ) -> NoteburstApiResult:
+        r = await self._http_client.post(
+            f"{config.environment_url}/noteburst/v1/notebooks/",
+            json={
+                "ipynb": ipynb,
+                "kernel_name": kernel,
+                "enable_retry": enable_retry,
+            },
+            headers=self._noteburst_auth_header,
+        )
+        if r.status_code == 202:
+            return NoteburstApiResult(
+                status_code=r.status_code,
+                data=NoteburstJobResponseModel.parse_obj(r.json()),
+                error=None,
+            )
+        else:
+            return NoteburstApiResult(
+                status_code=r.status_code, data=None, error=r.text
+            )
+
+    async def get_job(self, job_url: str) -> NoteburstApiResult:
+        r = await self._http_client.get(
+            job_url, headers=self._noteburst_auth_header
+        )
+        if r.status_code == 200:
+            return NoteburstApiResult(
+                status_code=r.status_code,
+                data=NoteburstJobResponseModel.parse_obj(r.json()),
+                error=None,
+            )
+        else:
+            return NoteburstApiResult(
+                status_code=r.status_code, data=None, error=r.text
+            )
+
+    @property
+    def _noteburst_auth_header(self) -> Dict[str, str]:
+        return {
+            "Authorization": (
+                f"Bearer {config.gafaelfawr_token.get_secret_value()}"
+            )
+        }

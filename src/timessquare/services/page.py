@@ -13,7 +13,7 @@ from timessquare.config import config
 from timessquare.domain.githubtree import GitHubNode
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
 from timessquare.domain.noteburst import (
-    NoteburstJobModel,
+    NoteburstApi,
     NoteburstJobResponseModel,
     NoteburstJobStatus,
 )
@@ -54,6 +54,7 @@ class PageService:
         self._job_store = job_store
         self._http_client = http_client
         self._logger = logger
+        self.noteburst_api = NoteburstApi(http_client=http_client)
 
     async def create_page_with_notebook_from_upload(
         self,
@@ -314,19 +315,12 @@ class PageService:
         and store the job.
         """
         ipynb = page_instance.page.render_parameters(page_instance.values)
-        r = await self._http_client.post(
-            f"{config.environment_url}/noteburst/v1/notebooks/",
-            json={
-                "ipynb": ipynb,
-                "kernel_name": "LSST",  # TODO make a setting per page?
-            },
-            headers=self._noteburst_auth_header,
-        )
-        if r.status_code != 202:
+        r = await self.noteburst_api.submit_job(ipynb=ipynb)
+        if r.status_code != 202 or r.data is None:
             self._logger.warning(
                 "Error requesting noteburst execution",
                 noteburst_status=r.status_code,
-                noteburst_body=r.text,
+                noteburst_body=r.error,
             )
 
             return PageExecutionInfo(
@@ -335,25 +329,26 @@ class PageService:
                 page=page_instance.page,
                 noteburst_job=None,
                 noteburst_status_code=r.status_code,
-                noteburst_error_message=r.text,
+                noteburst_error_message=r.error,
             )
 
-        response_data = r.json()
-        job = NoteburstJobModel.from_noteburst_response(response_data)
-        await self._job_store.store_job(job=job, page_id=page_instance)
+        await self._job_store.store_job(
+            job=r.data.to_job_model(), page_id=page_instance
+        )
         self._logger.info(
             "Requested noteburst notebook execution",
             page_name=page_instance.name,
             parameters=page_instance.values,
-            job_url=job.job_url,
+            job_url=r.data.self_url,
         )
+        assert r.data is not None
         return PageExecutionInfo(
             name=page_instance.name,
             values=page_instance.values,
             page=page_instance.page,
-            noteburst_job=job,
+            noteburst_job=r.data.to_job_model(),
             noteburst_status_code=r.status_code,
-            noteburst_error_message=None,
+            noteburst_error_message=r.error,
         )
 
     async def _create_html_matrix(
