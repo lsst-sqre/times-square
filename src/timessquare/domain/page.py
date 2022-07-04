@@ -660,7 +660,7 @@ class PageExecutionInfo(PageInstanceModel):
     about the noteburst job that processes the page's default instantiation.
     """
 
-    noteburst_status_code: Optional[int] = None
+    noteburst_status_code: int
 
     noteburst_error_message: Optional[str] = None
 

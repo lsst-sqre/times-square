@@ -65,7 +65,6 @@ class PageService:
         cache_ttl: Optional[int] = None,
         tags: Optional[List[str]] = None,
         authors: Optional[List[PersonModel]] = None,
-        execute: bool = True,
     ) -> PageExecutionInfo:
         """Create a page resource given the parameterized Jupyter Notebook
         content.
@@ -79,12 +78,26 @@ class PageService:
             tags=tags,
             authors=authors,
         )
-        return await self.add_page(page, execute=execute)
+        return await self.add_page_and_execute(page)
 
-    async def add_page(
-        self, page: PageModel, *, execute: bool = True
-    ) -> PageExecutionInfo:
+    async def add_page_to_store(self, page: PageModel) -> None:
         """Add a page to the page store.
+
+        Parameters
+        ----------
+        page: `PageModel`
+            The page model.
+
+        Notes
+        -----
+        For API uploads, use `create_page_with_notebook_from_upload` instead.
+        """
+        self._page_store.add(page)
+
+    async def add_page_and_execute(
+        self, page: PageModel, enable_retry: bool = True
+    ) -> PageExecutionInfo:
+        """Add a page to the page store and execute it with defaults.
 
         Parameters
         ----------
@@ -98,13 +111,10 @@ class PageService:
         -----
         For API uploads, use `create_page_with_notebook_from_upload` instead.
         """
-        self._page_store.add(page)
-        if execute:
-            return await self._request_notebook_execution_for_page_defaults(
-                page
-            )
-        else:
-            return PageExecutionInfo(name=page.name, values={}, page=page)
+        await self.add_page_to_store(page)
+        return await self.execute_page_with_defaults(
+            page, enable_retry=enable_retry
+        )
 
     async def get_page(self, name: str) -> PageModel:
         """Get the page from the data store, given its name."""
@@ -136,13 +146,21 @@ class PageService:
         """Get the tree of GitHub-backed pages."""
         return await self._page_store.get_github_tree()
 
-    async def update_page(self, page: PageModel) -> None:
+    async def update_page_in_store(self, page: PageModel) -> None:
         """Update the page in the database."""
         await self._page_store.update_page(page)
-        await self._request_notebook_execution_for_page_defaults(page)
+        await self.execute_page_with_defaults(page)
 
-    async def _request_notebook_execution_for_page_defaults(
-        self, page: PageModel
+    async def update_page_and_execute(
+        self, page: PageModel, enable_retry: bool = True
+    ) -> PageExecutionInfo:
+        await self.update_page_in_store(page)
+        return await self.execute_page_with_defaults(
+            page, enable_retry=enable_retry
+        )
+
+    async def execute_page_with_defaults(
+        self, page: PageModel, enable_retry: bool = True
     ) -> PageExecutionInfo:
         """Request noteburst execution of with page's default values.
 
@@ -153,7 +171,9 @@ class PageService:
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_values, page=page
         )
-        return await self._request_noteburst_execution(page_instance)
+        return await self.request_noteburst_execution(
+            page_instance, enable_retry=enable_retry
+        )
 
     async def soft_delete_page(self, page: PageModel) -> None:
         """Soft delete a page by setting its date_deleted field."""
@@ -264,7 +284,7 @@ class PageService:
             self._logger.debug("No existing noteburst job available")
             # A record of a noteburst job is not available. Send a request
             # to noteburst.
-            await self._request_noteburst_execution(page_instance)
+            await self.request_noteburst_execution(page_instance)
             return None
 
         r = await self._http_client.get(
@@ -297,7 +317,7 @@ class PageService:
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
             await self._job_store.delete(page_instance)
-            await self._request_noteburst_execution(page_instance)
+            await self.request_noteburst_execution(page_instance)
         else:
             # server error from noteburst
             self._logger.warning(
@@ -308,14 +328,16 @@ class PageService:
             )
         return None
 
-    async def _request_noteburst_execution(
-        self, page_instance: PageInstanceModel
+    async def request_noteburst_execution(
+        self, page_instance: PageInstanceModel, enable_retry: bool = True
     ) -> PageExecutionInfo:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
         ipynb = page_instance.page.render_parameters(page_instance.values)
-        r = await self.noteburst_api.submit_job(ipynb=ipynb)
+        r = await self.noteburst_api.submit_job(
+            ipynb=ipynb, enable_retry=enable_retry
+        )
         if r.status_code != 202 or r.data is None:
             self._logger.warning(
                 "Error requesting noteburst execution",

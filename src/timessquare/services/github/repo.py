@@ -217,9 +217,12 @@ class GitHubRepoService:
                 self._logger.debug(
                     "Creating new page for notebook", display_path=display_path
                 )
-                await self.create_new_page(
+                page = await self.create_page(
                     checkout=checkout, notebook=notebook
                 )
+                # pre-execute that page
+                page_svc = self._page_service
+                await page_svc.execute_page_with_defaults(page)
 
         deleted_paths = set(existing_pages.keys()) - set(found_display_paths)
         self._logger.info("Paths to delete", count=len(deleted_paths))
@@ -227,13 +230,13 @@ class GitHubRepoService:
             page = existing_pages[deleted_path]
             await self._page_service.soft_delete_page(page)
 
-    async def create_new_page(
+    async def create_page(
         self,
         *,
         checkout: GitHubRepositoryCheckout,
         notebook: RepositoryNotebookModel,
         commit_sha: Optional[str] = None,
-    ) -> PageExecutionInfo:
+    ) -> PageModel:
         """Create a new page based on the notebook tree ref.
 
         Parameters
@@ -275,7 +278,8 @@ class GitHubRepoService:
             authors=notebook.sidecar.export_authors(),
             github_commit=commit_sha,
         )
-        return await self._page_service.add_page(page)
+        await self._page_service.add_page_to_store(page)
+        return page
 
     async def update_page(
         self, *, notebook: RepositoryNotebookModel, page: PageModel
@@ -305,7 +309,7 @@ class GitHubRepoService:
         page.repository_source_sha = notebook.notebook_git_tree_sha
         page.repository_sidecar_sha = notebook.sidecar_git_tree_sha
 
-        await self._page_service.update_page(page)
+        await self._page_service.update_page_and_execute(page)
 
     async def initiate_check_runs(
         self, *, payload: GitHubCheckSuiteEventModel
@@ -413,10 +417,15 @@ class GitHubRepoService:
             notebook = await checkout.load_notebook(
                 notebook_ref=notebook_ref, github_client=self._github_client
             )
-            page_execution_info = await self.create_new_page(
+            page = await self.create_page(
                 checkout=checkout,
                 notebook=notebook,
                 commit_sha=check_run.head_sha,
+            )
+            page_execution_info = (
+                await self._page_service.execute_page_with_defaults(
+                    page, enable_retry=False  # fail quickly for CI
+                )
             )
             if page_execution_info.noteburst_error_message is not None:
                 self._logger.debug(
