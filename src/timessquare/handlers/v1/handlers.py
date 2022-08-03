@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from safir.metadata import get_metadata
 
@@ -25,6 +25,29 @@ __all__ = ["v1_router"]
 
 v1_router = APIRouter(tags=["v1"])
 """FastAPI router for all external handlers."""
+
+display_path_parameter = Path(
+    title="Page display path",
+    description=(
+        "A display path is a POSIX-like '/'-separated path consisting "
+        "of components:\n"
+        "\n"
+        "- GitHub owner (organization or username)\n"
+        "- Github repository\n"
+        "- Directory name or names (as appropriate)\n"
+        "- Page filename stem\n"
+    ),
+    example="lsst-sqre/times-square-demo/matplotlib/gaussian2d",
+)
+
+page_path_parameter = Path(
+    title="Page name",
+    description=(
+        "An opaque identifier for a page. This is often the 'name' field for "
+        "a page's resource model."
+    ),
+    example="3d5a140634c34e249b7531667469b816",
+)
 
 
 @v1_router.get(
@@ -53,7 +76,8 @@ async def get_index(
     name="get_page",
 )
 async def get_page(
-    page: str, context: RequestContext = Depends(context_dependency)
+    page: str = page_path_parameter,
+    context: RequestContext = Depends(context_dependency),
 ) -> Page:
     """Get metadata about a page resource, which models a webpage that is
     rendered from a parameterized Jupyter Notebook.
@@ -186,7 +210,7 @@ async def post_page(
     name="get_page_source",
 )
 async def get_page_source(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
     """Get the content of the source ipynb file, which is unexecuted and has
@@ -215,7 +239,7 @@ async def get_page_source(
     name="get_rendered_notebook",
 )
 async def get_rendered_notebook(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
     """Get a Jupyter Notebook with the parameter values filled in. The
@@ -236,7 +260,7 @@ async def get_rendered_notebook(
     name="get_page_html",
 )
 async def get_page_html(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> HTMLResponse:
     """Get the rendered HTML of a notebook."""
@@ -261,7 +285,7 @@ async def get_page_html(
     response_model=HtmlStatus,
 )
 async def get_page_html_status(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> HtmlStatus:
     page_service = context.page_service
@@ -302,19 +326,14 @@ async def get_github_tree(
     name="get_github_page",
 )
 async def get_github_page(
-    display_path: str, context: RequestContext = Depends(context_dependency)
+    display_path: str = display_path_parameter,
+    context: RequestContext = Depends(context_dependency),
 ) -> Page:
     """Get the metadata for a GitHub-backed page.
 
     This endpoint provides the same data as ``GET /v1/pages/:page``, but
     is queried via the page's GitHub "display path" rather than the opaque
-    page slug. A display path is a POSIX-like "/"-separated path consisting
-    of components:
-
-    - GitHub owner (organization or username)
-    - Github repository
-    - Directory name or names (as appropriate)
-    - Page filename stem
+    page name.
     """
     page_service = context.page_service
     async with context.session.begin():
