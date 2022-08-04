@@ -130,6 +130,48 @@ class PageService:
             raise PageNotFoundError(display_path)
         return page
 
+    async def get_github_pr_page(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        commit: str,
+        path: str,
+    ) -> PageModel:
+        """Get a page for a specific commit, corresponding to a GitHub PR's
+        check run.
+
+        Parameters
+        ----------
+        owner : `str`
+            GitHub repository owner (username or organization).
+        repo : `str`
+            GitHub repository name.
+        commit : `str`
+            The SHA of the Git commit corresponding to the check run.
+        path : `str`
+            The page's path within the repository (without the file extension).
+
+        Returns
+        -------
+        page : `PageModel`
+            The domain model for a page. For PRs, this page is creating while
+            processing the GitHub check suite.
+
+        Raises
+        ------
+        PageNotFoundError
+            Raised if the page is not found in the PageStore.
+        """
+        display_path = f"{owner}/{repo}/{path}"
+        page = await self._page_store.get_github_backed_page(
+            display_path, commit=commit
+        )
+        if page is None:
+            # FIXME add a commit attribute to the exception
+            raise PageNotFoundError(display_path)
+        return page
+
     async def get_page_summaries(self) -> List[PageSummaryModel]:
         """Get page summaries."""
         return await self._page_store.list_page_summaries()
@@ -145,6 +187,18 @@ class PageService:
     async def get_github_tree(self) -> List[GitHubNode]:
         """Get the tree of GitHub-backed pages."""
         return await self._page_store.get_github_tree()
+
+    async def get_github_pr_tree(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        commit: str,
+    ) -> List[GitHubNode]:
+        """Get the tree of GitHub-backed pages for a specific pull request."""
+        return await self._page_store.get_github_pr_tree(
+            owner=owner, repo=repo, commit=commit
+        )
 
     async def update_page_in_store(self, page: PageModel) -> None:
         """Update the page in the database."""

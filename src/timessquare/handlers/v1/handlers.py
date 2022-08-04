@@ -13,7 +13,7 @@ from timessquare.dependencies.requestcontext import (
 )
 
 from .models import (
-    GitHubTreeRoot,
+    GitHubContentsRoot,
     HtmlStatus,
     Index,
     Page,
@@ -40,6 +40,14 @@ display_path_parameter = Path(
     example="lsst-sqre/times-square-demo/matplotlib/gaussian2d",
 )
 
+github_owner_parameter = Path(
+    title="GitHub owner (organization or username)", example="lsst-sqre"
+)
+
+github_repo_parameter = Path(
+    title="GitHub repository", example="times-square-demo"
+)
+
 page_path_parameter = Path(
     title="Page name",
     description=(
@@ -47,6 +55,16 @@ page_path_parameter = Path(
         "a page's resource model."
     ),
     example="3d5a140634c34e249b7531667469b816",
+)
+
+path_parameter = Path(
+    title="Notebook path in repository (without extension)",
+    example="matplotlib/gaussian2d",
+)
+
+pr_commit_parameter = Path(
+    title="Git commit for pull request check run",
+    example="878092649b8bc1d8ef1436cc623bcecb923ece39",
 )
 
 
@@ -301,11 +319,11 @@ async def get_page_html_status(
     "/github",
     summary="Get a tree of GitHub-backed pages",
     name="get_github_tree",
-    response_model=GitHubTreeRoot,
+    response_model=GitHubContentsRoot,
 )
 async def get_github_tree(
     context: RequestContext = Depends(context_dependency),
-) -> GitHubTreeRoot:
+) -> GitHubContentsRoot:
     """Get the tree of GitHub-backed pages.
 
     This endpoint is primarily intended to be used by Squareone to power
@@ -316,7 +334,7 @@ async def get_github_tree(
     page_service = context.page_service
     async with context.session.begin():
         github_tree = await page_service.get_github_tree()
-    return GitHubTreeRoot.from_tree(tree=github_tree)
+    return GitHubContentsRoot.from_tree(tree=github_tree)
 
 
 @v1_router.get(
@@ -338,6 +356,66 @@ async def get_github_page(
     page_service = context.page_service
     async with context.session.begin():
         page_domain = await page_service.get_github_backed_page(display_path)
+
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page_domain.name
+        )
+        return Page.from_domain(page=page_domain, request=context.request)
+
+
+@v1_router.get(
+    "/github-pr/{owner}/{repo}/{commit}",
+    summary="Get a tree of GitHub PR preview pages",
+    name="get_github_pr_tree",
+    response_model=GitHubContentsRoot,
+)
+async def get_github_pr_tree(
+    owner: str = github_owner_parameter,
+    repo: str = github_repo_parameter,
+    commit: str = pr_commit_parameter,
+    context: RequestContext = Depends(context_dependency),
+) -> GitHubContentsRoot:
+    """Get the tree of GitHub-backed pages for a pull request.
+
+    This endpoint is primarily intended to be used by Squareone to power
+    its navigational view of GitHub pages for a specific pull request
+    (actually a commit SHA) of a repository.
+    """
+    page_service = context.page_service
+    async with context.session.begin():
+        github_tree = await page_service.get_github_pr_tree(
+            owner=owner, repo=repo, commit=commit
+        )
+    return GitHubContentsRoot.from_tree(
+        tree=github_tree,
+        owner=owner,
+        repo=repo,
+        commit=commit,
+    )
+
+
+@v1_router.get(
+    "/github-pr/{owner}/{repo}/{commit}/{path:path}",
+    response_model=Page,
+    summary="Metadata for GitHub-backed page",
+    name="get_github_pr_page",
+)
+async def get_github_pr_page(
+    owner: str = github_owner_parameter,
+    repo: str = github_repo_parameter,
+    commit: str = pr_commit_parameter,
+    path: str = path_parameter,
+    context: RequestContext = Depends(context_dependency),
+) -> Page:
+    """Get the metadata for a pull request preview of a GitHub-backed page."""
+    page_service = context.page_service
+    async with context.session.begin():
+        page_domain = await page_service.get_github_pr_page(
+            owner=owner,
+            repo=repo,
+            commit=commit,
+            path=path,
+        )
 
         context.response.headers["location"] = context.request.url_for(
             "get_page", page=page_domain.name

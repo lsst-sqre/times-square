@@ -11,7 +11,7 @@ from markdown_it import MarkdownIt
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field
 from safir.metadata import Metadata as SafirMetadata
 
-from timessquare.domain.githubtree import GitHubNode
+from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
 
@@ -21,7 +21,7 @@ class Index(BaseModel):
 
     metadata: SafirMetadata = Field(..., title="Package metadata")
 
-    api_docs: AnyHttpUrl = Field(..., tile="Browsable API documentation")
+    api_docs: AnyHttpUrl = Field(..., title="Browsable API documentation")
 
 
 page_name_field = Field(
@@ -409,11 +409,90 @@ class PostPageRequest(BaseModel):
     cache_ttl: Optional[int] = page_cache_ttl_field
 
 
-class GitHubTreeRoot(BaseModel):
-    """The GitHub-backed pages, organized hierarchically."""
+class GitHubContentsNode(BaseModel):
+    """Information about a node in a GitHub contents tree."""
 
-    contents: List[GitHubNode]
+    node_type: GitHubNodeType = Field(
+        ...,
+        title="Node type",
+        description="Type of node in the GitHub contents tree.",
+        example="page",
+    )
+
+    path: str = Field(
+        ...,
+        title="Path",
+        description="Squareone URL path",
+        example="lsst-sqre/times-square-demo/demo",
+    )
+
+    title: str = Field(
+        ...,
+        title="Title",
+        description="Presentation title of the node.",
+        example="Demo",
+    )
+
+    contents: List[GitHubContentsNode] = Field(
+        ..., title="Contents", description="Children of this node"
+    )
 
     @classmethod
-    def from_tree(cls, *, tree: List[GitHubNode]) -> GitHubTreeRoot:
-        return cls(contents=tree)
+    def from_domain_model(cls, node: GitHubNode) -> GitHubContentsNode:
+        return cls(
+            node_type=node.node_type,
+            path=node.squareone_path,
+            title=node.title,
+            contents=[cls.from_domain_model(n) for n in node.contents],
+        )
+
+
+class GitHubContentsRoot(BaseModel):
+    """The tree of GitHub contents."""
+
+    contents: List[GitHubContentsNode] = Field(
+        title="Contents", description="Content nodes"
+    )
+
+    owner: Optional[str] = Field(
+        None,
+        title="GitHub owner",
+        description=(
+            "The GitHub owner for this tree, if this tree applies to a single "
+            "GitHub owner."
+        ),
+    )
+
+    repo: Optional[str] = Field(
+        None,
+        title="GitHub repo",
+        description=(
+            "The GitHub repo for this tree, if this tree applies to a single "
+            "GitHub repo."
+        ),
+    )
+
+    commit: Optional[str] = Field(
+        None,
+        title="GitHub commit",
+        description=(
+            "The GitHub commit for this tree, if this tree is specific to a "
+            "commit, such as for a PR preview."
+        ),
+    )
+
+    @classmethod
+    def from_tree(
+        cls,
+        *,
+        tree: List[GitHubNode],
+        owner: Optional[str] = None,
+        repo: Optional[str] = None,
+        commit: Optional[str] = None,
+    ) -> GitHubContentsRoot:
+        return cls(
+            contents=[GitHubContentsNode.from_domain_model(n) for n in tree],
+            owner=owner,
+            repo=repo,
+            commit=commit,
+        )
