@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
 from fastapi import Request
 from markdown_it import MarkdownIt
-from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field
+from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field, HttpUrl
 from safir.metadata import Metadata as SafirMetadata
 
+from timessquare.domain.githubapi import (
+    GitHubCheckRunConclusion,
+    GitHubCheckRunModel,
+    GitHubCheckRunStatus,
+    GitHubPullRequestModel,
+    GitHubPullState,
+)
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
@@ -454,8 +462,158 @@ class GitHubContentsRoot(BaseModel):
         title="Contents", description="Content nodes"
     )
 
-    owner: Optional[str] = Field(
+    @classmethod
+    def from_tree(
+        cls,
+        *,
+        tree: List[GitHubNode],
+    ) -> GitHubContentsRoot:
+        return cls(
+            contents=[GitHubContentsNode.from_domain_model(n) for n in tree],
+        )
+
+
+class GitHubContributor(BaseModel):
+    """A GitHub contributor."""
+
+    username: str = Field(..., title="Username", description="GitHub username")
+
+    html_url: HttpUrl = Field(
+        ..., title="HTML URL", description="The user's homepage on GitHub."
+    )
+
+    avatar_url: HttpUrl = Field(..., title="Avatar image URL")
+
+
+class GitHubPrState(str, Enum):
+    """The state of a GitHub PR."""
+
+    draft = "draft"
+    open = "open"
+    merged = "merged"
+    closed = "closed"
+
+
+class GitHubPr(BaseModel):
+    """Information about a pull request."""
+
+    number: int = Field(
+        title="PR number", description="The pull request number."
+    )
+
+    title: str = Field(title="Title of the pull request")
+
+    conversation_url: HttpUrl = Field(
+        title="URL for the PR's conversation page on GitHub."
+    )
+
+    contributor: GitHubContributor
+
+    state: GitHubPrState
+
+    @classmethod
+    def from_github_pr(cls, pull_request: GitHubPullRequestModel) -> GitHubPr:
+        # Consolidate github state information
+        if pull_request.merged:
+            state = GitHubPrState.merged
+        elif pull_request.draft:
+            state = GitHubPrState.draft
+        elif pull_request.state == GitHubPullState.closed:
+            state = GitHubPrState.closed
+        else:
+            state = GitHubPrState.open
+
+        return cls(
+            number=pull_request.number,
+            title=pull_request.title,
+            conversation_url=pull_request.html_url,
+            state=state,
+            contributor=GitHubContributor(
+                username=pull_request.user.login,
+                html_url=pull_request.user.html_url,
+                avatar_url=pull_request.user.avatar_url,
+            ),
+        )
+
+
+class GitHubCheckRunSummary(BaseModel):
+    """Summary info about a check run."""
+
+    status: GitHubCheckRunStatus
+
+    conclusion: Optional[GitHubCheckRunConclusion]
+
+    external_id: Optional[str] = Field(
+        description="Identifier set by the check runner."
+    )
+
+    head_sha: str = Field(
+        title="Head sha",
+        description="The SHA of the most recent commit for this check suite.",
+    )
+
+    name: str = Field(description="Name of the check run.")
+
+    html_url: HttpUrl = Field(
+        description="URL of the check run webpage on GitHub."
+    )
+
+    report_title: Optional[str] = Field(
         None,
+        title="Report title",
+    )
+
+    report_summary: Optional[FormattedText] = Field(
+        None,
+        title="Report summary",
+    )
+
+    report_text: Optional[FormattedText] = Field(
+        None,
+        title="Report body text",
+    )
+
+    @classmethod
+    def from_checkrun(
+        cls, check_run: GitHubCheckRunModel
+    ) -> GitHubCheckRunSummary:
+        """Create a check run summary API model from the GitHub API
+        model.
+        """
+        report_title: Optional[str] = None
+        report_summary: Optional[FormattedText] = None
+        report_text: Optional[FormattedText] = None
+
+        if check_run.output:
+            output = check_run.output
+            if output.title:
+                report_title = output.title
+            if output.summary:
+                report_summary = FormattedText.from_gfm(output.summary)
+            if output.text:
+                report_text = FormattedText.from_gfm(output.text)
+
+        instance = cls(
+            status=check_run.status,
+            conclusion=check_run.conclusion,
+            external_id=check_run.external_id,
+            head_sha=check_run.head_sha,
+            name=check_run.name,
+            html_url=check_run.html_url,
+            report_title=report_title,
+            report_summary=report_summary,
+            report_text=report_text,
+        )
+        return instance
+
+
+class GitHubPrContents(GitHubContentsRoot):
+    """The contents of a GitHub pull request, along with information
+    about the check run and pull request.
+    """
+
+    owner: str = Field(
+        ...,
         title="GitHub owner",
         description=(
             "The GitHub owner for this tree, if this tree applies to a single "
@@ -463,8 +621,8 @@ class GitHubContentsRoot(BaseModel):
         ),
     )
 
-    repo: Optional[str] = Field(
-        None,
+    repo: str = Field(
+        ...,
         title="GitHub repo",
         description=(
             "The GitHub repo for this tree, if this tree applies to a single "
@@ -472,8 +630,8 @@ class GitHubContentsRoot(BaseModel):
         ),
     )
 
-    commit: Optional[str] = Field(
-        None,
+    commit: str = Field(
+        ...,
         title="GitHub commit",
         description=(
             "The GitHub commit for this tree, if this tree is specific to a "
@@ -481,18 +639,44 @@ class GitHubContentsRoot(BaseModel):
         ),
     )
 
+    yaml_check: Optional[GitHubCheckRunSummary] = Field(
+        ..., description="Summary of notebook execution check run."
+    )
+
+    nbexec_check: Optional[GitHubCheckRunSummary] = Field(
+        ..., description="Summary of notebook execution check run."
+    )
+
+    pull_requests: List[GitHubPr] = Field(
+        ...,
+        title="Pull Requests",
+    )
+
     @classmethod
-    def from_tree(
+    def create(
         cls,
         *,
         tree: List[GitHubNode],
-        owner: Optional[str] = None,
-        repo: Optional[str] = None,
-        commit: Optional[str] = None,
-    ) -> GitHubContentsRoot:
+        owner: str,
+        repo: str,
+        commit: str,
+        check_runs: List[GitHubCheckRunModel],
+        pull_requests: List[GitHubPullRequestModel],
+    ) -> GitHubPrContents:
+        yaml_check: Optional[GitHubCheckRunSummary] = None
+        nbexec_check: Optional[GitHubCheckRunSummary] = None
+        for check_run in check_runs:
+            if check_run.external_id == "times-square/nbexec":
+                nbexec_check = GitHubCheckRunSummary.from_checkrun(check_run)
+            elif check_run.external_id == "times-square/yaml-check":
+                yaml_check = GitHubCheckRunSummary.from_checkrun(check_run)
+
         return cls(
             contents=[GitHubContentsNode.from_domain_model(n) for n in tree],
             owner=owner,
             repo=repo,
             commit=commit,
+            yaml_check=yaml_check,
+            nbexec_check=nbexec_check,
+            pull_requests=[GitHubPr.from_github_pr(p) for p in pull_requests],
         )

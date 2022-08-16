@@ -14,6 +14,7 @@ from timessquare.dependencies.requestcontext import (
 
 from .models import (
     GitHubContentsRoot,
+    GitHubPrContents,
     HtmlStatus,
     Index,
     Page,
@@ -367,30 +368,49 @@ async def get_github_page(
     "/github-pr/{owner}/{repo}/{commit}",
     summary="Get a tree of GitHub PR preview pages",
     name="get_github_pr_tree",
-    response_model=GitHubContentsRoot,
+    response_model=GitHubPrContents,
 )
 async def get_github_pr_tree(
     owner: str = github_owner_parameter,
     repo: str = github_repo_parameter,
     commit: str = pr_commit_parameter,
     context: RequestContext = Depends(context_dependency),
-) -> GitHubContentsRoot:
+) -> GitHubPrContents:
     """Get the tree of GitHub-backed pages for a pull request.
 
     This endpoint is primarily intended to be used by Squareone to power
     its navigational view of GitHub pages for a specific pull request
     (actually a commit SHA) of a repository.
     """
-    page_service = context.page_service
+    repo_service = await context.create_github_repo_service(
+        owner=owner, repo=repo
+    )  # TODO handle response where the app is not installed
+    page_service = repo_service.page_service
+
     async with context.session.begin():
         github_tree = await page_service.get_github_pr_tree(
             owner=owner, repo=repo, commit=commit
         )
-    return GitHubContentsRoot.from_tree(
+
+    check_runs = await repo_service.get_check_runs(
+        owner=owner, repo=repo, head_sha=commit
+    )
+    context.logger.debug(
+        "Check runs", check_runs=[run.dict() for run in check_runs]
+    )
+
+    pull_requests = await repo_service.get_pulls_for_check_runs(check_runs)
+    context.logger.debug(
+        "Pull requests", prs=[pr.dict() for pr in pull_requests]
+    )
+
+    return GitHubPrContents.create(
         tree=github_tree,
         owner=owner,
         repo=repo,
         commit=commit,
+        check_runs=check_runs,
+        pull_requests=pull_requests,
     )
 
 
