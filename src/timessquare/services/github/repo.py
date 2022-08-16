@@ -580,3 +580,27 @@ class GitHubRepoService:
         ):
             check_runs.append(GitHubCheckRunModel.parse_obj(item))
         return check_runs
+
+    async def get_pulls_for_check_runs(
+        self, check_runs: List[GitHubCheckRunModel]
+    ) -> List[GitHubPullRequestModel]:
+        """Get the pull requests from GitHub covered by the provided check
+        runs.
+
+        Normally we'll look up the check runs first with `get_check_runs`
+        and then use this method to get information about the corresponding
+        pull requests.
+        """
+        # reduce the unique pull request urls
+        pr_urls: List[str] = []
+        for check_run in check_runs:
+            for pr in check_run.pull_requests:
+                pr_urls.append(pr.url)
+        pr_urls = sorted(list(set(pr_urls)))
+
+        pull_requests: List[GitHubPullRequestModel] = []
+        for pr_url in pr_urls:
+            data = await self._github_client.getitem(pr_url)
+            pull_requests.append(GitHubPullRequestModel.parse_obj(data))
+
+        return pull_requests
