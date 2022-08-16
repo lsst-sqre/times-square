@@ -564,3 +564,19 @@ class GitHubRepoService:
                 )
 
         await check.submit_conclusion(github_client=self._github_client)
+
+    async def get_check_runs(
+        self, owner: str, repo: str, head_sha: str
+    ) -> List[GitHubCheckRunModel]:
+        """Get the check runs from GitHub corresponding to a commit.
+
+        https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference
+        """
+        check_runs: List[GitHubCheckRunModel] = []
+        async for item in self._github_client.getiter(
+            "/repos/{owner}/{repo}/commits/{ref}/check-runs",
+            url_vars={"owner": owner, "repo": repo, "ref": head_sha},
+            iterable_key="check_runs",
+        ):
+            check_runs.append(GitHubCheckRunModel.parse_obj(item))
+        return check_runs
