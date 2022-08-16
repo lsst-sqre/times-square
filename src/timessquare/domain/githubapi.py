@@ -226,6 +226,18 @@ class GitHubCheckSuiteId(BaseModel):
     id: str = Field(description="Check suite ID")
 
 
+class GitHubCheckRunOutput(BaseModel):
+    """Check run output report."""
+
+    title: Optional[str] = Field(None, description="Title of the report")
+
+    summary: Optional[str] = Field(
+        None, description="Summary information (markdown formatted"
+    )
+
+    text: Optional[str] = Field(None, description="Extended report (markdown)")
+
+
 class GitHubCheckRunModel(BaseModel):
     """A Pydantic model for the "check_run" field in a check_run webhook
     payload (`GitHubCheckRunPayloadModel`).
@@ -257,3 +269,7 @@ class GitHubCheckRunModel(BaseModel):
     html_url: HttpUrl = Field(description="URL of the check run webpage.")
 
     check_suite: GitHubCheckSuiteId
+
+    output: Optional[GitHubCheckRunOutput] = Field(
+        None, title="Output", description="Check run output, if available."
+    )
