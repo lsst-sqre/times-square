@@ -41,6 +41,11 @@ from timessquare.domain.noteburst import NoteburstJobStatus
 from timessquare.domain.page import PageExecutionInfo, PageModel
 
 from ..page import PageService
+from .client import (
+    create_github_client,
+    create_github_installation_client,
+    get_app_jwt,
+)
 
 
 class GitHubRepoService:
@@ -72,6 +77,60 @@ class GitHubRepoService:
         self._github_client = github_client
         self._page_service = page_service
         self._logger = logger
+
+    @classmethod
+    async def create_for_repo(
+        cls,
+        *,
+        owner: str,
+        repo: str,
+        http_client: AsyncClient,
+        page_service: PageService,
+        logger: BoundLogger,
+    ) -> GitHubRepoService:
+        """Create a github repo service for a specific repository (requires
+        that the Times Square GitHub App is installed for that repository).
+
+        Parameters
+        ----------
+        owner : `str`
+            The GitHub repo's owner.
+        repo : `str`
+            The GitHub repo's name.
+        http_client : `AsyncClient`
+            An httpx client.
+        github_client : `GitHubAPI`
+            A GidgetHub API client that is authenticated as a GitHub app
+            installation.
+        page_service : `PageService`
+            The Page service. This GitHubRepoService acts as a layer on top of
+            the regular page service to handle domain models from the github
+            domain.
+        logger : `BoundLogger`
+            A logger, ideally with request/worker job context already bound.
+        """
+        app_jwt = get_app_jwt()
+        app_client = create_github_client(http_client=http_client)
+        installation_data = await app_client.getitem(
+            "/repos/{owner}/{repo}/installation",
+            url_vars={"owner": owner, "repo": repo},
+            jwt=app_jwt,
+        )
+        installation_id = installation_data["id"]
+        installation_client = await create_github_installation_client(
+            http_client=http_client, installation_id=installation_id
+        )
+        return cls(
+            http_client=http_client,
+            github_client=installation_client,
+            page_service=page_service,
+            logger=logger,
+        )
+
+    @property
+    def page_service(self) -> PageService:
+        """The page service used by the repo service."""
+        return self._page_service
 
     async def sync_from_repo_installation(
         self,

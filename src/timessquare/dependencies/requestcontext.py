@@ -14,6 +14,7 @@ from structlog.stdlib import BoundLogger
 
 from timessquare.config import Config, config
 from timessquare.dependencies.redis import redis_dependency
+from timessquare.services.github.repo import GitHubRepoService
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
@@ -55,11 +56,26 @@ class RequestContext:
 
     @property
     def page_service(self) -> PageService:
+        """An instance of the page service."""
         return PageService(
             page_store=PageStore(self.session),
             html_cache=NbHtmlCacheStore(self.redis),
             job_store=NoteburstJobStore(self.redis),
             http_client=self.http_client,
+            logger=self.logger,
+        )
+
+    async def create_github_repo_service(
+        self, owner: str, repo: str
+    ) -> GitHubRepoService:
+        """An instance of the GitHub repository service for manging
+        GitHub-backed pages and accessing GitHub's API.
+        """
+        return await GitHubRepoService.create_for_repo(
+            owner=owner,
+            repo=repo,
+            http_client=self.http_client,
+            page_service=self.page_service,
             logger=self.logger,
         )
 
