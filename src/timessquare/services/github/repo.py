@@ -442,7 +442,7 @@ class GitHubRepoService:
         This check actually creates/updates Page resources, hence it is run
         at the service layer, rather than in a domain model.
         """
-        check = NotebookExecutionsCheck(check_run)
+        check = NotebookExecutionsCheck(check_run, repo)
         await check.submit_in_progress(self._github_client)
         self._logger.debug("Notebook executions check in progress")
 

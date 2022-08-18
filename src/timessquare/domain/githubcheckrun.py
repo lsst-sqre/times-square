@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 from gidgethub.httpx import GitHubAPI
 from pydantic import ValidationError
 
+from timessquare.config import config
+
 from .githubapi import (
     GitHubBlobModel,
     GitHubCheckRunAnnotationLevel,
@@ -99,8 +101,11 @@ class GitHubCheck(metaclass=ABCMeta):
     share the same external ID.
     """
 
-    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+    def __init__(
+        self, *, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
+    ) -> None:
         self.check_run = check_run
+        self.repo = repo
         self.annotations: List[Annotation] = []
 
     @property
@@ -124,6 +129,21 @@ class GitHubCheck(metaclass=ABCMeta):
     def text(self) -> str:
         """The text body of the check's message."""
         raise NotImplementedError
+
+    @property
+    def squareone_pr_url_root(self) -> str:
+        """Root URL for this check run in Squareone.
+
+        Formatted as ``{host}/times-square/github-pr/{owner}/{repo}/{commit}``
+        """
+        if config.environment_url.endswith("/"):
+            squareone_url = str(config.environment_url)
+        else:
+            squareone_url = f"{str(config.environment_url)}/"
+        return (
+            f"{squareone_url}/times-square/github-pr/{self.repo.owner.login}"
+            f"/{self.repo.name}/{self.check_run.head_sha}"
+        )
 
     def export_truncated_annotations(self) -> List[Dict[str, Any]]:
         """Export the first 50 annotations to objects serializable to
@@ -155,6 +175,7 @@ class GitHubCheck(metaclass=ABCMeta):
             data={
                 "status": GitHubCheckRunStatus.completed,
                 "conclusion": self.conclusion,
+                "details_url": self.squareone_pr_url_root,
                 "output": {
                     "title": self.title,
                     "summary": self.summary,
@@ -175,14 +196,16 @@ class GitHubConfigsCheck(GitHubCheck):
     share the same external ID.
     """
 
-    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+    def __init__(
+        self, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
+    ) -> None:
         self.sidecar_files_checked: List[str] = []
 
         # Optional caching for data reuse
         self.checkout: Optional[GitHubRepositoryCheckout] = None
         self.tree: Optional[RecursiveGitTreeModel] = None
 
-        super().__init__(check_run=check_run)
+        super().__init__(check_run=check_run, repo=repo)
 
     @classmethod
     async def create_check_run_and_validate(
@@ -225,7 +248,7 @@ class GitHubConfigsCheck(GitHubCheck):
         repository containing Times Square notebooks given a check run already
         registered with GitHub.
         """
-        check = cls(check_run)
+        check = cls(check_run, repo)
         await check.submit_in_progress(github_client)
 
         try:
@@ -365,9 +388,11 @@ class NotebookExecutionsCheck(GitHubCheck):
     share the same external ID.
     """
 
-    def __init__(self, check_run: GitHubCheckRunModel) -> None:
+    def __init__(
+        self, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
+    ) -> None:
         self.notebook_paths_checked: List[str] = []
-        super().__init__(check_run=check_run)
+        super().__init__(check_run=check_run, repo=repo)
 
     def report_noteburst_failure(
         self, page_execution: PageExecutionInfo
