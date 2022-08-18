@@ -1,6 +1,16 @@
 Change log
 ==========
 
+0.6.0 (2022-08-18)
+------------------
+
+Times Square now exposes information about pages created during GitHub PR check runs:
+
+- ``GET /times-square/api/v1/github-pr/:org/:repo/:sha`` provides metadata for a repository's check run in general, such as the contents in the check run and the GitHub pull request or check run.
+- ``GET /times-square/api/v1/github-pr/:org/:repo/:sha/:path`` provides metadata about a specific notebook.
+
+Times Square check runs also link to the pull request preview pages published through Times Square's interface in Squareone.
+
 0.5.0 (2022-07-04)
 ------------------
 

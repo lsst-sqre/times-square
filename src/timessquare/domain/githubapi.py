@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from base64 import b64decode
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -18,6 +18,23 @@ class GitHubRepoOwnerModel(BaseModel):
     login: str = Field(
         title="Login name of the owner (either a user or an organization)"
     )
+
+
+class GitHubUserModel(BaseModel):
+    """A Pydantic model for the "user" field found in GitHub API resources.
+
+    This contains brief (public) info about a user.
+    """
+
+    login: str = Field(title="Login name", description="GitHub username")
+
+    html_url: HttpUrl = Field(description="Homepage for the user on GitHub")
+
+    url: HttpUrl = Field(
+        description="URL for the user's resource in the GitHub API"
+    )
+
+    avatar_url: HttpUrl = Field(description="URL to the user's avatar")
 
 
 class GitHubRepositoryModel(BaseModel):
@@ -77,6 +94,16 @@ class GitHubRepositoryModel(BaseModel):
     )
 
 
+class GitHubPullState(str, Enum):
+    """The state of a GitHub PR.
+
+    https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+    """
+
+    open = "open"
+    closed = "closed"
+
+
 class GitHubPullRequestModel(BaseModel):
     """A Pydantic model for a GitHub Pull Request.
 
@@ -92,7 +119,15 @@ class GitHubPullRequestModel(BaseModel):
 
     title: str = Field(title="Title")
 
-    # TODO a lot more data is available. Expand this model as needed.
+    state: GitHubPullState = Field(
+        description="Whether the PR is opened or closed"
+    )
+
+    draft: bool = Field(description="True if the PR is a draft")
+
+    merged: bool = Field(description="True if the PR is merged")
+
+    user: GitHubUserModel = Field(description="The user that opened the PR")
 
 
 class GitHubBranchCommitModel(BaseModel):
@@ -226,6 +261,28 @@ class GitHubCheckSuiteId(BaseModel):
     id: str = Field(description="Check suite ID")
 
 
+class GitHubCheckRunOutput(BaseModel):
+    """Check run output report."""
+
+    title: Optional[str] = Field(None, description="Title of the report")
+
+    summary: Optional[str] = Field(
+        None, description="Summary information (markdown formatted"
+    )
+
+    text: Optional[str] = Field(None, description="Extended report (markdown)")
+
+
+class GitHubCheckRunPrInfoModel(BaseModel):
+    """A Pydantic model of the "pull_requsts[]" items in a check run
+    GitHub API model.
+
+    https://docs.github.com/en/rest/checks/runs#get-a-check-run
+    """
+
+    url: HttpUrl = Field(description="GitHub API URL for this pull request")
+
+
 class GitHubCheckRunModel(BaseModel):
     """A Pydantic model for the "check_run" field in a check_run webhook
     payload (`GitHubCheckRunPayloadModel`).
@@ -257,3 +314,11 @@ class GitHubCheckRunModel(BaseModel):
     html_url: HttpUrl = Field(description="URL of the check run webpage.")
 
     check_suite: GitHubCheckSuiteId
+
+    output: Optional[GitHubCheckRunOutput] = Field(
+        None, title="Output", description="Check run output, if available."
+    )
+
+    pull_requests: List[GitHubCheckRunPrInfoModel] = Field(
+        default_factory=list
+    )

@@ -12,7 +12,7 @@ from timessquare.dbschema.page import SqlPage
 from timessquare.domain.githubtree import (
     GitHubNode,
     GitHubNodeType,
-    GitHubTreeInput,
+    GitHubTreeQueryResult,
 )
 from timessquare.domain.page import (
     PageModel,
@@ -273,9 +273,10 @@ class PageStore:
 
     async def _generate_node_for_owner(self, owner_name: str) -> GitHubNode:
         statement = (
-            select(
+            select(  # order matches GitHubTreeQueryResult
                 SqlPage.github_owner,
                 SqlPage.github_repo,
+                SqlPage.github_commit,
                 SqlPage.repository_display_path_prefix,
                 SqlPage.title,
                 SqlPage.repository_path_stem,
@@ -293,16 +294,76 @@ class PageStore:
         result = await self._session.execute(statement)
 
         tree_inputs = [
-            GitHubTreeInput.from_sql_row(*row) for row in result.all()
+            GitHubTreeQueryResult(
+                github_owner=row[0],
+                github_repo=row[1],
+                github_commit=row[2],
+                path_prefix=row[3],
+                title=row[4],
+                path_stem=row[5],
+            )
+            for row in result.all()
         ]
 
         owner_node = GitHubNode(
             node_type=GitHubNodeType.owner,
             title=owner_name,
-            path=owner_name,
+            path_segments=[owner_name],
+            github_commit=None,
             contents=[],
         )
         for tree_input in tree_inputs:
-            owner_node.insert_input(tree_input)
+            owner_node.insert_node(tree_input)
 
         return owner_node
+
+    async def get_github_pr_tree(
+        self, *, owner: str, repo: str, commit: str
+    ) -> List[GitHubNode]:
+        """Get the tree of GitHub-backed pages for a pull request commit."""
+        statement = (
+            select(  # order matches GitHubTreeQueryResult
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                SqlPage.github_commit,
+                SqlPage.repository_display_path_prefix,
+                SqlPage.title,
+                SqlPage.repository_path_stem,
+            )
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == commit)
+            .where(SqlPage.github_owner == owner)
+            .order_by(
+                SqlPage.repository_display_path_prefix,
+                SqlPage.title,
+            )
+        )
+        result = await self._session.execute(statement)
+
+        tree_inputs = [
+            GitHubTreeQueryResult(
+                github_owner=row[0],
+                github_repo=row[1],
+                github_commit=row[2],
+                path_prefix=row[3],
+                title=row[4],
+                path_stem=row[5],
+            )
+            for row in result.all()
+        ]
+        if len(tree_inputs) == 0:
+            return []
+
+        # Create a root node for the repo to use its insert_input method
+        # for sorting the tree and creating directories as needed
+        repo_node = GitHubNode(
+            node_type=GitHubNodeType.repo,
+            path_segments=[owner, repo],
+            github_commit=commit,
+            title=repo,
+            contents=[],
+        )
+        for tree_input in tree_inputs:
+            repo_node.insert_node(tree_input)
+
+        return repo_node.contents

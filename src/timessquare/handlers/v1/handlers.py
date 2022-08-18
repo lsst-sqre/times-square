@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from safir.metadata import get_metadata
 
@@ -13,7 +13,8 @@ from timessquare.dependencies.requestcontext import (
 )
 
 from .models import (
-    GitHubTreeRoot,
+    GitHubContentsRoot,
+    GitHubPrContents,
     HtmlStatus,
     Index,
     Page,
@@ -25,6 +26,47 @@ __all__ = ["v1_router"]
 
 v1_router = APIRouter(tags=["v1"])
 """FastAPI router for all external handlers."""
+
+display_path_parameter = Path(
+    title="Page display path",
+    description=(
+        "A display path is a POSIX-like '/'-separated path consisting "
+        "of components:\n"
+        "\n"
+        "- GitHub owner (organization or username)\n"
+        "- Github repository\n"
+        "- Directory name or names (as appropriate)\n"
+        "- Page filename stem\n"
+    ),
+    example="lsst-sqre/times-square-demo/matplotlib/gaussian2d",
+)
+
+github_owner_parameter = Path(
+    title="GitHub owner (organization or username)", example="lsst-sqre"
+)
+
+github_repo_parameter = Path(
+    title="GitHub repository", example="times-square-demo"
+)
+
+page_path_parameter = Path(
+    title="Page name",
+    description=(
+        "An opaque identifier for a page. This is often the 'name' field for "
+        "a page's resource model."
+    ),
+    example="3d5a140634c34e249b7531667469b816",
+)
+
+path_parameter = Path(
+    title="Notebook path in repository (without extension)",
+    example="matplotlib/gaussian2d",
+)
+
+pr_commit_parameter = Path(
+    title="Git commit for pull request check run",
+    example="878092649b8bc1d8ef1436cc623bcecb923ece39",
+)
 
 
 @v1_router.get(
@@ -53,7 +95,8 @@ async def get_index(
     name="get_page",
 )
 async def get_page(
-    page: str, context: RequestContext = Depends(context_dependency)
+    page: str = page_path_parameter,
+    context: RequestContext = Depends(context_dependency),
 ) -> Page:
     """Get metadata about a page resource, which models a webpage that is
     rendered from a parameterized Jupyter Notebook.
@@ -186,7 +229,7 @@ async def post_page(
     name="get_page_source",
 )
 async def get_page_source(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
     """Get the content of the source ipynb file, which is unexecuted and has
@@ -215,7 +258,7 @@ async def get_page_source(
     name="get_rendered_notebook",
 )
 async def get_rendered_notebook(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> PlainTextResponse:
     """Get a Jupyter Notebook with the parameter values filled in. The
@@ -236,7 +279,7 @@ async def get_rendered_notebook(
     name="get_page_html",
 )
 async def get_page_html(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> HTMLResponse:
     """Get the rendered HTML of a notebook."""
@@ -261,7 +304,7 @@ async def get_page_html(
     response_model=HtmlStatus,
 )
 async def get_page_html_status(
-    page: str,
+    page: str = page_path_parameter,
     context: RequestContext = Depends(context_dependency),
 ) -> HtmlStatus:
     page_service = context.page_service
@@ -277,11 +320,11 @@ async def get_page_html_status(
     "/github",
     summary="Get a tree of GitHub-backed pages",
     name="get_github_tree",
-    response_model=GitHubTreeRoot,
+    response_model=GitHubContentsRoot,
 )
 async def get_github_tree(
     context: RequestContext = Depends(context_dependency),
-) -> GitHubTreeRoot:
+) -> GitHubContentsRoot:
     """Get the tree of GitHub-backed pages.
 
     This endpoint is primarily intended to be used by Squareone to power
@@ -292,7 +335,7 @@ async def get_github_tree(
     page_service = context.page_service
     async with context.session.begin():
         github_tree = await page_service.get_github_tree()
-    return GitHubTreeRoot.from_tree(tree=github_tree)
+    return GitHubContentsRoot.from_tree(tree=github_tree)
 
 
 @v1_router.get(
@@ -302,23 +345,97 @@ async def get_github_tree(
     name="get_github_page",
 )
 async def get_github_page(
-    display_path: str, context: RequestContext = Depends(context_dependency)
+    display_path: str = display_path_parameter,
+    context: RequestContext = Depends(context_dependency),
 ) -> Page:
     """Get the metadata for a GitHub-backed page.
 
     This endpoint provides the same data as ``GET /v1/pages/:page``, but
     is queried via the page's GitHub "display path" rather than the opaque
-    page slug. A display path is a POSIX-like "/"-separated path consisting
-    of components:
-
-    - GitHub owner (organization or username)
-    - Github repository
-    - Directory name or names (as appropriate)
-    - Page filename stem
+    page name.
     """
     page_service = context.page_service
     async with context.session.begin():
         page_domain = await page_service.get_github_backed_page(display_path)
+
+        context.response.headers["location"] = context.request.url_for(
+            "get_page", page=page_domain.name
+        )
+        return Page.from_domain(page=page_domain, request=context.request)
+
+
+@v1_router.get(
+    "/github-pr/{owner}/{repo}/{commit}",
+    summary="Get a tree of GitHub PR preview pages",
+    name="get_github_pr_tree",
+    response_model=GitHubPrContents,
+)
+async def get_github_pr_tree(
+    owner: str = github_owner_parameter,
+    repo: str = github_repo_parameter,
+    commit: str = pr_commit_parameter,
+    context: RequestContext = Depends(context_dependency),
+) -> GitHubPrContents:
+    """Get the tree of GitHub-backed pages for a pull request.
+
+    This endpoint is primarily intended to be used by Squareone to power
+    its navigational view of GitHub pages for a specific pull request
+    (actually a commit SHA) of a repository.
+    """
+    repo_service = await context.create_github_repo_service(
+        owner=owner, repo=repo
+    )  # TODO handle response where the app is not installed
+    page_service = repo_service.page_service
+
+    async with context.session.begin():
+        github_tree = await page_service.get_github_pr_tree(
+            owner=owner, repo=repo, commit=commit
+        )
+
+    check_runs = await repo_service.get_check_runs(
+        owner=owner, repo=repo, head_sha=commit
+    )
+    context.logger.debug(
+        "Check runs", check_runs=[run.dict() for run in check_runs]
+    )
+
+    pull_requests = await repo_service.get_pulls_for_check_runs(check_runs)
+    context.logger.debug(
+        "Pull requests", prs=[pr.dict() for pr in pull_requests]
+    )
+
+    return GitHubPrContents.create(
+        tree=github_tree,
+        owner=owner,
+        repo=repo,
+        commit=commit,
+        check_runs=check_runs,
+        pull_requests=pull_requests,
+    )
+
+
+@v1_router.get(
+    "/github-pr/{owner}/{repo}/{commit}/{path:path}",
+    response_model=Page,
+    summary="Metadata for GitHub-backed page",
+    name="get_github_pr_page",
+)
+async def get_github_pr_page(
+    owner: str = github_owner_parameter,
+    repo: str = github_repo_parameter,
+    commit: str = pr_commit_parameter,
+    path: str = path_parameter,
+    context: RequestContext = Depends(context_dependency),
+) -> Page:
+    """Get the metadata for a pull request preview of a GitHub-backed page."""
+    page_service = context.page_service
+    async with context.session.begin():
+        page_domain = await page_service.get_github_pr_page(
+            owner=owner,
+            repo=repo,
+            commit=commit,
+            path=path,
+        )
 
         context.response.headers["location"] = context.request.url_for(
             "get_page", page=page_domain.name
