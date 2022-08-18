@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os.path
 from abc import ABCMeta, abstractproperty
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -144,6 +145,10 @@ class GitHubCheck(metaclass=ABCMeta):
             f"{squareone_url}/times-square/github-pr/{self.repo.owner.login}"
             f"/{self.repo.name}/{self.check_run.head_sha}"
         )
+
+    def get_preview_url(self, notebook_path: str) -> str:
+        display_path = os.path.splitext(notebook_path)[0]
+        return f"{self.squareone_pr_url_root}/{display_path}"
 
     def export_truncated_annotations(self) -> List[Dict[str, Any]]:
         """Export the first 50 annotations to objects serializable to
@@ -457,10 +462,12 @@ class NotebookExecutionsCheck(GitHubCheck):
         notebook_paths = list(set(self.notebook_paths_checked))
         notebook_paths.sort()
         for notebook_path in notebook_paths:
+            preview_url = self.get_preview_url(notebook_path)
+            linked_notebook = f"[{notebook_path}]({preview_url})"
             if self._is_file_ok(notebook_path):
-                text = f"{text}| {notebook_path} | ✅ |\n"
+                text = f"{text}| {linked_notebook} | ✅ |\n"
             else:
-                text = f"{text}| {notebook_path} | ❌ |\n"
+                text = f"{text}| {linked_notebook} | ❌ |\n"
 
         return text
 
