@@ -12,7 +12,8 @@ starlette
 uvicorn[standard]
 
 # Other dependencies.
-safir[db,arq]
+git+https://github.com/lsst-sqre/safir.git@tickets/DM-38490#egg=safir[db,arq,redis]
+# safir[db,arq,redis]
 pydantic[email]
 click
 nbformat
