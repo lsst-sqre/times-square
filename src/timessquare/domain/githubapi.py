@@ -184,14 +184,12 @@ class GitHubBlobModel(BaseModel):
 
 
 class GitHubCheckSuiteStatus(str, Enum):
-
     queued = "queued"
     in_progress = "in_progress"
     completed = "completed"
 
 
 class GitHubCheckSuiteConclusion(str, Enum):
-
     success = "success"
     failure = "failure"
     neutral = "neutral"

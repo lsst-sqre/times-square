@@ -76,7 +76,6 @@ class NoteburstJobResponseModel(BaseModel):
 
 @dataclass
 class NoteburstApiResult:
-
     data: Optional[NoteburstJobResponseModel]
 
     status_code: int

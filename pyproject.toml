@@ -32,7 +32,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 79
-target-version = ['py38']
+target-version = ['py311']
 exclude = '''
 /(
     \.eggs
@@ -49,8 +49,8 @@ exclude = '''
 # Multi-line strings are implicitly treated by black as regular expressions
 
 [tool.isort]
-include_trailing_comma = true
-multi_line_output = 3
+profile = "black"
+line_length = 79
 known_first_party = ["timessquare", "tests"]
 skip = ["docs/conf.py"]
 

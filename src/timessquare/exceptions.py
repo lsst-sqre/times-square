@@ -35,7 +35,6 @@ class TimesSquareError(Exception):
 
 
 class PageNotFoundError(TimesSquareError):
-
     error = "page_not_found"
 
     status_code = 404
