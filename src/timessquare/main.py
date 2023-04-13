@@ -51,6 +51,10 @@ app = FastAPI(
 )
 """The FastAPI application for times-square."""
 
+# Add middleware
+app.add_middleware(XForwardedMiddleware)
+
+# Add routers
 app.include_router(internal_router)
 app.include_router(external_router, prefix=f"{config.path_prefix}")
 app.include_router(v1_router, prefix=f"{config.path_prefix}/v1")
@@ -65,7 +69,6 @@ async def startup_event() -> None:
     await arq_dependency.initialize(
         mode=config.arq_mode, redis_settings=config.arq_redis_settings
     )
-    app.add_middleware(XForwardedMiddleware)
 
 
 @app.on_event("shutdown")
