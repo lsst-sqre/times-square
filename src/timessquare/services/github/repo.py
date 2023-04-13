@@ -20,6 +20,7 @@ from timessquare.domain.githubapi import (
     GitHubBranchModel,
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
+    GitHubPullRequestModel,
     GitHubRepositoryModel,
 )
 from timessquare.domain.githubcheckout import (
@@ -34,7 +35,6 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.domain.githubwebhook import (
     GitHubCheckRunEventModel,
     GitHubCheckSuiteEventModel,
-    GitHubPullRequestModel,
     GitHubPushEventModel,
 )
 from timessquare.domain.noteburst import NoteburstJobStatus

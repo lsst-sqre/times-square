@@ -266,6 +266,10 @@ class PageStore:
 
         nodes: List[GitHubNode] = []
         for owner_name in result.scalars():
+            if owner_name is None:
+                # This is a page that's not backed by GitHub; should already
+                # be filtered out by the query above, but for typing.
+                continue
             node = await self._generate_node_for_owner(owner_name)
             nodes.append(node)
 

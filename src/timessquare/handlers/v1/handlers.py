@@ -4,6 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from pydantic import AnyHttpUrl
 from safir.metadata import get_metadata
 
 from timessquare.config import config
@@ -85,7 +86,10 @@ async def get_index(
         application_name=config.name,
     )
     doc_url = request.url.replace(path=f"/{config.name}/docs")
-    return Index(metadata=metadata, api_docs=str(doc_url))
+    return Index(
+        metadata=metadata,
+        api_docs=AnyHttpUrl(str(doc_url), scheme=request.url.scheme),
+    )
 
 
 @v1_router.get(
@@ -105,8 +109,8 @@ async def get_page(
     async with context.session.begin():
         page_domain = await page_service.get_page(page)
 
-        context.response.headers["location"] = context.request.url_for(
-            "get_page", page=page_domain.name
+        context.response.headers["location"] = str(
+            context.request.url_for("get_page", page=page_domain.name)
         )
         return Page.from_domain(page=page_domain, request=context.request)
 
@@ -217,8 +221,8 @@ async def post_page(
         )
         page = await page_service.get_page(page_exec.name)
 
-    context.response.headers["location"] = context.request.url_for(
-        "get_page", page=page_exec.name
+    context.response.headers["location"] = str(
+        context.request.url_for("get_page", page=page_exec.name)
     )
     return Page.from_domain(page=page, request=context.request)
 
@@ -240,8 +244,8 @@ async def get_page_source(
         page_domain = await page_service.get_page(page)
 
     response_headers = {
-        "location": context.request.url_for(
-            "get_page_source", page=page_domain.name
+        "location": str(
+            context.request.url_for("get_page_source", page=page_domain.name)
         )
     }
 
@@ -358,8 +362,8 @@ async def get_github_page(
     async with context.session.begin():
         page_domain = await page_service.get_github_backed_page(display_path)
 
-        context.response.headers["location"] = context.request.url_for(
-            "get_page", page=page_domain.name
+        context.response.headers["location"] = str(
+            context.request.url_for("get_page", page=page_domain.name)
         )
         return Page.from_domain(page=page_domain, request=context.request)
 
@@ -437,7 +441,7 @@ async def get_github_pr_page(
             path=path,
         )
 
-        context.response.headers["location"] = context.request.url_for(
-            "get_page", page=page_domain.name
+        context.response.headers["location"] = str(
+            context.request.url_for("get_page", page=page_domain.name)
         )
         return Page.from_domain(page=page_domain, request=context.request)

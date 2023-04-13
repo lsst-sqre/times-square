@@ -8,7 +8,8 @@ import httpx
 from fastapi import APIRouter, Depends, Request, Response, status
 from gidgethub.sansio import Event
 from pydantic import AnyHttpUrl, BaseModel, Field
-from safir.dependencies.arq import ArqQueue, arq_dependency
+from safir.arq import ArqQueue
+from safir.dependencies.arq import arq_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
 from safir.metadata import Metadata as SafirMetadata
@@ -59,7 +60,9 @@ async def get_index(
     v1_api_url = f"{request.url}v1"
     doc_url = request.url.replace(path=f"/{config.name}/redoc")
     return Index(
-        metadata=metadata, v1_api_base=v1_api_url, api_docs=str(doc_url)
+        metadata=metadata,
+        v1_api_base=AnyHttpUrl(v1_api_url, scheme=request.url.scheme),
+        api_docs=AnyHttpUrl(str(doc_url), scheme=request.url.scheme),
     )
 
 
