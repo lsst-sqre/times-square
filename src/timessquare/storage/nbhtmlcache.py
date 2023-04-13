@@ -4,22 +4,24 @@ from __future__ import annotations
 
 from typing import Optional
 
-import aioredis
+from redis.asyncio import Redis
 
 from timessquare.domain.nbhtml import NbHtmlModel
 
-from .redisbase import RedisStore
+from .redisbase import RedisPageInstanceStore
+
+__all__ = ["NbHtmlCacheStore"]
 
 
-class NbHtmlCacheStore(RedisStore[NbHtmlModel]):
+class NbHtmlCacheStore(RedisPageInstanceStore[NbHtmlModel]):
     """Manages the storage of HTML renderings of notebooks.
 
     The domain is `timessquare.domain.nbhtml.NbHtmlModel`.
     """
 
-    def __init__(self, redis: aioredis.Redis) -> None:
+    def __init__(self, redis: Redis) -> None:
         super().__init__(
-            redis=redis, key_prefix="nbhtml", datatype=NbHtmlModel
+            redis=redis, key_prefix="nbhtml/", datatype=NbHtmlModel
         )
 
     async def store_nbhtml(
@@ -29,11 +31,11 @@ class NbHtmlCacheStore(RedisStore[NbHtmlModel]):
 
         Parameters
         ----------
-        nbhtml : `timessquare.domain.nbhtml.NbHtmlModel`
+        nbhtml
             The HTML page domain model.
-        lifetime : int, optional
+        lifetime
             The lifetime for the record in seconds. `None` to cache the record
             indefinitely.
         """
         key = nbhtml.create_key()
-        await super().store(key, nbhtml, lifetime=lifetime)
+        await super().store_instance(key, nbhtml, lifetime=lifetime)

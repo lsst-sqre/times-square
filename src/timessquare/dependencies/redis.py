@@ -2,13 +2,13 @@
 
 from typing import Optional
 
-from aioredis import Redis
+from redis.asyncio import Redis
 
 __all__ = ["RedisDependency", "redis_dependency"]
 
 
 class RedisDependency:
-    """Provides an aioredis pool as a dependency.
+    """Provides an asyncio-based Redis client as a dependency.
 
     Notes
     -----
@@ -17,7 +17,7 @@ class RedisDependency:
     """
 
     def __init__(self) -> None:
-        self.redis: Optional[Redis] = None
+        self.redis: Redis | None = None
 
     async def initialize(
         self, redis_url: str, password: Optional[str] = None

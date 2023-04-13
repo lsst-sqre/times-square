@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from aioredis import Redis
 from httpx import AsyncClient
+from redis.asyncio import Redis
 from safir.database import create_async_session, create_database_engine
 from structlog import get_logger
 

@@ -20,7 +20,6 @@ nbformat
 nbconvert
 jsonschema
 jinja2
-aioredis
 gidgethub
 markdown-it-py[linkify,plugins]
 mdformat

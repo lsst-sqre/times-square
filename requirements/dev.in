@@ -20,3 +20,4 @@ sqlalchemy[mypy]
 holdup
 respx
 types-PyYAML
+types-redis
