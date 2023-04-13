@@ -13,8 +13,11 @@ from typing import Deque, List, Optional
 
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
+from safir.github import GitHubAppClientFactory
+from safir.slack.blockkit import SlackException
 from structlog.stdlib import BoundLogger
 
+from timessquare.config import config
 from timessquare.domain.githubapi import (
     GitHubBlobModel,
     GitHubBranchModel,
@@ -41,11 +44,6 @@ from timessquare.domain.noteburst import NoteburstJobStatus
 from timessquare.domain.page import PageExecutionInfo, PageModel
 
 from ..page import PageService
-from .client import (
-    create_github_client,
-    create_github_installation_client,
-    get_app_jwt,
-)
 
 
 class GitHubRepoService:
@@ -109,16 +107,21 @@ class GitHubRepoService:
         logger : `BoundLogger`
             A logger, ideally with request/worker job context already bound.
         """
-        app_jwt = get_app_jwt()
-        app_client = create_github_client(http_client=http_client)
-        installation_data = await app_client.getitem(
-            "/repos/{owner}/{repo}/installation",
-            url_vars={"owner": owner, "repo": repo},
-            jwt=app_jwt,
+        if not config.github_app_id or not config.github_app_private_key:
+            raise SlackException(
+                "github_app_id and github_app_private_key must be set to "
+                "create the GitHubRepoService."
+            )
+        github_client_factory = GitHubAppClientFactory(
+            http_client=http_client,
+            id=config.github_app_id,
+            key=config.github_app_private_key.get_secret_value(),
+            name="lsst-sqre/times-square",
         )
-        installation_id = installation_data["id"]
-        installation_client = await create_github_installation_client(
-            http_client=http_client, installation_id=installation_id
+        installation_client = (
+            await github_client_factory.create_installation_client_for_repo(
+                owner=owner, repo=repo
+            )
         )
         return cls(
             http_client=http_client,
