@@ -479,6 +479,12 @@ class GitHubRepoService:
             notebook = await checkout.load_notebook(
                 notebook_ref=notebook_ref, github_client=self._github_client
             )
+            if notebook.sidecar.enabled is False:
+                self._logger.debug(
+                    "Skipping notebook execution check for disabled notebook",
+                    path=notebook_ref.notebook_source_path,
+                )
+                continue
             page = await self.create_page(
                 checkout=checkout,
                 notebook=notebook,
