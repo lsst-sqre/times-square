@@ -292,6 +292,12 @@ class GitHubRepoService:
                         display_path=display_path,
                     )
             else:
+                if notebook.sidecar.enabled is False:
+                    self._logger.debug(
+                        "Notebook is disabled. Skipping",
+                        display_path=display_path,
+                    )
+                    continue
                 # add new page
                 self._logger.debug(
                     "Creating new page for notebook", display_path=display_path
