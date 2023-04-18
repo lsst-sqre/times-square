@@ -222,6 +222,7 @@ class GitHubRepoService:
               different.
            2. If new, create the page.
            3. If changed, modify the existing page
+           4. If disabled, mark the page for deletion.
 
         3. Delete any pages not found in the repository checkout.
         """
@@ -262,13 +263,29 @@ class GitHubRepoService:
                     or notebook.sidecar_git_tree_sha
                     != page.repository_sidecar_sha
                 ):
-                    self._logger.debug(
-                        "Notebook content has updated",
-                        display_path=display_path,
-                    )
-                    await self.update_page(
-                        notebook=notebook, page=existing_pages[display_path]
-                    )
+                    if notebook.sidecar.enabled is False:
+                        self._logger.debug(
+                            "Notebook is disabled. Dropping from update.",
+                            display_path=display_path,
+                        )
+                        try:
+                            found_display_paths.remove(display_path)
+                        except ValueError:
+                            self._logger.debug(
+                                "Tried to delete existing page, now disabled, "
+                                "but it was not in found_display_paths.",
+                                display_path=display_path,
+                                found_display_paths=found_display_paths,
+                            )
+                    else:
+                        self._logger.debug(
+                            "Notebook content has updated",
+                            display_path=display_path,
+                        )
+                        await self.update_page(
+                            notebook=notebook,
+                            page=existing_pages[display_path],
+                        )
                 else:
                     self._logger.debug(
                         "Notebook content is the same; skipping",
