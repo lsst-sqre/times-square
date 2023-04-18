@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from safir.dependencies.db_session import db_session_dependency
+from safir.github.webhooks import GitHubPushEventModel
 
-from timessquare.domain.githubwebhook import GitHubPushEventModel
 from timessquare.worker.servicefactory import create_github_repo_service
 
 

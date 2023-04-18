@@ -14,11 +14,7 @@ from typing import Deque, List, Optional
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
 from safir.github import GitHubAppClientFactory
-from safir.slack.blockkit import SlackException
-from structlog.stdlib import BoundLogger
-
-from timessquare.config import config
-from timessquare.domain.githubapi import (
+from safir.github.models import (
     GitHubBlobModel,
     GitHubBranchModel,
     GitHubCheckRunConclusion,
@@ -26,6 +22,15 @@ from timessquare.domain.githubapi import (
     GitHubPullRequestModel,
     GitHubRepositoryModel,
 )
+from safir.github.webhooks import (
+    GitHubCheckRunEventModel,
+    GitHubCheckSuiteEventModel,
+    GitHubPushEventModel,
+)
+from safir.slack.blockkit import SlackException
+from structlog.stdlib import BoundLogger
+
+from timessquare.config import config
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookModel,
@@ -34,11 +39,6 @@ from timessquare.domain.githubcheckout import (
 from timessquare.domain.githubcheckrun import (
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
-)
-from timessquare.domain.githubwebhook import (
-    GitHubCheckRunEventModel,
-    GitHubCheckSuiteEventModel,
-    GitHubPushEventModel,
 )
 from timessquare.domain.noteburst import NoteburstJobStatus
 from timessquare.domain.page import PageExecutionInfo, PageModel

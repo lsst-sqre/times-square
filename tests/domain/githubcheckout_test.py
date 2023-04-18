@@ -10,8 +10,8 @@ import pytest
 import respx
 from gidgethub.httpx import GitHubAPI
 from httpx import Response
+from safir.github.models import GitHubBlobModel
 
-from timessquare.domain.githubapi import GitHubBlobModel
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     GitTreeMode,

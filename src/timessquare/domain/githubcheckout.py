@@ -12,8 +12,8 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import yaml
 from gidgethub.httpx import GitHubAPI
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, root_validator
+from safir.github.models import GitHubBlobModel, GitHubRepositoryModel
 
-from .githubapi import GitHubBlobModel, GitHubRepositoryModel
 from .page import PageParameterSchema, PersonModel
 
 

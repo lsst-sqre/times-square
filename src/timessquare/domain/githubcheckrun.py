@@ -9,10 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 from gidgethub.httpx import GitHubAPI
 from pydantic import ValidationError
-
-from timessquare.config import config
-
-from .githubapi import (
+from safir.github.models import (
     GitHubBlobModel,
     GitHubCheckRunAnnotationLevel,
     GitHubCheckRunConclusion,
@@ -20,6 +17,9 @@ from .githubapi import (
     GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
+
+from timessquare.config import config
+
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     NotebookSidecarFile,

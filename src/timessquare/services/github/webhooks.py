@@ -7,10 +7,7 @@ from __future__ import annotations
 from gidgethub.routing import Router
 from gidgethub.sansio import Event
 from safir.arq import ArqQueue
-from structlog.stdlib import BoundLogger
-
-from timessquare.config import config
-from timessquare.domain.githubwebhook import (
+from safir.github.webhooks import (
     GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
     GitHubCheckRunEventModel,
@@ -18,6 +15,9 @@ from timessquare.domain.githubwebhook import (
     GitHubPullRequestEventModel,
     GitHubPushEventModel,
 )
+from structlog.stdlib import BoundLogger
+
+from timessquare.config import config
 
 __all__ = ["router"]
 

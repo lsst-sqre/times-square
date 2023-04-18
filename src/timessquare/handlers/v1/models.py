@@ -10,15 +10,15 @@ from urllib.parse import urlencode
 from fastapi import Request
 from markdown_it import MarkdownIt
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field, HttpUrl
-from safir.metadata import Metadata as SafirMetadata
-
-from timessquare.domain.githubapi import (
+from safir.github.models import (
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
     GitHubCheckRunStatus,
     GitHubPullRequestModel,
     GitHubPullState,
 )
+from safir.metadata import Metadata as SafirMetadata
+
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel

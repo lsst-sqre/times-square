@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any, Dict, Union
 
 from safir.dependencies.db_session import db_session_dependency
-
-from timessquare.domain.githubwebhook import (
-    AppInstallationRepoModel,
+from safir.github.webhooks import (
     GitHubAppInstallationEventModel,
+    GitHubAppInstallationEventRepoModel,
     GitHubAppInstallationRepositoriesEventModel,
 )
+
 from timessquare.worker.servicefactory import create_page_service
 
 
@@ -19,7 +19,7 @@ async def repo_removed(
         GitHubAppInstallationRepositoriesEventModel,
         GitHubAppInstallationEventModel,
     ],
-    repo: AppInstallationRepoModel,
+    repo: GitHubAppInstallationEventRepoModel,
 ) -> str:
     """Process repo_removed queue tasks, triggered by Times Square app
     installation events on GitHub.
