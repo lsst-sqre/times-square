@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from timessquare.domain.githubwebhook import GitHubCheckRunEventModel
+from safir.github.webhooks import GitHubCheckRunEventModel
 
 
 async def compute_check_run(

@@ -1,10 +1,36 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel",
-    "setuptools_scm[toml]>=3.4"
+[project]
+name = "times-square"
+description = "Times Square is a service for parameterized Jupyter Notebooks as dynamic webpages."
+license = { file = "LICENSE" }
+readme = "README.rst"
+keywords = ["rubin", "lsst"]
+# https://pypi.org/classifiers/
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Operating System :: POSIX",
+    "Typing :: Typed",
 ]
-build-backend = 'setuptools.build_meta'
+requires-python = ">=3.11"
+# Use requirements/main.in for runtime dependencies instead.
+dependencies = []
+dynamic = ["version"]
+
+[project.scripts]
+times-square = "timessquare.cli:main"
+
+[project.urls]
+Homepage = "https://times-square.lsst.io"
+Source = "https://github.com/lsst-sqre/times-square"
+
+[build-system]
+requires = ["setuptools>=61", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 
@@ -32,7 +58,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 79
-target-version = ['py38']
+target-version = ['py311']
 exclude = '''
 /(
     \.eggs
@@ -49,8 +75,8 @@ exclude = '''
 # Multi-line strings are implicitly treated by black as regular expressions
 
 [tool.isort]
-include_trailing_comma = true
-multi_line_output = 3
+profile = "black"
+line_length = 79
 known_first_party = ["timessquare", "tests"]
 skip = ["docs/conf.py"]
 
@@ -60,3 +86,22 @@ python_files = [
     "tests/*.py",
     "tests/*/*.py"
 ]
+
+[tool.mypy]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+ignore_missing_imports = true
+local_partial_types = true
+plugins = ["sqlalchemy.ext.mypy.plugin", "pydantic.mypy"]
+no_implicit_reexport = true
+show_error_codes = true
+strict_equality = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_ignores = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+warn_untyped_fields = true

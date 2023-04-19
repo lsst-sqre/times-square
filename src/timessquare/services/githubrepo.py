@@ -13,15 +13,24 @@ from typing import Deque, List, Optional
 
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
-from structlog.stdlib import BoundLogger
-
-from timessquare.domain.githubapi import (
+from safir.github import GitHubAppClientFactory
+from safir.github.models import (
     GitHubBlobModel,
     GitHubBranchModel,
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
+    GitHubPullRequestModel,
     GitHubRepositoryModel,
 )
+from safir.github.webhooks import (
+    GitHubCheckRunEventModel,
+    GitHubCheckSuiteEventModel,
+    GitHubPushEventModel,
+)
+from safir.slack.blockkit import SlackException
+from structlog.stdlib import BoundLogger
+
+from timessquare.config import config
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookModel,
@@ -31,21 +40,10 @@ from timessquare.domain.githubcheckrun import (
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
 )
-from timessquare.domain.githubwebhook import (
-    GitHubCheckRunEventModel,
-    GitHubCheckSuiteEventModel,
-    GitHubPullRequestModel,
-    GitHubPushEventModel,
-)
 from timessquare.domain.noteburst import NoteburstJobStatus
 from timessquare.domain.page import PageExecutionInfo, PageModel
 
-from ..page import PageService
-from .client import (
-    create_github_client,
-    create_github_installation_client,
-    get_app_jwt,
-)
+from .page import PageService
 
 
 class GitHubRepoService:
@@ -109,16 +107,21 @@ class GitHubRepoService:
         logger : `BoundLogger`
             A logger, ideally with request/worker job context already bound.
         """
-        app_jwt = get_app_jwt()
-        app_client = create_github_client(http_client=http_client)
-        installation_data = await app_client.getitem(
-            "/repos/{owner}/{repo}/installation",
-            url_vars={"owner": owner, "repo": repo},
-            jwt=app_jwt,
+        if not config.github_app_id or not config.github_app_private_key:
+            raise SlackException(
+                "github_app_id and github_app_private_key must be set to "
+                "create the GitHubRepoService."
+            )
+        github_client_factory = GitHubAppClientFactory(
+            http_client=http_client,
+            id=config.github_app_id,
+            key=config.github_app_private_key.get_secret_value(),
+            name="lsst-sqre/times-square",
         )
-        installation_id = installation_data["id"]
-        installation_client = await create_github_installation_client(
-            http_client=http_client, installation_id=installation_id
+        installation_client = (
+            await github_client_factory.create_installation_client_for_repo(
+                owner=owner, repo=repo
+            )
         )
         return cls(
             http_client=http_client,
@@ -219,6 +222,7 @@ class GitHubRepoService:
               different.
            2. If new, create the page.
            3. If changed, modify the existing page
+           4. If disabled, mark the page for deletion.
 
         3. Delete any pages not found in the repository checkout.
         """
@@ -259,19 +263,41 @@ class GitHubRepoService:
                     or notebook.sidecar_git_tree_sha
                     != page.repository_sidecar_sha
                 ):
-                    self._logger.debug(
-                        "Notebook content has updated",
-                        display_path=display_path,
-                    )
-                    await self.update_page(
-                        notebook=notebook, page=existing_pages[display_path]
-                    )
+                    if notebook.sidecar.enabled is False:
+                        self._logger.debug(
+                            "Notebook is disabled. Dropping from update.",
+                            display_path=display_path,
+                        )
+                        try:
+                            found_display_paths.remove(display_path)
+                        except ValueError:
+                            self._logger.debug(
+                                "Tried to delete existing page, now disabled, "
+                                "but it was not in found_display_paths.",
+                                display_path=display_path,
+                                found_display_paths=found_display_paths,
+                            )
+                    else:
+                        self._logger.debug(
+                            "Notebook content has updated",
+                            display_path=display_path,
+                        )
+                        await self.update_page(
+                            notebook=notebook,
+                            page=existing_pages[display_path],
+                        )
                 else:
                     self._logger.debug(
                         "Notebook content is the same; skipping",
                         display_path=display_path,
                     )
             else:
+                if notebook.sidecar.enabled is False:
+                    self._logger.debug(
+                        "Notebook is disabled. Skipping",
+                        display_path=display_path,
+                    )
+                    continue
                 # add new page
                 self._logger.debug(
                     "Creating new page for notebook", display_path=display_path
@@ -476,6 +502,12 @@ class GitHubRepoService:
             notebook = await checkout.load_notebook(
                 notebook_ref=notebook_ref, github_client=self._github_client
             )
+            if notebook.sidecar.enabled is False:
+                self._logger.debug(
+                    "Skipping notebook execution check for disabled notebook",
+                    path=notebook_ref.notebook_source_path,
+                )
+                continue
             page = await self.create_page(
                 checkout=checkout,
                 notebook=notebook,

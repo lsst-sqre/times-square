@@ -23,14 +23,12 @@ __all__ = ["Config", "Profile", "LogLevel"]
 
 
 class Profile(str, Enum):
-
     production = "production"
 
     development = "development"
 
 
 class LogLevel(str, Enum):
-
     DEBUG = "DEBUG"
 
     INFO = "INFO"
@@ -43,7 +41,6 @@ class LogLevel(str, Enum):
 
 
 class Config(BaseSettings):
-
     name: str = Field("times-square", env="SAFIR_NAME")
 
     profile: Profile = Field(Profile.production, env="SAFIR_PROFILE")
@@ -75,7 +72,12 @@ class Config(BaseSettings):
 
     database_password: SecretStr = Field(..., env="TS_DATABASE_PASSWORD")
 
-    redis_url: RedisDsn = Field("redis://localhost:6379/0", env="TS_REDIS_URL")
+    redis_url: RedisDsn = Field(
+        env="TS_REDIS_URL",
+        default_factory=lambda: RedisDsn(
+            "redis://localhost:6379/0", scheme="redis"
+        ),
+    )
     """URL for the redis instance, used by the worker queue."""
 
     github_app_id: Optional[str] = Field(None, env="TS_GITHUB_APP_ID")
@@ -106,7 +108,10 @@ class Config(BaseSettings):
     """
 
     redis_queue_url: RedisDsn = Field(
-        "redis://localhost:6379/1", env="TS_REDIS_QUEUE_URL"
+        env="TS_REDIS_QUEUE_URL",
+        default_factory=lambda: RedisDsn(
+            "redis://localhost:6379/1", scheme="redis"
+        ),
     )
 
     queue_name: str = Field("arq:queue", env="TS_REDIS_QUEUE_NAME")

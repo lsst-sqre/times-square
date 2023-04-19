@@ -292,7 +292,7 @@ class PageService:
             values=resolved_values,
             display_settings=display_settings,
         )
-        nbhtml = await self._html_store.get(page_key)
+        nbhtml = await self._html_store.get_instance(page_key)
         if nbhtml is not None:
             self._logger.debug("Got HTML from cache")
             return nbhtml
@@ -333,7 +333,7 @@ class PageService:
             not presently available.
         """
         # Is there an existing job in the noteburst job store?
-        job = await self._job_store.get(page_instance)
+        job = await self._job_store.get_instance(page_instance)
         if not job:
             self._logger.debug("No existing noteburst job available")
             # A record of a noteburst job is not available. Send a request
@@ -370,7 +370,7 @@ class PageService:
             self._logger.warning(
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
-            await self._job_store.delete(page_instance)
+            await self._job_store.delete_instance(page_instance)
             await self.request_noteburst_execution(page_instance)
         else:
             # server error from noteburst
@@ -456,7 +456,7 @@ class PageService:
                 "Stored new HTML", display_settings=asdict(matrix_key)
             )
 
-        await self._job_store.delete(page_instance)
+        await self._job_store.delete_instance(page_instance)
         self._logger.debug("Deleted old job record")
 
         return html_matrix

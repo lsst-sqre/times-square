@@ -10,15 +10,15 @@ from urllib.parse import urlencode
 from fastapi import Request
 from markdown_it import MarkdownIt
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field, HttpUrl
-from safir.metadata import Metadata as SafirMetadata
-
-from timessquare.domain.githubapi import (
+from safir.github.models import (
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
     GitHubCheckRunStatus,
     GitHubPullRequestModel,
     GitHubPullState,
 )
+from safir.metadata import Metadata as SafirMetadata
+
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
 from timessquare.domain.nbhtml import NbHtmlModel
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
@@ -55,7 +55,7 @@ page_description_field = Field(
     ),
 )
 
-page_cache_ttl_field = Field(
+page_cache_ttl_field: int | None = Field(
     None,
     example=864000,
     title="Page title",
@@ -214,10 +214,13 @@ class GitHubSourceMetadata(BaseModel):
 
     @classmethod
     def from_domain(cls, *, page: PageModel) -> GitHubSourceMetadata:
+        # Assertions are are to help mypy distinguish a GitHub-based page
         assert page.github_owner is not None
         assert page.github_repo is not None
         sidecar_path = page.repository_sidecar_path
         source_path = page.repository_source_path
+        assert sidecar_path is not None
+        assert source_path is not None
         return cls(
             owner=page.github_owner,
             repository=page.github_repo,
@@ -303,14 +306,25 @@ class Page(BaseModel):
             tags=page.tags,
             uploader_username=page.uploader_username,
             parameters=parameters,
-            self_url=request.url_for("get_page", page=page.name),
-            source_url=request.url_for("get_page_source", page=page.name),
-            rendered_url=request.url_for(
-                "get_rendered_notebook", page=page.name
+            self_url=AnyHttpUrl(
+                str(request.url_for("get_page", page=page.name)),
+                scheme=request.url.scheme,
             ),
-            html_url=request.url_for("get_page_html", page=page.name),
-            html_status_url=request.url_for(
-                "get_page_html_status", page=page.name
+            source_url=AnyHttpUrl(
+                str(request.url_for("get_page_source", page=page.name)),
+                scheme=request.url.scheme,
+            ),
+            rendered_url=AnyHttpUrl(
+                str(request.url_for("get_rendered_notebook", page=page.name)),
+                scheme=request.url.scheme,
+            ),
+            html_url=AnyHttpUrl(
+                str(request.url_for("get_page_html", page=page.name)),
+                scheme=request.url.scheme,
+            ),
+            html_status_url=AnyHttpUrl(
+                str(request.url_for("get_page_html_status", page=page.name)),
+                scheme=request.url.scheme,
             ),
             github=github_metadata,
         )
@@ -333,7 +347,10 @@ class PageSummary(BaseModel):
         return cls(
             name=summary.name,
             title=summary.title,
-            self_url=request.url_for("get_page", page=summary.name),
+            self_url=AnyHttpUrl(
+                str(request.url_for("get_page", page=summary.name)),
+                scheme=request.url.scheme,
+            ),
         )
 
 
@@ -363,8 +380,8 @@ class HtmlStatus(BaseModel):
     def from_html(
         cls, *, html: Optional[NbHtmlModel], request: Request
     ) -> HtmlStatus:
-        base_html_url = request.url_for(
-            "get_page_html", page=request.path_params["page"]
+        base_html_url = str(
+            request.url_for("get_page_html", page=request.path_params["page"])
         )
 
         if html is None:
@@ -375,7 +392,11 @@ class HtmlStatus(BaseModel):
             else:
                 html_url = base_html_url
 
-            return cls(available=False, html_url=html_url, html_hash=None)
+            return cls(
+                available=False,
+                html_url=AnyHttpUrl(html_url, scheme=request.url.scheme),
+                html_hash=None,
+            )
         else:
             query_params: Dict[str, Any] = {}
             query_params.update(html.values)
@@ -390,7 +411,9 @@ class HtmlStatus(BaseModel):
             else:
                 html_url = base_html_url
             return cls(
-                available=True, html_hash=html.html_hash, html_url=html_url
+                available=True,
+                html_hash=html.html_hash,
+                html_url=AnyHttpUrl(html_url, scheme=request.url.scheme),
             )
 
 

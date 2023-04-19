@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 from typing import Optional
 
-import aioredis
 from fastapi import Depends, Request, Response
 from httpx import AsyncClient
+from redis.asyncio import Redis
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
@@ -14,7 +14,7 @@ from structlog.stdlib import BoundLogger
 
 from timessquare.config import Config, config
 from timessquare.dependencies.redis import redis_dependency
-from timessquare.services.github.repo import GitHubRepoService
+from timessquare.services.githubrepo import GitHubRepoService
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
@@ -48,7 +48,7 @@ class RequestContext:
     session: async_scoped_session
     """The database session."""
 
-    redis: aioredis.Redis
+    redis: Redis
     """Redis connection pool."""
 
     http_client: AsyncClient
@@ -105,7 +105,7 @@ async def context_dependency(
     response: Response,
     logger: BoundLogger = Depends(logger_dependency),
     session: async_scoped_session = Depends(db_session_dependency),
-    redis: aioredis.Redis = Depends(redis_dependency),
+    redis: Redis = Depends(redis_dependency),
     http_client: AsyncClient = Depends(http_client_dependency),
 ) -> RequestContext:
     """Provides a RequestContext as a dependency."""

@@ -7,7 +7,7 @@ from typing import Optional
 import click
 import structlog
 import uvicorn
-from aioredis import Redis
+from redis.asyncio import Redis
 from safir.asyncio import run_with_asyncio
 from safir.database import create_database_engine, initialize_database
 
@@ -78,11 +78,10 @@ async def reset_html() -> None:
     redis = Redis.from_url(config.redis_url, password=None)
     try:
         html_store = NbHtmlCacheStore(redis)
-        record_count = await html_store.delete_all()
-        if record_count > 0:
-            click.echo(f"Deleted {record_count} HTML records")
-        else:
-            click.echo("No HTML records to delete")
+        html_store.scan("*")
+        n = len([r async for r in html_store.scan("*")])
+        await html_store.delete_all("*")
+        click.echo(f"Deleted {n} HTML records")
     except Exception as e:
         click.echo(str(e))
     finally:

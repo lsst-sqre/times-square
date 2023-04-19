@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
-from safir.logging import configure_logging
+from safir.logging import configure_logging, configure_uvicorn_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
 
 from .config import config
@@ -39,6 +39,7 @@ configure_logging(
     log_level=config.log_level,
     name=config.logger_name,
 )
+configure_uvicorn_logging(config.log_level)
 
 app = FastAPI(
     title="Times Square",
@@ -51,6 +52,10 @@ app = FastAPI(
 )
 """The FastAPI application for times-square."""
 
+# Add middleware
+app.add_middleware(XForwardedMiddleware)
+
+# Add routers
 app.include_router(internal_router)
 app.include_router(external_router, prefix=f"{config.path_prefix}")
 app.include_router(v1_router, prefix=f"{config.path_prefix}/v1")
@@ -65,7 +70,6 @@ async def startup_event() -> None:
     await arq_dependency.initialize(
         mode=config.arq_mode, redis_settings=config.arq_redis_settings
     )
-    app.add_middleware(XForwardedMiddleware)
 
 
 @app.on_event("shutdown")

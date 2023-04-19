@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import httpx
+from safir.github import GitHubAppClientFactory
+from safir.slack.blockkit import SlackException
 from sqlalchemy.ext.asyncio import async_scoped_session
 from structlog.stdlib import BoundLogger
 
+from timessquare.config import config
 from timessquare.dependencies.redis import redis_dependency
-from timessquare.services.github.client import (
-    create_github_installation_client,
-)
-from timessquare.services.github.repo import GitHubRepoService
+from timessquare.services.githubrepo import GitHubRepoService
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
@@ -23,9 +23,19 @@ async def create_github_repo_service(
     installation_id: str,
 ) -> GitHubRepoService:
     """Create a GitHubRepoService for arq tasks."""
-    github_client = await create_github_installation_client(
+    if not config.github_app_id or not config.github_app_private_key:
+        raise SlackException(
+            "github_app_id and github_app_private_key must be set to "
+            "create the GitHubRepoService."
+        )
+    github_client_factory = GitHubAppClientFactory(
         http_client=http_client,
-        installation_id=installation_id,
+        id=config.github_app_id,
+        key=config.github_app_private_key.get_secret_value(),
+        name="lsst-sqre/times-square",
+    )
+    github_client = await github_client_factory.create_installation_client(
+        installation_id=installation_id
     )
 
     page_service = await create_page_service(
