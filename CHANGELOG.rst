@@ -1,6 +1,14 @@
 Change log
 ==========
 
+0.7.0 (2023-04-19)
+------------------
+
+- Adopt ``safir.redis.pydantic`` for Redis-backed storage.
+- Adopt ``safir.github`` creating the GitHub App client and modelling of GitHub resources with Pydantic.
+- Fix handling of disabled pages so that they aren't executed in a GitHub check, and are dropped if they previously existed in the database.
+- Update to Python 3.11
+
 0.6.0 (2022-08-18)
 ------------------
 
