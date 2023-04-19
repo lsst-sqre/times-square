@@ -1,38 +1,27 @@
-"""Handlers for the app's external root, ``/timessquare/``."""
+"""Handlers for the app's external root, ``/times-square/``."""
 
 from __future__ import annotations
 
 import asyncio
 
-import httpx
 from fastapi import APIRouter, Depends, Request, Response, status
 from gidgethub.sansio import Event
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl
 from safir.arq import ArqQueue
 from safir.dependencies.arq import arq_dependency
-from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
-from safir.metadata import Metadata as SafirMetadata
 from safir.metadata import get_metadata
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
-from timessquare.services.github.webhooks import router as webhook_router
 
-__all__ = ["get_index", "external_router", "Index", "post_github_webhook"]
+from .githubwebhooks import router as webhook_router
+from .models import Index
+
+__all__ = ["get_index", "external_router", "post_github_webhook"]
 
 external_router = APIRouter()
 """FastAPI router for all external handlers."""
-
-
-class Index(BaseModel):
-    """Metadata returned by the external root URL of the application."""
-
-    metadata: SafirMetadata = Field(..., title="Package metadata")
-
-    v1_api_base: AnyHttpUrl = Field(..., title="Base URL for the v1 REST API")
-
-    api_docs: AnyHttpUrl = Field(..., tile="API documentation URL")
 
 
 @external_router.get(
@@ -75,7 +64,6 @@ async def get_index(
 async def post_github_webhook(
     request: Request,
     logger: BoundLogger = Depends(logger_dependency),
-    http_client: httpx.AsyncClient = Depends(http_client_dependency),
     arq_queue: ArqQueue = Depends(arq_dependency),
 ) -> Response:
     """Process GitHub webhook events."""
@@ -101,6 +89,7 @@ async def post_github_webhook(
     logger = logger.bind(github_delivery=event.delivery_id)
 
     logger.debug("Received GitHub webhook", payload=event.data)
+
     # Give GitHub some time to reach internal consistency.
     await asyncio.sleep(1)
     await webhook_router.dispatch(event, logger, arq_queue)

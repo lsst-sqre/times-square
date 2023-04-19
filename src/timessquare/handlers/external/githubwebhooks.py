@@ -19,7 +19,22 @@ from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
 
-__all__ = ["router"]
+__all__ = [
+    "router",
+    "handle_installation_created",
+    "handle_installation_unsuspend",
+    "handle_installation_deleted",
+    "handle_installation_suspend",
+    "handle_repositories_added",
+    "handle_repositories_removed",
+    "handle_check_run_created",
+    "handle_check_run_rerequested",
+    "handle_check_suite_request",
+    "handle_pr_opened",
+    "handle_pr_sync",
+    "handle_push_event",
+    "handle_ping",
+]
 
 
 router = Router()
