@@ -43,7 +43,7 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.domain.noteburst import NoteburstJobStatus
 from timessquare.domain.page import PageExecutionInfo, PageModel
 
-from ..page import PageService
+from .page import PageService
 
 
 class GitHubRepoService:

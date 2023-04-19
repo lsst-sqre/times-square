@@ -8,7 +8,7 @@ from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
 from timessquare.dependencies.redis import redis_dependency
-from timessquare.services.github.repo import GitHubRepoService
+from timessquare.services.githubrepo import GitHubRepoService
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
