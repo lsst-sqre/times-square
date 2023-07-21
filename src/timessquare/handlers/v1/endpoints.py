@@ -38,15 +38,15 @@ display_path_parameter = Path(
         "- Directory name or names (as appropriate)\n"
         "- Page filename stem\n"
     ),
-    example="lsst-sqre/times-square-demo/matplotlib/gaussian2d",
+    examples=["lsst-sqre/times-square-demo/matplotlib/gaussian2d"],
 )
 
 github_owner_parameter = Path(
-    title="GitHub owner (organization or username)", example="lsst-sqre"
+    title="GitHub owner (organization or username)", examples=["lsst-sqre"]
 )
 
 github_repo_parameter = Path(
-    title="GitHub repository", example="times-square-demo"
+    title="GitHub repository", examples=["times-square-demo"]
 )
 
 page_path_parameter = Path(
@@ -55,17 +55,17 @@ page_path_parameter = Path(
         "An opaque identifier for a page. This is often the 'name' field for "
         "a page's resource model."
     ),
-    example="3d5a140634c34e249b7531667469b816",
+    examples=["3d5a140634c34e249b7531667469b816"],
 )
 
 path_parameter = Path(
     title="Notebook path in repository (without extension)",
-    example="matplotlib/gaussian2d",
+    examples=["matplotlib/gaussian2d"],
 )
 
 pr_commit_parameter = Path(
     title="Git commit for pull request check run",
-    example="878092649b8bc1d8ef1436cc623bcecb923ece39",
+    examples=["878092649b8bc1d8ef1436cc623bcecb923ece39"],
 )
 
 
