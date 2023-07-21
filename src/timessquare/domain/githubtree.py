@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
 
 
 class GitHubNodeType(str, Enum):
@@ -30,7 +29,7 @@ class GitHubNode:
     node_type: GitHubNodeType
     """The type of path object in the node."""
 
-    path_segments: List[str]
+    path_segments: list[str]
     """The segments in the path (i.e. the name of this page, or
     this directory) up to this point.
 
@@ -45,12 +44,12 @@ class GitHubNode:
     title: str
     """Presentational title for this node."""
 
-    github_commit: Optional[str] = None
+    github_commit: str | None = None
     """The commit SHA if this tree is for a specific commit (a PR preview)
     instead of corresponding to the default branch of the repository.
     """
 
-    contents: List[GitHubNode] = field(default_factory=list)
+    contents: list[GitHubNode] = field(default_factory=list)
 
     @property
     def squareone_path(self) -> str:
@@ -76,7 +75,7 @@ class GitHubNode:
 
     @classmethod
     def create_with_repo_root(
-        cls, results: List[GitHubTreeQueryResult]
+        cls, results: list[GitHubTreeQueryResult]
     ) -> GitHubNode:
         """Create a tree with this root-node being the first repository in
         the results.
@@ -97,7 +96,7 @@ class GitHubNode:
 
     @classmethod
     def create_with_owner_root(
-        cls, results: List[GitHubTreeQueryResult]
+        cls, results: list[GitHubTreeQueryResult]
     ) -> GitHubNode:
         """Create a tree with the root-node being the first GitHub owner in
         the results.
@@ -227,7 +226,7 @@ class GitHubTreeQueryResult:
 
     github_repo: str
 
-    github_commit: Optional[str]
+    github_commit: str | None
 
     path_prefix: str
 
@@ -236,8 +235,8 @@ class GitHubTreeQueryResult:
     path_stem: str
 
     @property
-    def path_segments(self) -> List[str]:
-        segments: List[str] = [self.github_owner, self.github_repo]
+    def path_segments(self) -> list[str]:
+        segments: list[str] = [self.github_owner, self.github_repo]
         if len(self.path_prefix) > 0:
             segments.extend(self.path_prefix.split("/"))
         segments.append(self.path_stem)

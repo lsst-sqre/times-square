@@ -1,6 +1,5 @@
 """Handler's for the /v1/."""
 
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -117,13 +116,13 @@ async def get_page(
 
 @v1_router.get(
     "/pages",
-    response_model=List[PageSummary],
+    response_model=list[PageSummary],
     summary="List pages",
     name="get_pages",
 )
 async def get_pages(
     context: RequestContext = Depends(context_dependency),
-) -> List[PageSummary]:
+) -> list[PageSummary]:
     """List available pages."""
     page_service = context.page_service
     async with context.session.begin():

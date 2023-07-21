@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from base64 import b64encode
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import Any, Dict
+from typing import Any
 
 from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel
@@ -35,7 +35,7 @@ class NbHtmlModel(BaseModel):
     html_hash: str
     """A sha256 hash of the HTML content."""
 
-    values: Dict[str, Any]
+    values: dict[str, Any]
     """The parameter values, keyed by parameter name.
 
     Values are native Python types (i.e., string values for parameters
@@ -93,7 +93,7 @@ class NbHtmlModel(BaseModel):
             html_hash=html_hash.hexdigest(),
             values=page_instance.values,
             date_executed=noteburst_result.finish_time,
-            date_rendered=datetime.utcnow(),
+            date_rendered=datetime.now(tz=UTC),
             execution_duration=td,
             hide_code=display_settings.hide_code,
         )
@@ -128,7 +128,7 @@ class NbDisplaySettings:
     @property
     def cache_key(self) -> str:
         return b64encode(
-            json.dumps(
-                {k: p for k, p in asdict(self).items()}, sort_keys=True
-            ).encode("utf-8")
+            json.dumps(dict(asdict(self).items()), sort_keys=True).encode(
+                "utf-8"
+            )
         ).decode("utf-8")

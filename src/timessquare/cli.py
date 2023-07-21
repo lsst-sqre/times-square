@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import click
 import structlog
 import uvicorn
@@ -23,13 +21,12 @@ def main() -> None:
 
     Administrative command-line interface for Times Square.
     """
-    pass
 
 
 @main.command()
 @click.argument("topic", default=None, required=False, nargs=1)
 @click.pass_context
-def help(ctx: click.Context, topic: Optional[str]) -> None:
+def help(ctx: click.Context, topic: str | None) -> None:
     """Show help for any command."""
     # The help command implementation is taken from
     # https://www.burgundywall.com/post/having-click-help-subcommand
@@ -39,7 +36,8 @@ def help(ctx: click.Context, topic: Optional[str]) -> None:
         else:
             raise click.UsageError(f"Unknown help topic {topic}", ctx)
     else:
-        assert ctx.parent
+        if not ctx.parent:
+            raise RuntimeError("help called without topic or parent")
         click.echo(ctx.parent.get_help())
 
 
@@ -59,7 +57,7 @@ def develop(port: int) -> None:
     "--reset", is_flag=True, help="Delete all existing database data."
 )
 @run_with_asyncio
-async def init(reset: bool) -> None:
+async def init(*, reset: bool) -> None:
     """Initialize the database storage."""
     logger = structlog.get_logger(config.logger_name)
     engine = create_database_engine(

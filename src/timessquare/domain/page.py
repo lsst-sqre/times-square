@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import re
 from base64 import b64encode
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any
 from uuid import uuid4
 
 import jinja2
@@ -58,7 +59,7 @@ class PageModel:
     ipynb: str
     """The Jinja-parameterized notebook (a JSON-formatted string)."""
 
-    parameters: Dict[str, PageParameterSchema]
+    parameters: dict[str, PageParameterSchema]
     """The notebook's parameter schemas, keyed by their names."""
 
     title: str
@@ -67,52 +68,52 @@ class PageModel:
     date_added: datetime
     """Date when the page is registered through the Times Square API."""
 
-    authors: List[PersonModel] = field(default_factory=list)
+    authors: list[PersonModel] = field(default_factory=list)
     """Authors of the notebook."""
 
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     """Tags (keywords) assigned to this page."""
 
-    uploader_username: Optional[str] = None
+    uploader_username: str | None = None
     """Username of the uploader, if this page is uploaded without GitHub
     backing.
     """
 
-    date_deleted: Optional[datetime] = None
+    date_deleted: datetime | None = None
     """A nullable datetime that is set to the datetime when the page is
     soft-deleted.
     """
 
-    description: Optional[str] = None
+    description: str | None = None
     """Description of a page (markdown-formatted)."""
 
-    cache_ttl: Optional[int] = None
+    cache_ttl: int | None = None
     """The cache TTL (seconds) for HTML renders, or None to retain renders
     indefinitely.
     """
 
-    github_owner: Optional[str] = None
+    github_owner: str | None = None
     """The GitHub repository owner (username or organization name) for
     GitHub-backed pages.
     """
 
-    github_repo: Optional[str] = None
+    github_repo: str | None = None
     """The GitHub repository name for GitHub-backed pages."""
 
-    github_commit: Optional[str] = None
+    github_commit: str | None = None
     """The SHA of the commit this page corresponds to; only used for pages
     associated with a GitHub Check Run.
     """
 
-    repository_path_prefix: Optional[str] = None
+    repository_path_prefix: str | None = None
     """The repository path prefix, relative to the root of the repository."""
 
-    repository_display_path_prefix: Optional[str] = None
+    repository_display_path_prefix: str | None = None
     """The repository path prefix, relative to the configured root of Times
     Square notebooks in a repository.
     """
 
-    repository_path_stem: Optional[str] = None
+    repository_path_stem: str | None = None
     """The file name stem (without directory prefix and without extensions)
     for both the source and sidecar file
 
@@ -121,20 +122,20 @@ class PageModel:
     `repository_source_filename` or `repository_sidecar_filename`
     """
 
-    repository_source_extension: Optional[str] = None
+    repository_source_extension: str | None = None
     """The filename extension of the source file in the GitHub repository for
     GitHub-backed pages.
     """
 
-    repository_sidecar_extension: Optional[str] = None
+    repository_sidecar_extension: str | None = None
     """The filename extension of the sidecar YAML file in the GitHub repository
     for GitHub-backed pages.
     """
 
-    repository_source_sha: Optional[str] = None
+    repository_source_sha: str | None = None
     """The git tree sha of the source file for GitHub-backed pages."""
 
-    repository_sidecar_sha: Optional[str] = None
+    repository_sidecar_sha: str | None = None
     """The git tree sha of the sidecar YAML file for GitHub-backed pages."""
 
     @classmethod
@@ -144,10 +145,10 @@ class PageModel:
         ipynb: str,
         title: str,
         uploader_username: str,
-        description: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        authors: Optional[List[PersonModel]] = None,
+        description: str | None = None,
+        cache_ttl: int | None = None,
+        tags: list[str] | None = None,
+        authors: list[PersonModel] | None = None,
     ) -> PageModel:
         """Create a page model given an API upload of a notebook.
 
@@ -160,7 +161,7 @@ class PageModel:
         parameters = cls._extract_parameters(notebook)
 
         name = uuid4().hex  # random slug for API uploads
-        date_added = datetime.now(timezone.utc)
+        date_added = datetime.now(UTC)
 
         if not authors:
             # Create a default author using the uploader info
@@ -173,7 +174,7 @@ class PageModel:
             ipynb=ipynb,
             parameters=parameters,
             title=title,
-            tags=tags if tags else list(),
+            tags=tags if tags else [],
             authors=authors,
             date_added=date_added,
             description=description,
@@ -186,7 +187,7 @@ class PageModel:
         *,
         ipynb: str,
         title: str,
-        parameters: Dict[str, PageParameterSchema],
+        parameters: dict[str, PageParameterSchema],
         github_owner: str,
         github_repo: str,
         repository_path_prefix: str,
@@ -196,22 +197,22 @@ class PageModel:
         repository_sidecar_extension: str,
         repository_source_sha: str,
         repository_sidecar_sha: str,
-        description: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        authors: Optional[List[PersonModel]] = None,
-        github_commit: Optional[str] = None,
+        description: str | None = None,
+        cache_ttl: int | None = None,
+        tags: list[str] | None = None,
+        authors: list[PersonModel] | None = None,
+        github_commit: str | None = None,
     ) -> PageModel:
         name = uuid4().hex  # random slug for API uploads
-        date_added = datetime.now(timezone.utc)
+        date_added = datetime.now(UTC)
 
         return cls(
             name=name,
             ipynb=ipynb,
             parameters=parameters,
             title=title,
-            tags=tags if tags else list(),
-            authors=authors if authors else list(),
+            tags=tags if tags else [],
+            authors=authors if authors else [],
             date_added=date_added,
             description=description,
             cache_ttl=cache_ttl,
@@ -233,7 +234,7 @@ class PageModel:
 
         For API-sourced pages, this attribute is `False`.
         """
-        if (
+        return bool(
             self.repository_display_path_prefix is not None
             and self.repository_path_stem is not None
             and self.repository_source_extension is not None
@@ -243,10 +244,7 @@ class PageModel:
             and self.repository_display_path_prefix is not None
             and self.github_owner is not None
             and self.github_repo is not None
-        ):
-            return True
-        else:
-            return False
+        )
 
     @property
     def display_path(self) -> str:
@@ -269,8 +267,10 @@ class PageModel:
         identifier).
         """
         if self.github_backed:
-            assert self.repository_display_path_prefix is not None
-            assert self.repository_path_stem is not None
+            if self.repository_display_path_prefix is None:
+                raise RuntimeError("repository_display_path_prefix is None")
+            if self.repository_path_stem is None:
+                raise RuntimeError("repository_path_stem is None")
             path = str(
                 PurePosixPath(self.repository_display_path_prefix).joinpath(
                     self.repository_path_stem
@@ -281,7 +281,7 @@ class PageModel:
             return self.name
 
     @property
-    def repository_source_filename(self) -> Optional[str]:
+    def repository_source_filename(self) -> str | None:
         """The filename (without prefix) of the source file in the GitHub
         repository for GitHub-backed pages.
         """
@@ -291,7 +291,7 @@ class PageModel:
             return None
 
     @property
-    def repository_sidecar_filename(self) -> Optional[str]:
+    def repository_sidecar_filename(self) -> str | None:
         """The filename (without prefix) of the sidecar YAML file in the GitHub
         repository for GitHub-backed pages.
         """
@@ -303,7 +303,7 @@ class PageModel:
             return None
 
     @property
-    def repository_source_path(self) -> Optional[str]:
+    def repository_source_path(self) -> str | None:
         source_filename = self.repository_source_filename
         if source_filename is None:
             return None
@@ -317,7 +317,7 @@ class PageModel:
         )
 
     @property
-    def repository_sidecar_path(self) -> Optional[str]:
+    def repository_sidecar_path(self) -> str | None:
         sidecar_filename = self.repository_sidecar_filename
         if sidecar_filename is None:
             return None
@@ -341,7 +341,7 @@ class PageModel:
         try:
             return nbformat.reads(source, as_version=NB_VERSION)
         except Exception as e:
-            raise PageNotebookFormatError(str(e))
+            raise PageNotebookFormatError(str(e)) from e
 
     @staticmethod
     def write_ipynb(notebook: nbformat.NotebookNode) -> str:
@@ -355,7 +355,7 @@ class PageModel:
     @staticmethod
     def _extract_parameters(
         notebook: nbformat.NotebookNode,
-    ) -> Dict[str, PageParameterSchema]:
+    ) -> dict[str, PageParameterSchema]:
         """Get the page parmeters from the notebook.
 
         Parameters are located in the Jupyter Notebook's metadata under
@@ -367,16 +367,14 @@ class PageModel:
         except AttributeError:
             return {}
 
-        page_parameters = {
+        return {
             name: PageModel.create_and_validate_page_parameter(name, schema)
             for name, schema in parameters_metadata.items()
         }
 
-        return page_parameters
-
     @staticmethod
     def create_and_validate_page_parameter(
-        name: str, schema: Dict[str, Any]
+        name: str, schema: dict[str, Any]
     ) -> PageParameterSchema:
         """Validate a parameter's name and schema.
 
@@ -398,7 +396,7 @@ class PageModel:
 
     def resolve_and_validate_values(
         self, requested_values: Mapping[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Resolve and validate parameter values for a notebook based on
         a possibly incomplete user request.
 
@@ -417,12 +415,14 @@ class PageModel:
         }
 
         # Cast to the correct types
-        cast_values: Dict[str, Any] = {}
+        cast_values: dict[str, Any] = {}
         for name, value in resolved_values.items():
             try:
                 cast_values[name] = self.parameters[name].cast_value(value)
-            except PageParameterValueCastingError:
-                raise PageParameterError(name, value, self.parameters[name])
+            except PageParameterValueCastingError as e:
+                raise PageParameterError(
+                    name, value, self.parameters[name]
+                ) from e
 
         # Ensure each parameter's value is valid
         for name, value in cast_values.items():
@@ -452,7 +452,7 @@ class PageModel:
             JSON-encoded notebook source.
         """
         # Build Jinja render context
-        jinja_env = jinja2.Environment()
+        jinja_env = jinja2.Environment(autoescape=True)
         jinja_env.globals.update({"params": values})
 
         # Read notebook and render cell-by-cell
@@ -479,20 +479,20 @@ class PersonModel:
     name: str
     """A person's display name."""
 
-    username: Optional[str] = None
+    username: str | None = None
     """A person's RSP username."""
 
-    affiliation_name: Optional[str] = None
+    affiliation_name: str | None = None
     """Display name of a person's main affiliation."""
 
-    email: Optional[str] = None
+    email: str | None = None
     """A person's email."""
 
-    slack_name: Optional[str] = None
+    slack_name: str | None = None
     """A person's Slack handle."""
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> PersonModel:
+    def from_dict(cls, d: dict[str, Any]) -> PersonModel:
         return cls(
             name=d["name"],
             username=d.get("username"),
@@ -501,7 +501,7 @@ class PersonModel:
             slack_name=d.get("slack_name"),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -515,7 +515,7 @@ class PageParameterSchema:
     """Parameter value validator (based on `json_schema`)."""
 
     @classmethod
-    def create(cls, json_schema: Dict[str, Any]) -> PageParameterSchema:
+    def create(cls, json_schema: dict[str, Any]) -> PageParameterSchema:
         """Create a PageParameterSchema given a JSON Schema.
 
         Note that this method does not validate the schema. If the schema is
@@ -526,12 +526,12 @@ class PageParameterSchema:
 
     @classmethod
     def create_and_validate(
-        cls, name: str, json_schema: Dict[str, Any]
+        cls, name: str, json_schema: dict[str, Any]
     ) -> PageParameterSchema:
         try:
             Draft202012Validator.check_schema(json_schema)
         except jsonschema.exceptions.SchemaError as e:
-            raise ParameterSchemaError(name, str(e))
+            raise ParameterSchemaError(name, str(e)) from e
 
         if "default" not in json_schema:
             raise ParameterDefaultMissingError(name)
@@ -543,7 +543,7 @@ class PageParameterSchema:
         return instance
 
     @property
-    def schema(self) -> Dict[str, Any]:
+    def schema(self) -> dict[str, Any]:
         """Get the JSON schema."""
         return self.validator.schema
 
@@ -592,13 +592,13 @@ class PageParameterSchema:
                     elif v.lower() == "false":
                         return False
                     else:
-                        raise ValueError
+                        raise PageParameterValueCastingError(v, schema_type)
                 else:
                     return v
             else:
-                raise ValueError
-        except ValueError:
-            raise PageParameterValueCastingError(v, schema_type)
+                raise PageParameterValueCastingError(v, schema_type)
+        except ValueError as e:
+            raise PageParameterValueCastingError(v, schema_type) from e
 
 
 @dataclass
@@ -626,7 +626,7 @@ class PageInstanceIdModel:
     name: str
     """The name of the page, which is used as a URL path component (slug)."""
 
-    values: Dict[str, Any]
+    values: dict[str, Any]
     """The values of a page instance's parameters.
 
     Keys are parameter names, and values are the parameter values.
@@ -636,9 +636,9 @@ class PageInstanceIdModel:
     @property
     def cache_key(self) -> str:
         encoded_values_key = b64encode(
-            json.dumps(
-                {k: p for k, p in self.values.items()}, sort_keys=True
-            ).encode("utf-8")
+            json.dumps(dict(self.values.items()), sort_keys=True).encode(
+                "utf-8"
+            )
         ).decode("utf-8")
         return f"{self.name}/{encoded_values_key}"
 
@@ -662,7 +662,7 @@ class PageExecutionInfo(PageInstanceModel):
 
     noteburst_status_code: int
 
-    noteburst_error_message: Optional[str] = None
+    noteburst_error_message: str | None = None
 
-    noteburst_job: Optional[NoteburstJobModel] = None
+    noteburst_job: NoteburstJobModel | None = None
     """The noteburst job that is processing the new page's default form."""

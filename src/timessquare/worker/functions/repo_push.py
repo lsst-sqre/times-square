@@ -1,6 +1,8 @@
+"""Worker function that processes a repo_push task."""
+
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from safir.dependencies.db_session import db_session_dependency
 from safir.github.webhooks import GitHubPushEventModel
@@ -9,7 +11,7 @@ from timessquare.worker.servicefactory import create_github_repo_service
 
 
 async def repo_push(
-    ctx: Dict[Any, Any], *, payload: GitHubPushEventModel
+    ctx: dict[Any, Any], *, payload: GitHubPushEventModel
 ) -> str:
     """Process repo_push queue tasks, triggered by push events on GitHub
     repositories.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 import pytest
 import respx
@@ -17,7 +16,6 @@ from timessquare.domain.githubcheckout import (
     GitTreeMode,
     NotebookSidecarFile,
     RecursiveGitTreeModel,
-    RepositoryNotebookTreeRef,
     RepositorySettingsFile,
 )
 
@@ -103,22 +101,18 @@ async def test_repository_git_tree(
 
 @pytest.mark.asyncio
 async def test_recursive_git_tree_find_notebooks() -> None:
-    """test RecursiveGitTreeModel using the times-square-time dataset."""
+    """Test RecursiveGitTreeModel using the times-square-time dataset."""
     json_path = Path(__file__).parent.joinpath(
         "../data/times-square-demo/recursive_tree.json"
     )
     repo_tree = RecursiveGitTreeModel.parse_raw(json_path.read_text())
     settings = RepositorySettingsFile()
-    notebook_refs: List[RepositoryNotebookTreeRef] = []
-    for notebook_ref in repo_tree.find_notebooks(settings):
-        notebook_refs.append(notebook_ref)
+    notebook_refs = list(repo_tree.find_notebooks(settings))
     assert len(notebook_refs) == 2
 
     # Apply ignore settings to reduce number of detected notebooks
     settings2 = RepositorySettingsFile(ignore=["matplotlib/*"])
-    notebook_refs2: List[RepositoryNotebookTreeRef] = []
-    for notebook_ref in repo_tree.find_notebooks(settings2):
-        notebook_refs2.append(notebook_ref)
+    notebook_refs2 = list(repo_tree.find_notebooks(settings2))
     assert len(notebook_refs2) == 1
 
 

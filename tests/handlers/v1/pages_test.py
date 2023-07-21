@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import nbformat
@@ -26,7 +26,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             json={
                 "job_id": "xyz",
                 "kernel_name": "LSST",
-                "enqueue_time": datetime.utcnow().isoformat(),
+                "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
                     "https://test.example.com/noteburst/v1/notebooks/xyz"
@@ -82,7 +82,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 200
     assert r.headers["location"] == source_url
     source_notebook_data = r.json()
-    assert "metadata" in source_notebook_data.keys()  # check it's a notebook
+    assert "metadata" in source_notebook_data  # check it's a notebook
 
     # Try getting a page that doesn't exist
     r = await client.get(
@@ -149,7 +149,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             json={
                 "job_id": "xyz",
                 "kernel_name": "LSST",
-                "enqueue_time": datetime.utcnow().isoformat(),
+                "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
                     "https://test.example.com/noteburst/v1/notebooks/xyz"
@@ -167,7 +167,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             json={
                 "job_id": "xyz",
                 "kernel_name": "LSST",
-                "enqueue_time": datetime.utcnow().isoformat(),
+                "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
                     "https://test.example.com/noteburst/v1/notebooks/xyz"
@@ -187,7 +187,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             json={
                 "job_id": "xyz",
                 "kernel_name": "LSST",
-                "enqueue_time": datetime.utcnow().isoformat(),
+                "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
                     "https://test.example.com/noteburst/v1/notebooks/xyz"

@@ -1,6 +1,8 @@
+"""Worker function to process repo_added queue tasks."""
+
 from __future__ import annotations
 
-from typing import Any, Dict, Union
+from typing import Any
 
 from safir.dependencies.db_session import db_session_dependency
 from safir.github.webhooks import (
@@ -13,12 +15,10 @@ from timessquare.worker.servicefactory import create_github_repo_service
 
 
 async def repo_added(
-    ctx: Dict[Any, Any],
+    ctx: dict[Any, Any],
     *,
-    payload: Union[
-        GitHubAppInstallationRepositoriesEventModel,
-        GitHubAppInstallationEventModel,
-    ],
+    payload: GitHubAppInstallationRepositoriesEventModel
+    | GitHubAppInstallationEventModel,
     repo: GitHubAppInstallationEventRepoModel,
 ) -> str:
     """Process repo_added queue tasks, triggered by Times Square app

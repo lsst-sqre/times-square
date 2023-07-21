@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os.path
 from abc import ABCMeta, abstractproperty
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any
 
 from gidgethub.httpx import GitHubAPI
 from pydantic import ValidationError
@@ -44,13 +45,13 @@ class Annotation:
 
     annotation_level: GitHubCheckRunAnnotationLevel
 
-    end_line: Optional[int] = None
+    end_line: int | None = None
 
     @classmethod
     def from_validation_error(
         cls, path: str, error: ValidationError
-    ) -> List[Annotation]:
-        annotations: List[Annotation] = []
+    ) -> list[Annotation]:
+        annotations: list[Annotation] = []
         for item in error.errors():
             title = cls._format_title_for_pydantic_item(item["loc"])
             annotations.append(
@@ -65,10 +66,8 @@ class Annotation:
         return annotations
 
     @staticmethod
-    def _format_title_for_pydantic_item(
-        locations: Sequence[Union[str, int]]
-    ) -> str:
-        title_elements: List[str] = []
+    def _format_title_for_pydantic_item(locations: Sequence[str | int]) -> str:
+        title_elements: list[str] = []
         for location in locations:
             if isinstance(location, int):
                 title_elements.append(f"[{location}]")
@@ -76,7 +75,7 @@ class Annotation:
                 title_elements.append(f".{location}")
         return "".join(title_elements).lstrip(".")
 
-    def export(self) -> Dict[str, Any]:
+    def export(self) -> dict[str, Any]:
         """Export a GitHub check run output annotation object."""
         output = {
             "path": self.path,
@@ -107,7 +106,7 @@ class GitHubCheck(metaclass=ABCMeta):
     ) -> None:
         self.check_run = check_run
         self.repo = repo
-        self.annotations: List[Annotation] = []
+        self.annotations: list[Annotation] = []
 
     @property
     def conclusion(self) -> GitHubCheckRunConclusion:
@@ -128,7 +127,7 @@ class GitHubCheck(metaclass=ABCMeta):
 
     @abstractproperty
     def text(self) -> str:
-        """The text body of the check's message."""
+        """Text body of the check's message."""
         raise NotImplementedError
 
     @property
@@ -140,7 +139,7 @@ class GitHubCheck(metaclass=ABCMeta):
         if config.environment_url.endswith("/"):
             squareone_url = str(config.environment_url)
         else:
-            squareone_url = f"{str(config.environment_url)}/"
+            squareone_url = f"{config.environment_url!s}/"
         return (
             f"{squareone_url}/times-square/github-pr/{self.repo.owner.login}"
             f"/{self.repo.name}/{self.check_run.head_sha}"
@@ -150,7 +149,7 @@ class GitHubCheck(metaclass=ABCMeta):
         display_path = os.path.splitext(notebook_path)[0]
         return f"{self.squareone_pr_url_root}/{display_path}"
 
-    def export_truncated_annotations(self) -> List[Dict[str, Any]]:
+    def export_truncated_annotations(self) -> list[dict[str, Any]]:
         """Export the first 50 annotations to objects serializable to
         GitHub.
 
@@ -204,11 +203,11 @@ class GitHubConfigsCheck(GitHubCheck):
     def __init__(
         self, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
     ) -> None:
-        self.sidecar_files_checked: List[str] = []
+        self.sidecar_files_checked: list[str] = []
 
         # Optional caching for data reuse
-        self.checkout: Optional[GitHubRepositoryCheckout] = None
-        self.tree: Optional[RecursiveGitTreeModel] = None
+        self.checkout: GitHubRepositoryCheckout | None = None
+        self.tree: RecursiveGitTreeModel | None = None
 
         super().__init__(check_run=check_run, repo=repo)
 
@@ -280,7 +279,7 @@ class GitHubConfigsCheck(GitHubCheck):
 
         # Cache this checkout and tree so that the notebook execution check
         # can reuse them efficiently.
-        check._cache_github_checkout(
+        check.cache_github_checkout(
             checkout=checkout,
             tree=tree,
         )
@@ -364,12 +363,9 @@ class GitHubConfigsCheck(GitHubCheck):
         return text
 
     def _is_file_ok(self, path: str) -> bool:
-        for annotation in self.annotations:
-            if annotation.path == path:
-                return False
-        return True
+        return all(annotation.path != path for annotation in self.annotations)
 
-    def _cache_github_checkout(
+    def cache_github_checkout(
         self,
         *,
         checkout: GitHubRepositoryCheckout,
@@ -396,14 +392,15 @@ class NotebookExecutionsCheck(GitHubCheck):
     def __init__(
         self, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
     ) -> None:
-        self.notebook_paths_checked: List[str] = []
+        self.notebook_paths_checked: list[str] = []
         super().__init__(check_run=check_run, repo=repo)
 
     def report_noteburst_failure(
         self, page_execution: PageExecutionInfo
     ) -> None:
         path = page_execution.page.repository_source_path
-        assert path is not None
+        if path is None:
+            raise RuntimeError("Page execution has no notebook path")
         annotation = Annotation(
             path=path,
             start_line=1,
@@ -425,10 +422,12 @@ class NotebookExecutionsCheck(GitHubCheck):
     ) -> None:
         if job_result.status != NoteburstJobStatus.complete:
             raise ValueError("Noteburst job isn't complete yet")
-        assert job_result.status is not None
+        if job_result.status is None:
+            raise RuntimeError("Noteburst job has no status")
 
         notebook_path = page_execution.page.repository_source_path
-        assert notebook_path is not None
+        if notebook_path is None:
+            raise RuntimeError("Page execution has no notebook source path")
         self.notebook_paths_checked.append(notebook_path)
         if not job_result.success:
             annotation = Annotation(
@@ -472,7 +471,4 @@ class NotebookExecutionsCheck(GitHubCheck):
         return text
 
     def _is_file_ok(self, path: str) -> bool:
-        for annotation in self.annotations:
-            if annotation.path == path:
-                return False
-        return True
+        return all(annotation.path != path for annotation in self.annotations)

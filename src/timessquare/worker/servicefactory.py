@@ -1,3 +1,5 @@
+"""Factories for services in the worker context."""
+
 from __future__ import annotations
 
 import httpx

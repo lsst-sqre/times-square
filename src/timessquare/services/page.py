@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from httpx import AsyncClient
 from structlog.stdlib import BoundLogger
@@ -61,10 +62,10 @@ class PageService:
         ipynb: str,
         title: str,
         uploader_username: str,
-        description: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        authors: Optional[List[PersonModel]] = None,
+        description: str | None = None,
+        cache_ttl: int | None = None,
+        tags: list[str] | None = None,
+        authors: list[PersonModel] | None = None,
     ) -> PageExecutionInfo:
         """Create a page resource given the parameterized Jupyter Notebook
         content.
@@ -95,7 +96,7 @@ class PageService:
         self._page_store.add(page)
 
     async def add_page_and_execute(
-        self, page: PageModel, enable_retry: bool = True
+        self, page: PageModel, *, enable_retry: bool = True
     ) -> PageExecutionInfo:
         """Add a page to the page store and execute it with defaults.
 
@@ -168,23 +169,23 @@ class PageService:
             display_path, commit=commit
         )
         if page is None:
-            # FIXME add a commit attribute to the exception
+            # TODO add a commit attribute to the exception
             raise PageNotFoundError(display_path)
         return page
 
-    async def get_page_summaries(self) -> List[PageSummaryModel]:
+    async def get_page_summaries(self) -> list[PageSummaryModel]:
         """Get page summaries."""
         return await self._page_store.list_page_summaries()
 
     async def get_pages_for_repo(
-        self, owner: str, name: str, commit: Optional[str] = None
-    ) -> List[PageModel]:
+        self, owner: str, name: str, commit: str | None = None
+    ) -> list[PageModel]:
         """Get all pages backed by a specific GitHub repository."""
         return await self._page_store.list_pages_for_repository(
             owner=owner, name=name, commit=commit
         )
 
-    async def get_github_tree(self) -> List[GitHubNode]:
+    async def get_github_tree(self) -> list[GitHubNode]:
         """Get the tree of GitHub-backed pages."""
         return await self._page_store.get_github_tree()
 
@@ -194,7 +195,7 @@ class PageService:
         owner: str,
         repo: str,
         commit: str,
-    ) -> List[GitHubNode]:
+    ) -> list[GitHubNode]:
         """Get the tree of GitHub-backed pages for a specific pull request."""
         return await self._page_store.get_github_pr_tree(
             owner=owner, repo=repo, commit=commit
@@ -206,7 +207,7 @@ class PageService:
         await self.execute_page_with_defaults(page)
 
     async def update_page_and_execute(
-        self, page: PageModel, enable_retry: bool = True
+        self, page: PageModel, *, enable_retry: bool = True
     ) -> PageExecutionInfo:
         await self.update_page_in_store(page)
         return await self.execute_page_with_defaults(
@@ -214,7 +215,7 @@ class PageService:
         )
 
     async def execute_page_with_defaults(
-        self, page: PageModel, enable_retry: bool = True
+        self, page: PageModel, *, enable_retry: bool = True
     ) -> PageExecutionInfo:
         """Request noteburst execution of with page's default values.
 
@@ -231,7 +232,7 @@ class PageService:
 
     async def soft_delete_page(self, page: PageModel) -> None:
         """Soft delete a page by setting its date_deleted field."""
-        page.date_deleted = datetime.now(timezone.utc)
+        page.date_deleted = datetime.now(UTC)
         await self._page_store.update_page(page)
 
     async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
@@ -254,12 +255,11 @@ class PageService:
         """
         page = await self.get_page(name)
         resolved_values = page.resolve_and_validate_values(values)
-        rendered_notebook = page.render_parameters(resolved_values)
-        return rendered_notebook
+        return page.render_parameters(resolved_values)
 
     async def get_html(
         self, *, name: str, query_params: Mapping[str, Any]
-    ) -> Optional[NbHtmlModel]:
+    ) -> NbHtmlModel | None:
         """Get the HTML for a page given the query parameters, first
         from a cache or triggering a rendering if not available.
 
@@ -275,8 +275,8 @@ class PageService:
         # Get display settings from parameters
         try:
             hide_code = bool(int(query_params.get("ts_hide_code", "1")))
-        except Exception:
-            raise ValueError("hide_code query parameter must be 1 or 0")
+        except Exception as e:
+            raise ValueError("hide_code query parameter must be 1 or 0") from e
         display_settings = NbDisplaySettings(hide_code=hide_code)
         self._logger.debug(
             "Resolved display settings",
@@ -313,9 +313,9 @@ class PageService:
         *,
         page_instance: PageInstanceModel,
         display_settings: NbDisplaySettings,
-    ) -> Optional[NbHtmlModel]:
+    ) -> NbHtmlModel | None:
         """Convert a noteburst job for a given page and parameter values into
-        HTML (caching that HTML as well), and triggering a new noteburst
+        HTML (caching that HTML as well), and triggering a new noteburst.
 
         Parameters
         ----------
@@ -352,7 +352,10 @@ class PageService:
             )
             if noteburst_response.status == NoteburstJobStatus.complete:
                 ipynb = noteburst_response.ipynb
-                assert ipynb
+                if ipynb is None:
+                    raise RuntimeError(
+                        "Noteburst job is complete but has no ipynb"
+                    )
                 html_renders = await self._create_html_matrix(
                     page_instance=page_instance,
                     ipynb=ipynb,
@@ -383,7 +386,7 @@ class PageService:
         return None
 
     async def request_noteburst_execution(
-        self, page_instance: PageInstanceModel, enable_retry: bool = True
+        self, page_instance: PageInstanceModel, *, enable_retry: bool = True
     ) -> PageExecutionInfo:
         """Request a notebook execution for a given page and parameters,
         and store the job.
@@ -417,7 +420,8 @@ class PageService:
             parameters=page_instance.values,
             job_url=r.data.self_url,
         )
-        assert r.data is not None
+        if r.data is None:
+            raise RuntimeError("Noteburst job has no data")
         return PageExecutionInfo(
             name=page_instance.name,
             values=page_instance.values,
@@ -433,14 +437,14 @@ class PageService:
         page_instance: PageInstanceModel,
         ipynb: str,
         noteburst_response: NoteburstJobResponseModel,
-    ) -> Dict[Any, NbHtmlModel]:
+    ) -> dict[Any, NbHtmlModel]:
         # These keys correspond to display arguments in
         # NbHtml.create_from_notebook_result
         matrix_keys = [
             NbDisplaySettings(hide_code=True),
             NbDisplaySettings(hide_code=False),
         ]
-        html_matrix: Dict[NbDisplaySettings, NbHtmlModel] = {}
+        html_matrix: dict[NbDisplaySettings, NbHtmlModel] = {}
         for matrix_key in matrix_keys:
             nbhtml = NbHtmlModel.create_from_noteburst_result(
                 page_instance=page_instance,
@@ -449,7 +453,7 @@ class PageService:
                 display_settings=matrix_key,
             )
             html_matrix[matrix_key] = nbhtml
-            # FIXME make lifetime a setting of page for pages that aren't
+            # TODO make lifetime a setting of page for pages that aren't
             # idempotent.
             await self._html_store.store_nbhtml(nbhtml=nbhtml, lifetime=None)
             self._logger.debug(
@@ -462,7 +466,7 @@ class PageService:
         return html_matrix
 
     @property
-    def _noteburst_auth_header(self) -> Dict[str, str]:
+    def _noteburst_auth_header(self) -> dict[str, str]:
         return {
             "Authorization": (
                 f"Bearer {config.gafaelfawr_token.get_secret_value()}"

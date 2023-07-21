@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterable, Optional
+from collections.abc import AsyncIterable
 
 from safir.redis import PydanticRedisStorage, S
 
@@ -47,7 +47,7 @@ class RedisPageInstanceStore(PydanticRedisStorage[S]):
         self,
         page_id: PageInstanceIdModel,
         data: S,
-        lifetime: Optional[int] = None,
+        lifetime: int | None = None,
     ) -> None:
         """Store a pydantic object for a page instance.
 

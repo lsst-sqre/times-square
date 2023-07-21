@@ -83,7 +83,7 @@ async def shutdown_event() -> None:
 async def ts_exception_handler(
     request: Request, exc: TimesSquareError
 ) -> JSONResponse:
-    """Custom handler for Times Square error."""
+    """Handle Times Square errors."""
     return JSONResponse(
         status_code=exc.status_code, content={"detail": [exc.to_dict()]}
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
@@ -28,7 +28,7 @@ def test_parameter_name_validation() -> None:
 
 def test_parameter_default_exists() -> None:
     name = "myvar"
-    schema: Dict[str, Any] = {"type": "number", "description": "Test schema"}
+    schema: dict[str, Any] = {"type": "number", "description": "Test schema"}
 
     with pytest.raises(ParameterDefaultMissingError):
         PageParameterSchema.create_and_validate(name=name, json_schema=schema)
@@ -40,7 +40,7 @@ def test_parameter_default_exists() -> None:
 
 def test_parameter_default_invalid() -> None:
     name = "myvar"
-    schema: Dict[str, Any] = {
+    schema: dict[str, Any] = {
         "type": "number",
         "default": -1,
         "minimum": 0,
@@ -59,19 +59,19 @@ def test_parameter_casting() -> None:
     schema = PageParameterSchema.create(
         {"default": "default", "type": "string"}
     )
-    assert "hello" == schema.cast_value("hello")
+    assert schema.cast_value("hello") == "hello"
 
     schema = PageParameterSchema.create({"default": 1, "type": "integer"})
-    assert 1 == schema.cast_value("1")
-    assert 1 == schema.cast_value(1)
+    assert schema.cast_value("1") == 1
+    assert schema.cast_value(1) == 1
 
     schema = PageParameterSchema.create({"default": 1.5, "type": "number"})
-    assert 2.4 == schema.cast_value("2.4")
-    assert 2.4 == schema.cast_value(2.4)
+    assert schema.cast_value("2.4") == 2.4
+    assert schema.cast_value(2.4) == 2.4
 
     schema = PageParameterSchema.create({"default": 1.5, "type": "number"})
-    assert 2 == schema.cast_value("2")
-    assert 2 == schema.cast_value(2)
+    assert schema.cast_value("2") == 2
+    assert schema.cast_value(2) == 2
 
     schema = PageParameterSchema.create({"default": True, "type": "boolean"})
     assert True is schema.cast_value("true")

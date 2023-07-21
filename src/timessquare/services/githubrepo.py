@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from pathlib import PurePosixPath
-from typing import Deque, List, Optional
 
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
@@ -170,7 +169,6 @@ class GitHubRepoService:
         self, pr_payload: GitHubPullRequestModel
     ) -> None:
         """Run a check on a pull request."""
-        pass
 
     async def request_github_repository(
         self, owner: str, repo: str
@@ -233,7 +231,7 @@ class GitHubRepoService:
                 name=checkout.name,
             )
         }
-        found_display_paths: List[str] = []
+        found_display_paths: list[str] = []
         self._logger.debug(
             "Syncing checkout", existing_display_paths=existing_pages.keys()
         )
@@ -250,7 +248,7 @@ class GitHubRepoService:
             found_display_paths.append(display_path)
             self._logger.debug("Display path", display_path=display_path)
 
-            if display_path in existing_pages.keys():
+            if display_path in existing_pages:
                 self._logger.debug(
                     "Notebook corresponds to existing page",
                     display_path=display_path,
@@ -320,7 +318,7 @@ class GitHubRepoService:
         *,
         checkout: GitHubRepositoryCheckout,
         notebook: RepositoryNotebookModel,
-        commit_sha: Optional[str] = None,
+        commit_sha: str | None = None,
     ) -> PageModel:
         """Create a new page based on the notebook tree ref.
 
@@ -493,7 +491,7 @@ class GitHubRepoService:
             )
 
         tree = await checkout.get_git_tree(self._github_client)
-        pending_pages: Deque[PageExecutionInfo] = deque()
+        pending_pages: deque[PageExecutionInfo] = deque()
         for notebook_ref in tree.find_notebooks(checkout.settings):
             self._logger.debug(
                 "Started notebook execution for notebook",
@@ -545,7 +543,8 @@ class GitHubRepoService:
                 "Polling noteburst job status",
                 path=page_execution.page.repository_source_path,
             )
-            assert page_execution.noteburst_job is not None
+            if page_execution.noteburst_job is None:
+                raise RuntimeError("Noteburst job is None")
             r = await self._page_service.noteburst_api.get_job(
                 page_execution.noteburst_job.job_url
             )
@@ -557,7 +556,8 @@ class GitHubRepoService:
                 continue
 
             job = r.data
-            assert job is not None
+            if job is None:
+                raise RuntimeError("Noteburst job is None")
             if job.status == NoteburstJobStatus.complete:
                 self._logger.debug(
                     "Noteburst job is complete",
@@ -599,23 +599,23 @@ class GitHubRepoService:
 
     async def get_check_runs(
         self, owner: str, repo: str, head_sha: str
-    ) -> List[GitHubCheckRunModel]:
+    ) -> list[GitHubCheckRunModel]:
         """Get the check runs from GitHub corresponding to a commit.
 
         https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference
         """
-        check_runs: List[GitHubCheckRunModel] = []
-        async for item in self._github_client.getiter(
-            "/repos/{owner}/{repo}/commits/{ref}/check-runs",
-            url_vars={"owner": owner, "repo": repo, "ref": head_sha},
-            iterable_key="check_runs",
-        ):
-            check_runs.append(GitHubCheckRunModel.parse_obj(item))
-        return check_runs
+        return [
+            GitHubCheckRunModel.parse_obj(item)
+            async for item in self._github_client.getiter(
+                "/repos/{owner}/{repo}/commits/{ref}/check-runs",
+                url_vars={"owner": owner, "repo": repo, "ref": head_sha},
+                iterable_key="check_runs",
+            )
+        ]
 
     async def get_pulls_for_check_runs(
-        self, check_runs: List[GitHubCheckRunModel]
-    ) -> List[GitHubPullRequestModel]:
+        self, check_runs: list[GitHubCheckRunModel]
+    ) -> list[GitHubPullRequestModel]:
         """Get the pull requests from GitHub covered by the provided check
         runs.
 
@@ -624,13 +624,14 @@ class GitHubRepoService:
         pull requests.
         """
         # reduce the unique pull request urls
-        pr_urls: List[str] = []
-        for check_run in check_runs:
-            for pr in check_run.pull_requests:
-                pr_urls.append(pr.url)
+        pr_urls = [
+            pr.url
+            for check_run in check_runs
+            for pr in check_run.pull_requests
+        ]
         pr_urls = sorted(list(set(pr_urls)))
 
-        pull_requests: List[GitHubPullRequestModel] = []
+        pull_requests: list[GitHubPullRequestModel] = []
         for pr_url in pr_urls:
             data = await self._github_client.getitem(pr_url)
             pull_requests.append(GitHubPullRequestModel.parse_obj(data))

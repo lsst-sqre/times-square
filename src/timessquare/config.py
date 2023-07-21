@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 from urllib.parse import urlparse
 
 from arq.connections import RedisSettings
@@ -18,29 +18,14 @@ from pydantic import (
     validator,
 )
 from safir.arq import ArqMode
+from safir.logging import LogLevel, Profile
 
 __all__ = ["Config", "Profile", "LogLevel"]
 
 
-class Profile(str, Enum):
-    production = "production"
-
-    development = "development"
-
-
-class LogLevel(str, Enum):
-    DEBUG = "DEBUG"
-
-    INFO = "INFO"
-
-    WARNING = "WARNING"
-
-    ERROR = "ERROR"
-
-    CRITICAL = "CRITICAL"
-
-
 class Config(BaseSettings):
+    """Configuration for Times Square."""
+
     name: str = Field("times-square", env="SAFIR_NAME")
 
     profile: Profile = Field(Profile.production, env="SAFIR_PROFILE")
@@ -80,19 +65,19 @@ class Config(BaseSettings):
     )
     """URL for the redis instance, used by the worker queue."""
 
-    github_app_id: Optional[str] = Field(None, env="TS_GITHUB_APP_ID")
+    github_app_id: str | None = Field(None, env="TS_GITHUB_APP_ID")
     """The GitHub App ID, as determined by GitHub when setting up a GitHub
     App.
     """
 
-    github_webhook_secret: Optional[SecretStr] = Field(
+    github_webhook_secret: SecretStr | None = Field(
         None, env="TS_GITHUB_WEBHOOK_SECRET"
     )
     """The GitHub app's webhook secret, as set when the App was created. See
     https://docs.github.com/en/developers/webhooks-and-events/webhooks/securing-your-webhooks
     """
 
-    github_app_private_key: Optional[SecretStr] = Field(
+    github_app_private_key: SecretStr | None = Field(
         None, env="TS_GITHUB_APP_PRIVATE_KEY"
     )
     """The GitHub app private key. See
@@ -137,9 +122,7 @@ class Config(BaseSettings):
         return v
 
     @validator("github_webhook_secret", "github_app_private_key", pre=True)
-    def validate_none_secret(
-        cls, v: Optional[SecretStr]
-    ) -> Optional[SecretStr]:
+    def validate_none_secret(cls, v: SecretStr | None) -> SecretStr | None:
         """Validate a SecretStr setting which may be "None" that is intended
         to be `None`.
 
@@ -179,12 +162,11 @@ class Config(BaseSettings):
     def arq_redis_settings(self) -> RedisSettings:
         """Create a Redis settings instance for arq."""
         url_parts = urlparse(self.redis_queue_url)
-        redis_settings = RedisSettings(
+        return RedisSettings(
             host=url_parts.hostname or "localhost",
             port=url_parts.port or 6379,
             database=int(url_parts.path.lstrip("/")) if url_parts.path else 0,
         )
-        return redis_settings
 
 
 config = Config()

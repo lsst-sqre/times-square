@@ -4,10 +4,11 @@ Square notebooks based on GitHub's Git Tree API for a specific git ref SHA.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any
 
 import yaml
 from gidgethub.httpx import GitHubAPI
@@ -43,7 +44,7 @@ class GitHubRepositoryCheckout:
     settings: RepositorySettingsFile
     """Repository settings, read from times-square.yaml."""
 
-    git_ref: Optional[str]
+    git_ref: str | None
     """The "checked-out" full git ref, or `None` if a checkout of a bare
     commit.
 
@@ -76,7 +77,7 @@ class GitHubRepositoryCheckout:
         github_client: GitHubAPI,
         repo: GitHubRepositoryModel,
         head_sha: str,
-        git_ref: Optional[str] = None,
+        git_ref: str | None = None,
     ) -> GitHubRepositoryCheckout:
         uri = repo.contents_url + "{?ref}"
         data = await github_client.getitem(
@@ -182,7 +183,7 @@ class RepositoryNotebookTreeRef:
     sidecar_git_tree_sha: str
     """Git sha of the sidecar file."""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export as a dictionary."""
         return asdict(self)
 
@@ -234,10 +235,10 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
             return prefix
 
     def get_display_path(self, checkout: GitHubRepositoryCheckout) -> str:
-        """The display path to correlate this GitHub-backed notebook with
+        """Get the display path to correlate this GitHub-backed notebook with
         existing pages.
 
-        See also
+        See Also
         --------
         timessquare.domain.page.PageModel.display_path
         """
@@ -246,11 +247,12 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
             PurePosixPath(self.notebook_source_path).name
         ).stem
         if display_prefix:
-            return "/".join(
-                [checkout.owner_name, checkout.name, display_prefix, name_stem]
+            return (
+                f"{checkout.owner_name}/{checkout.name}/"
+                f"{display_prefix}/{name_stem}"
             )
         else:
-            return "/".join([checkout.owner_name, checkout.name, name_stem])
+            return f"{checkout.owner_name}/{checkout.name}/{name_stem}"
 
     @property
     def ipynb(self) -> str:
@@ -269,13 +271,13 @@ class RepositorySettingsFile(BaseModel):
     settings file.
     """
 
-    description: Optional[str] = Field(
+    description: str | None = Field(
         None,
         title="Description of the repository",
         description="Can be markdown-formatted.",
     )
 
-    ignore: List[str] = Field(
+    ignore: list[str] = Field(
         title="Paths to ignore (supports globs)",
         default_factory=list,
         description="Relative to the repository root.",
@@ -310,20 +312,20 @@ class RepositorySettingsFile(BaseModel):
 class SidecarPersonModel(BaseModel):
     """A Pydantic model for a person's identity encoded in YAML."""
 
-    name: Optional[str] = Field(title="Display name")
+    name: str | None = Field(title="Display name")
 
-    username: Optional[str] = Field(title="RSP username")
+    username: str | None = Field(title="RSP username")
 
-    affiliation_name: Optional[str] = Field(
+    affiliation_name: str | None = Field(
         title="Display name of a person's main affiliation"
     )
 
-    email: Optional[EmailStr] = Field(title="Email")
+    email: EmailStr | None = Field(title="Email")
 
-    slack_name: Optional[str] = Field(title="Slack username")
+    slack_name: str | None = Field(title="Slack username")
 
     @root_validator()
-    def check_names(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def check_names(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Either of name or username must be set."""
         keys = values.keys()
         if "name" not in keys and "username" not in keys:
@@ -376,29 +378,29 @@ class ParameterSchemaModel(BaseModel):
         ),
     )
 
-    default: Union[int, float, str, bool] = Field(
+    default: int | float | str | bool = Field(
         title="Default value, when the user does not override a value"
     )
 
     description: str = Field(title="Short description of a field")
 
-    minimum: Optional[Union[int, float]] = Field(
+    minimum: int | float | None = Field(
         None, title="Minimum value for number or integer types."
     )
 
-    maximum: Optional[Union[int, float]] = Field(
+    maximum: int | float | None = Field(
         None, title="Maximum value for number or integer types."
     )
 
-    exclusiveMinimum: Optional[Union[int, float]] = Field(
+    exclusiveMinimum: int | float | None = Field(
         None, title="Exclusive minimum value for number or integer types."
     )
 
-    exclusiveMaximum: Optional[Union[int, float]] = Field(
+    exclusiveMaximum: int | float | None = Field(
         None, title="Exclusive maximum value for number or integer types."
     )
 
-    multipleOf: Optional[Union[int, float]] = Field(
+    multipleOf: int | float | None = Field(
         None, title="Required factor for number of integer types."
     )
 
@@ -413,16 +415,16 @@ class NotebookSidecarFile(BaseModel):
     file.
     """
 
-    authors: List[SidecarPersonModel] = Field(
+    authors: list[SidecarPersonModel] = Field(
         title="Authors of the notebook", default_factory=list
     )
 
-    title: Optional[str] = Field(
+    title: str | None = Field(
         None,
         title="Title of a notebook (default is to use the filename)",
     )
 
-    description: Optional[str] = Field(
+    description: str | None = Field(
         None,
         title="Description of a notebook",
         description="Can be markdown-formatted.",
@@ -433,15 +435,15 @@ class NotebookSidecarFile(BaseModel):
         title="Toggle for activating a notebook's inclusion in Times Square",
     )
 
-    cache_ttl: Optional[int] = Field(
+    cache_ttl: int | None = Field(
         None, title="Lifetime (seconds) of notebook page renders"
     )
 
-    tags: List[str] = Field(
+    tags: list[str] = Field(
         title="Tag keywords associated with the notebook", default_factory=list
     )
 
-    parameters: Dict[str, ParameterSchemaModel] = Field(
+    parameters: dict[str, ParameterSchemaModel] = Field(
         title="Parameters and their schemas", default_factory=dict
     )
 
@@ -450,7 +452,7 @@ class NotebookSidecarFile(BaseModel):
         """Create a NotebookSidecarFile from the YAML content."""
         return cls.parse_obj(yaml.safe_load(content))
 
-    def export_parameters(self) -> Dict[str, PageParameterSchema]:
+    def export_parameters(self) -> dict[str, PageParameterSchema]:
         """Export the `parameters` attribute to `PageParameterSchema` used
         by the PageModel.
         """
@@ -458,7 +460,7 @@ class NotebookSidecarFile(BaseModel):
             k: v.to_parameter_schema(k) for k, v in self.parameters.items()
         }
 
-    def export_authors(self) -> List[PersonModel]:
+    def export_authors(self) -> list[PersonModel]:
         return [a.to_person_model() for a in self.authors]
 
 
@@ -511,7 +513,7 @@ class RecursiveGitTreeModel(BaseModel):
 
     url: HttpUrl = Field(title="GitHub API URL of this resource")
 
-    tree: List[GitTreeItem] = Field(title="Items in the git tree")
+    tree: list[GitTreeItem] = Field(title="Items in the git tree")
 
     truncated: bool = Field(
         title="True if the dataset does not contain the whole repo"
@@ -529,8 +531,8 @@ class RecursiveGitTreeModel(BaseModel):
         # Note: PurePosixPath.suffix includes the period in the extension
         source_extensions = {".ipynb"}
         yaml_extensions = {".yaml", ".yml"}
-        notebook_candidate_indices: Dict[str, int] = {}
-        yaml_items: List[GitTreeItem] = []
+        notebook_candidate_indices: dict[str, int] = {}
+        yaml_items: list[GitTreeItem] = []
         for i, item in enumerate(self.tree):
             if item.mode == GitTreeMode.file:
                 suffix = item.path_extension

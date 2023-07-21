@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import httpx
 import structlog
@@ -25,8 +26,8 @@ from .functions import (
 )
 
 
-async def startup(ctx: Dict[Any, Any]) -> None:
-    """Runs during working start-up to set up the worker context."""
+async def startup(ctx: dict[Any, Any]) -> None:
+    """Set up the worker context."""
     configure_logging(
         profile=config.profile,
         log_level=config.log_level,
@@ -53,9 +54,9 @@ async def startup(ctx: Dict[Any, Any]) -> None:
     await redis_dependency.initialize(config.redis_url)
 
 
-async def shutdown(ctx: Dict[Any, Any]) -> None:
-    """Runs during worker shut-down to resources."""
-    if "logger" in ctx.keys():
+async def shutdown(ctx: dict[Any, Any]) -> None:
+    """Shut-down resources."""
+    if "logger" in ctx:
         logger = ctx["logger"]
     else:
         logger = structlog.get_logger("timessquare")
@@ -78,7 +79,7 @@ class WorkerSettings:
     See `arq.worker.Worker` for details on these attributes.
     """
 
-    functions = [
+    functions: ClassVar[list[Callable]] = [
         ping,
         repo_push,
         repo_added,

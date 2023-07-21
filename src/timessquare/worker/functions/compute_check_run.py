@@ -1,12 +1,14 @@
+"""Worker function for computing a GitHub check_run."""
+
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from safir.github.webhooks import GitHubCheckRunEventModel
 
 
 async def compute_check_run(
-    ctx: Dict[Any, Any], *, payload: GitHubCheckRunEventModel
+    ctx: dict[Any, Any], *, payload: GitHubCheckRunEventModel
 ) -> str:
     """Process compute queue tasks, triggered by check_run requested
     events on GitHub repositories.
