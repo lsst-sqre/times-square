@@ -1,5 +1,13 @@
 # Change log
 
+<!--
+Generate new changelog fragments with: scriv create.
+
+Collect fragments into this file with: scriv collect --version X.Y.Z
+-->
+
+<!-- scriv-insert-here -->
+
 ## 0.7.0 (2023-04-19)
 
 ### New features
