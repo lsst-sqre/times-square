@@ -9,6 +9,7 @@ called.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
@@ -102,3 +104,14 @@ async def ts_exception_handler(
     return JSONResponse(
         status_code=exc.status_code, content={"detail": [exc.to_dict()]}
     )
+
+
+def create_openapi() -> str:
+    """Create the OpenAPI spec for static documentation."""
+    spec = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    return json.dumps(spec)

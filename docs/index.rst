@@ -1,3 +1,5 @@
+:html_theme.sidebar_secondary.remove:
+
 ############
 Times Square
 ############
@@ -16,3 +18,11 @@ Times Square uses Noteburst (`GitHub <https://github.com/lsst-sqre/noteburst>`__
 This Times Square API service is developed at `https://github.com/lsst-sqre/times-square <https://github.com/lsst-sqre/times-square>`__.
 It's user interface is part of `Squareone <https://github.com/lsst-sqre/squareone>`__.
 Times Square is deployed with `Phalanx <https://phalanx.lsst.io/applications/times-square/index.html>`__.
+
+.. toctree::
+   :hidden:
+
+   user-guide/index
+   api
+   changelog
+   Development <dev/index>
