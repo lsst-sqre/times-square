@@ -2,7 +2,7 @@
 name = "times-square"
 description = "Times Square is a service for parameterized Jupyter Notebooks as dynamic webpages."
 license = { file = "LICENSE" }
-readme = "README.rst"
+readme = "README.md"
 keywords = ["rubin", "lsst"]
 # https://pypi.org/classifiers/
 classifiers = [
