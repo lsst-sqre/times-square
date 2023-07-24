@@ -1,6 +1,6 @@
 """Tests for the `/v1/github... endpoints."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -46,7 +46,7 @@ async def test_github(client: AsyncClient) -> None:
             ipynb=demo_path.read_text(),
             parameters={},
             title="Demo",
-            date_added=datetime.now(timezone.utc),
+            date_added=datetime.now(UTC),
             date_deleted=None,
             github_owner="lsst-sqre",
             github_repo="times-square-demo",
@@ -65,7 +65,7 @@ async def test_github(client: AsyncClient) -> None:
             ipynb=demo_path.read_text(),
             parameters={},
             title="Gaussian 2D",
-            date_added=datetime.now(timezone.utc),
+            date_added=datetime.now(UTC),
             date_deleted=None,
             github_owner="lsst-sqre",
             github_repo="times-square-demo",
@@ -84,7 +84,7 @@ async def test_github(client: AsyncClient) -> None:
             ipynb=demo_path.read_text(),
             parameters={},
             title="Tutorial A",
-            date_added=datetime.now(timezone.utc),
+            date_added=datetime.now(UTC),
             date_deleted=None,
             github_owner="lsst",
             github_repo="tutorial-notebooks",
@@ -108,7 +108,7 @@ async def test_github(client: AsyncClient) -> None:
     r = await client.get(f"{config.path_prefix}/v1/github")
     assert r.status_code == 200
     data = r.json()
-    assert "contents" in data.keys()
+    assert "contents" in data
     print(data)
     assert data["contents"][0]["node_type"] == "owner"
     assert data["contents"][0]["title"] == "lsst"

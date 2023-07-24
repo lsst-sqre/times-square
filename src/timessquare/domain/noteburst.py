@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Optional
 
 from httpx import AsyncClient
 from pydantic import AnyHttpUrl, BaseModel
@@ -49,20 +48,20 @@ class NoteburstJobResponseModel(BaseModel):
     status: NoteburstJobStatus
     """The current status of the notebook execution job."""
 
-    ipynb: Optional[str] = None
+    ipynb: str | None = None
     """The executed notebook."""
 
-    start_time: Optional[datetime] = None
+    start_time: datetime | None = None
     """Time when the notebook execution started (only set if result is
     available).
     """
 
-    finish_time: Optional[datetime] = None
+    finish_time: datetime | None = None
     """Time when the notebook execution finished (only set if result is
     available).
     """
 
-    success: Optional[bool] = None
+    success: bool | None = None
     """Whether the execution was successful or not (only set if result is
     available).
     """
@@ -76,11 +75,13 @@ class NoteburstJobResponseModel(BaseModel):
 
 @dataclass
 class NoteburstApiResult:
-    data: Optional[NoteburstJobResponseModel]
+    """A result from the noteburst API."""
+
+    data: NoteburstJobResponseModel | None
 
     status_code: int
 
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class NoteburstApi:
@@ -128,7 +129,7 @@ class NoteburstApi:
             )
 
     @property
-    def _noteburst_auth_header(self) -> Dict[str, str]:
+    def _noteburst_auth_header(self) -> dict[str, str]:
         return {
             "Authorization": (
                 f"Bearer {config.gafaelfawr_token.get_secret_value()}"

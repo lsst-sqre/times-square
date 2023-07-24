@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import Request
@@ -143,7 +143,7 @@ class FormattedText(BaseModel):
     html: str = Field(title="The HTML-formatted text.")
 
     @classmethod
-    def from_gfm(cls, gfm_text: str, inline: bool = False) -> FormattedText:
+    def from_gfm(cls, gfm_text: str, *, inline: bool = False) -> FormattedText:
         """Create formatted text from GitHub-flavored markdown.
 
         Parameters
@@ -171,16 +171,16 @@ class Person(BaseModel):
 
     name: str = Field(..., example="Vera Rubin", title="Display name")
 
-    username: Optional[str] = Field(None, example="vera", title="RSP username")
+    username: str | None = Field(None, example="vera", title="RSP username")
     """A person's RSP username."""
 
-    affiliation_name: Optional[str] = Field(None, example="Rubin/AURA")
+    affiliation_name: str | None = Field(None, example="Rubin/AURA")
     """Display name of a person's main affiliation."""
 
-    email: Optional[EmailStr] = Field(None, title="Email")
+    email: EmailStr | None = Field(None, title="Email")
     """A person's email."""
 
-    slack_name: Optional[str] = Field(None, title="LSSTC Slack username")
+    slack_name: str | None = Field(None, title="LSSTC Slack username")
     """A person's Slack handle."""
 
     @classmethod
@@ -214,13 +214,17 @@ class GitHubSourceMetadata(BaseModel):
 
     @classmethod
     def from_domain(cls, *, page: PageModel) -> GitHubSourceMetadata:
-        # Assertions are are to help mypy distinguish a GitHub-based page
-        assert page.github_owner is not None
-        assert page.github_repo is not None
+        # Checks are to help mypy distinguish a GitHub-based page
+        if page.github_owner is None:
+            raise RuntimeError("GitHub owner is None")
+        if page.github_repo is None:
+            raise RuntimeError("GitHub repo is None")
         sidecar_path = page.repository_sidecar_path
         source_path = page.repository_source_path
-        assert sidecar_path is not None
-        assert source_path is not None
+        if sidecar_path is None:
+            raise RuntimeError("Sidecar path is None")
+        if source_path is None:
+            raise RuntimeError("Source path is None")
         return cls(
             owner=page.github_owner,
             repository=page.github_repo,
@@ -236,17 +240,17 @@ class Page(BaseModel):
 
     title: str = page_title_field
 
-    description: Optional[FormattedText] = page_description_field
+    description: FormattedText | None = page_description_field
 
-    cache_ttl: Optional[int] = page_cache_ttl_field
+    cache_ttl: int | None = page_cache_ttl_field
 
     date_added: datetime = page_date_added_field
 
-    authors: List[Person] = page_authors_field
+    authors: list[Person] = page_authors_field
 
-    tags: List[str] = page_tags_field
+    tags: list[str] = page_tags_field
 
-    uploader_username: Optional[str] = Field(
+    uploader_username: str | None = Field(
         ...,
         title="Username of person that uploaded the page.",
         description=(
@@ -265,9 +269,9 @@ class Page(BaseModel):
 
     html_status_url: AnyHttpUrl = page_html_status_field
 
-    parameters: Dict[str, Dict[str, Any]] = page_parameters_field
+    parameters: dict[str, dict[str, Any]] = page_parameters_field
 
-    github: Optional[GitHubSourceMetadata] = Field(
+    github: GitHubSourceMetadata | None = Field(
         ...,
         title="Repository source metadata for GitHub-backed pages",
         description=(
@@ -368,7 +372,7 @@ class HtmlStatus(BaseModel):
 
     html_url: AnyHttpUrl = page_html_field
 
-    html_hash: Optional[str] = Field(
+    html_hash: str | None = Field(
         ...,
         title="HTML content hash",
         description="A SHA256 hash of the HTML content. Clients can use this "
@@ -378,7 +382,7 @@ class HtmlStatus(BaseModel):
 
     @classmethod
     def from_html(
-        cls, *, html: Optional[NbHtmlModel], request: Request
+        cls, *, html: NbHtmlModel | None, request: Request
     ) -> HtmlStatus:
         base_html_url = str(
             request.url_for("get_page_html", page=request.path_params["page"])
@@ -387,10 +391,7 @@ class HtmlStatus(BaseModel):
         if html is None:
             # resolved parameters aren't available, so use the request URL
             qs = urlencode(request.query_params)
-            if qs:
-                html_url = f"{base_html_url}?{qs}"
-            else:
-                html_url = base_html_url
+            html_url = f"{base_html_url}?{qs}" if qs else base_html_url
 
             return cls(
                 available=False,
@@ -398,7 +399,7 @@ class HtmlStatus(BaseModel):
                 html_hash=None,
             )
         else:
-            query_params: Dict[str, Any] = {}
+            query_params: dict[str, Any] = {}
             query_params.update(html.values)
             # Add display settings
             if html.hide_code:
@@ -406,10 +407,7 @@ class HtmlStatus(BaseModel):
             else:
                 query_params["ts_hide_code"] = "0"
             qs = urlencode(query_params)
-            if qs:
-                html_url = f"{base_html_url}?{qs}"
-            else:
-                html_url = base_html_url
+            html_url = f"{base_html_url}?{qs}" if qs else base_html_url
             return cls(
                 available=True,
                 html_hash=html.html_hash,
@@ -424,20 +422,20 @@ class PostPageRequest(BaseModel):
 
     ipynb: str = ipynb_field
 
-    authors: List[Person] = page_authors_field
+    authors: list[Person] = page_authors_field
 
-    tags: List[str] = page_tags_field
+    tags: list[str] = page_tags_field
 
     # This description is different from the output, page_description_field,
     # because a user only ever submits markdown, whereas the API serves up
     # both markdown and pre-rendered HTML
-    description: Optional[str] = Field(
+    description: str | None = Field(
         None,
         title="Page description",
         description="The description can use Markdown formatting.",
     )
 
-    cache_ttl: Optional[int] = page_cache_ttl_field
+    cache_ttl: int | None = page_cache_ttl_field
 
 
 class GitHubContentsNode(BaseModel):
@@ -464,7 +462,7 @@ class GitHubContentsNode(BaseModel):
         example="Demo",
     )
 
-    contents: List[GitHubContentsNode] = Field(
+    contents: list[GitHubContentsNode] = Field(
         ..., title="Contents", description="Children of this node"
     )
 
@@ -481,7 +479,7 @@ class GitHubContentsNode(BaseModel):
 class GitHubContentsRoot(BaseModel):
     """The tree of GitHub contents."""
 
-    contents: List[GitHubContentsNode] = Field(
+    contents: list[GitHubContentsNode] = Field(
         title="Contents", description="Content nodes"
     )
 
@@ -489,7 +487,7 @@ class GitHubContentsRoot(BaseModel):
     def from_tree(
         cls,
         *,
-        tree: List[GitHubNode],
+        tree: list[GitHubNode],
     ) -> GitHubContentsRoot:
         return cls(
             contents=[GitHubContentsNode.from_domain_model(n) for n in tree],
@@ -512,7 +510,7 @@ class GitHubPrState(str, Enum):
     """The state of a GitHub PR."""
 
     draft = "draft"
-    open = "open"
+    open = "open"  # noqa: A003
     merged = "merged"
     closed = "closed"
 
@@ -564,9 +562,9 @@ class GitHubCheckRunSummary(BaseModel):
 
     status: GitHubCheckRunStatus
 
-    conclusion: Optional[GitHubCheckRunConclusion]
+    conclusion: GitHubCheckRunConclusion | None
 
-    external_id: Optional[str] = Field(
+    external_id: str | None = Field(
         description="Identifier set by the check runner."
     )
 
@@ -581,17 +579,17 @@ class GitHubCheckRunSummary(BaseModel):
         description="URL of the check run webpage on GitHub."
     )
 
-    report_title: Optional[str] = Field(
+    report_title: str | None = Field(
         None,
         title="Report title",
     )
 
-    report_summary: Optional[FormattedText] = Field(
+    report_summary: FormattedText | None = Field(
         None,
         title="Report summary",
     )
 
-    report_text: Optional[FormattedText] = Field(
+    report_text: FormattedText | None = Field(
         None,
         title="Report body text",
     )
@@ -603,9 +601,9 @@ class GitHubCheckRunSummary(BaseModel):
         """Create a check run summary API model from the GitHub API
         model.
         """
-        report_title: Optional[str] = None
-        report_summary: Optional[FormattedText] = None
-        report_text: Optional[FormattedText] = None
+        report_title: str | None = None
+        report_summary: FormattedText | None = None
+        report_text: FormattedText | None = None
 
         if check_run.output:
             output = check_run.output
@@ -616,7 +614,7 @@ class GitHubCheckRunSummary(BaseModel):
             if output.text:
                 report_text = FormattedText.from_gfm(output.text)
 
-        instance = cls(
+        return cls(
             status=check_run.status,
             conclusion=check_run.conclusion,
             external_id=check_run.external_id,
@@ -627,7 +625,6 @@ class GitHubCheckRunSummary(BaseModel):
             report_summary=report_summary,
             report_text=report_text,
         )
-        return instance
 
 
 class GitHubPrContents(GitHubContentsRoot):
@@ -662,15 +659,15 @@ class GitHubPrContents(GitHubContentsRoot):
         ),
     )
 
-    yaml_check: Optional[GitHubCheckRunSummary] = Field(
+    yaml_check: GitHubCheckRunSummary | None = Field(
         ..., description="Summary of notebook execution check run."
     )
 
-    nbexec_check: Optional[GitHubCheckRunSummary] = Field(
+    nbexec_check: GitHubCheckRunSummary | None = Field(
         ..., description="Summary of notebook execution check run."
     )
 
-    pull_requests: List[GitHubPr] = Field(
+    pull_requests: list[GitHubPr] = Field(
         ...,
         title="Pull Requests",
     )
@@ -679,15 +676,15 @@ class GitHubPrContents(GitHubContentsRoot):
     def create(
         cls,
         *,
-        tree: List[GitHubNode],
+        tree: list[GitHubNode],
         owner: str,
         repo: str,
         commit: str,
-        check_runs: List[GitHubCheckRunModel],
-        pull_requests: List[GitHubPullRequestModel],
+        check_runs: list[GitHubCheckRunModel],
+        pull_requests: list[GitHubPullRequestModel],
     ) -> GitHubPrContents:
-        yaml_check: Optional[GitHubCheckRunSummary] = None
-        nbexec_check: Optional[GitHubCheckRunSummary] = None
+        yaml_check: GitHubCheckRunSummary | None = None
+        nbexec_check: GitHubCheckRunSummary | None = None
         for check_run in check_runs:
             if check_run.external_id == "times-square/nbexec":
                 nbexec_check = GitHubCheckRunSummary.from_checkrun(check_run)

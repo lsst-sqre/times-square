@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from safir.database import datetime_from_db, datetime_to_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_scoped_session
@@ -74,8 +72,8 @@ class PageStore:
         statement = select(SqlPage).where(SqlPage.name == page.name).limit(1)
         sql_page = await self._session.scalar(statement)
         if sql_page is None:
-            # FIXME raise an database integrity error instead?
-            return None
+            # TODO raise an database integrity error instead?
+            return
 
         parameters_json = {
             name: parameter.schema
@@ -104,7 +102,7 @@ class PageStore:
         sql_page.repository_source_sha = page.repository_source_sha
         sql_page.repository_sidecar_sha = page.repository_sidecar_sha
 
-    async def get(self, name: str) -> Optional[PageModel]:
+    async def get(self, name: str) -> PageModel | None:
         """Get a page based on the API slug (name), or get `None` if the
         page does not exist.
         """
@@ -116,8 +114,8 @@ class PageStore:
         return self._rehydrate_page_from_sql(sql_page)
 
     async def get_github_backed_page(
-        self, display_path: str, commit: Optional[str] = None
-    ) -> Optional[PageModel]:
+        self, display_path: str, commit: str | None = None
+    ) -> PageModel | None:
         """Get a GitHub-backed page based on the display path, or get `None`
         if the page does not exist.
 
@@ -132,10 +130,7 @@ class PageStore:
         github_owner = path_parts[0]
         github_repo = path_parts[1]
         path_stem = path_parts[-1]
-        if len(path_parts) > 3:
-            path_prefix = "/".join(path_parts[2:-1])
-        else:
-            path_prefix = ""
+        path_prefix = "/".join(path_parts[2:-1]) if len(path_parts) > 3 else ""
 
         statement = (
             select(SqlPage)
@@ -159,8 +154,8 @@ class PageStore:
         return self._rehydrate_page_from_sql(sql_page)
 
     async def list_pages_for_repository(
-        self, *, owner: str, name: str, commit: Optional[str] = None
-    ) -> List[PageModel]:
+        self, *, owner: str, name: str, commit: str | None = None
+    ) -> list[PageModel]:
         """Get all pages backed by a specific GitHub repository.
 
         Parameters
@@ -231,7 +226,7 @@ class PageStore:
             repository_sidecar_sha=sql_page.repository_sidecar_sha,
         )
 
-    async def list_page_summaries(self) -> List[PageSummaryModel]:
+    async def list_page_summaries(self) -> list[PageSummaryModel]:
         """Get a listing of page summaries (excludes the ipynb and
         parameters).
 
@@ -252,7 +247,7 @@ class PageStore:
             for name, title in result.all()
         ]
 
-    async def get_github_tree(self) -> List[GitHubNode]:
+    async def get_github_tree(self) -> list[GitHubNode]:
         """Get the tree of GitHub-backed pages, organized hierarchically by
         owner/repository/directory/page.
         """
@@ -264,7 +259,7 @@ class PageStore:
         )
         result = await self._session.execute(owners_statement)
 
-        nodes: List[GitHubNode] = []
+        nodes: list[GitHubNode] = []
         for owner_name in result.scalars():
             if owner_name is None:
                 # This is a page that's not backed by GitHub; should already
@@ -323,7 +318,7 @@ class PageStore:
 
     async def get_github_pr_tree(
         self, *, owner: str, repo: str, commit: str
-    ) -> List[GitHubNode]:
+    ) -> list[GitHubNode]:
         """Get the tree of GitHub-backed pages for a pull request commit."""
         statement = (
             select(  # order matches GitHubTreeQueryResult

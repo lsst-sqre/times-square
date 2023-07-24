@@ -1,7 +1,5 @@
 """Redis dependency for FastAPI."""
 
-from typing import Optional
-
 from redis.asyncio import Redis
 
 __all__ = ["RedisDependency", "redis_dependency"]
@@ -20,12 +18,12 @@ class RedisDependency:
         self.redis: Redis | None = None
 
     async def initialize(
-        self, redis_url: str, password: Optional[str] = None
+        self, redis_url: str, password: str | None = None
     ) -> None:
         self.redis = Redis.from_url(redis_url, password=password)
 
     async def __call__(self) -> Redis:
-        """Returns the redis pool."""
+        """Return the redis pool."""
         if self.redis is None:
             raise RuntimeError("RedisDependency is not initialized")
         return self.redis

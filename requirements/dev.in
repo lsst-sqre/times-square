@@ -21,3 +21,4 @@ holdup
 respx
 types-PyYAML
 types-redis
+documenteer[guide]>=1.0.0a1

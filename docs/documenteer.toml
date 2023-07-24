@@ -1,0 +1,19 @@
+[project]
+title = "Times Square"
+copyright = "2021-2023 Association of Universities for Research in Astronomy, Inc. (AURA)"
+
+[project.python]
+package = "times-square"
+
+[project.openapi]
+openapi_path = "_static/openapi.json"
+doc_path = "api"
+
+[project.openapi.generator]
+function = "timessquare.main:create_openapi"
+
+[sphinx]
+rst_epilog_file = "_rst_epilog.rst"
+
+[sphinx.intersphinx.projects]
+python = "https://docs.python.org/3/"

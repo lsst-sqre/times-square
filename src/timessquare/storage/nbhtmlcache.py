@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from redis.asyncio import Redis
 
 from timessquare.domain.nbhtml import NbHtmlModel
@@ -25,7 +23,7 @@ class NbHtmlCacheStore(RedisPageInstanceStore[NbHtmlModel]):
         )
 
     async def store_nbhtml(
-        self, nbhtml: NbHtmlModel, lifetime: Optional[int] = None
+        self, nbhtml: NbHtmlModel, lifetime: int | None = None
     ) -> None:
         """Store an HTML page.
 

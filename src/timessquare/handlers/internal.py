@@ -29,6 +29,7 @@ internal_router = APIRouter()
     response_model=Metadata,
     response_model_exclude_none=True,
     summary="Application metadata",
+    include_in_schema=False,
 )
 async def get_index() -> Metadata:
     """GET ``/`` (the app's internal root).

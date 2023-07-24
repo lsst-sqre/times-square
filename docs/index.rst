@@ -1,3 +1,5 @@
+:html_theme.sidebar_secondary.remove:
+
 ############
 Times Square
 ############
@@ -14,5 +16,13 @@ The design and architecture of Times Square is described in `SQR-062: The Times 
 Times Square uses Noteburst (`GitHub <https://github.com/lsst-sqre/noteburst>`__, `SQR-065 <https://sqr-065.lsst.io>`__) to execute Jupyter Notebooks in Nublado (JupyterLab) instances, thereby mechanizing the RSP's notebook aspect.
 
 This Times Square API service is developed at `https://github.com/lsst-sqre/times-square <https://github.com/lsst-sqre/times-square>`__.
-The user interface is developed separately at `https://github.com/lsst-sqre/times-square-ui <https://github.com/lsst-sqre/times-square-ui>`__.
-You can find the RSP deployment configuration in Phalanx's `services/times-square/ <https://github.com/lsst-sqre/phalanx/tree/master/services/times-square>`__ directory.
+It's user interface is part of `Squareone <https://github.com/lsst-sqre/squareone>`__.
+Times Square is deployed with `Phalanx <https://phalanx.lsst.io/applications/times-square/index.html>`__.
+
+.. toctree::
+   :hidden:
+
+   user-guide/index
+   api
+   changelog
+   Development <dev/index>

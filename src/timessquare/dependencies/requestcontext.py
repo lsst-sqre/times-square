@@ -1,7 +1,6 @@
 """A FastAPI dependency that wraps multiple common dependencies."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import Depends, Request, Response
 from httpx import AsyncClient
@@ -68,7 +67,7 @@ class RequestContext:
     async def create_github_repo_service(
         self, owner: str, repo: str
     ) -> GitHubRepoService:
-        """An instance of the GitHub repository service for manging
+        """Create an instance of the GitHub repository service for manging
         GitHub-backed pages and accessing GitHub's API.
         """
         return await GitHubRepoService.create_for_repo(
@@ -79,14 +78,14 @@ class RequestContext:
             logger=self.logger,
         )
 
-    def get_request_username(self) -> Optional[str]:
-        """Get the username who made the request
+    def get_request_username(self) -> str | None:
+        """Get the username who made the request.
 
         Uses the X-Auth-Request-Username header passed by Gafaelfawr.
         """
         return self.request.headers.get("X-Auth-Request-User")
 
-    def rebind_logger(self, **values: Optional[str]) -> None:
+    def rebind_logger(self, **values: str | None) -> None:
         """Add the given values to the logging context.
 
         Also updates the logging context stored in the request object in case
@@ -108,7 +107,7 @@ async def context_dependency(
     redis: Redis = Depends(redis_dependency),
     http_client: AsyncClient = Depends(http_client_dependency),
 ) -> RequestContext:
-    """Provides a RequestContext as a dependency."""
+    """Provide a RequestContext as a dependency."""
     return RequestContext(
         request=request,
         response=response,

@@ -1,6 +1,8 @@
+"""Wrorker function for processing a repo_removed task."""
+
 from __future__ import annotations
 
-from typing import Any, Dict, Union
+from typing import Any
 
 from safir.dependencies.db_session import db_session_dependency
 from safir.github.webhooks import (
@@ -13,12 +15,10 @@ from timessquare.worker.servicefactory import create_page_service
 
 
 async def repo_removed(
-    ctx: Dict[Any, Any],
+    ctx: dict[Any, Any],
     *,
-    payload: Union[
-        GitHubAppInstallationRepositoriesEventModel,
-        GitHubAppInstallationEventModel,
-    ],
+    payload: GitHubAppInstallationRepositoriesEventModel
+    | GitHubAppInstallationEventModel,
     repo: GitHubAppInstallationEventRepoModel,
 ) -> str:
     """Process repo_removed queue tasks, triggered by Times Square app

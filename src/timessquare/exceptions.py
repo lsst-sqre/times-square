@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Union
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from fastapi import status
 
@@ -22,7 +22,7 @@ class TimesSquareError(Exception):
     status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
     """HTTP status code for this type of validation error."""
 
-    def to_dict(self) -> Dict[str, Union[List[str], str]]:
+    def to_dict(self) -> dict[str, list[str] | str]:
         """Convert the exception to a dictionary suitable for the exception.
 
         The return value is intended to be passed as the ``detail`` parameter
@@ -35,6 +35,8 @@ class TimesSquareError(Exception):
 
 
 class PageNotFoundError(TimesSquareError):
+    """Error related to a page not being found."""
+
     error = "page_not_found"
 
     status_code = 404
@@ -114,7 +116,7 @@ class ParameterSchemaValidationError(TimesSquareError):
         super().__init__(message)
         self.parameter_name = parameter_name
 
-    def to_dict(self) -> Dict[str, Union[List[str], str]]:
+    def to_dict(self) -> dict[str, list[str] | str]:
         """Convert the exception to a dictionary suitable for the exception.
 
         The return value is intended to be passed as the ``detail`` parameter
