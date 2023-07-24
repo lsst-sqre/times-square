@@ -12,6 +12,7 @@ from timessquare.dependencies.requestcontext import (
     context_dependency,
 )
 
+from ..apitags import ApiTags
 from .models import (
     GitHubContentsRoot,
     GitHubPrContents,
@@ -24,8 +25,8 @@ from .models import (
 
 __all__ = ["v1_router"]
 
-v1_router = APIRouter(tags=["v1"])
-"""FastAPI router for all external handlers."""
+v1_router = APIRouter()
+"""FastAPI router for all v1 handlers."""
 
 display_path_parameter = Path(
     title="Page display path",
@@ -96,6 +97,7 @@ async def get_index(
     response_model=Page,
     summary="Page metadata",
     name="get_page",
+    tags=[ApiTags.pages],
 )
 async def get_page(
     page: str = page_path_parameter,
@@ -119,6 +121,7 @@ async def get_page(
     response_model=list[PageSummary],
     summary="List pages",
     name="get_pages",
+    tags=[ApiTags.pages],
 )
 async def get_pages(
     context: RequestContext = Depends(context_dependency),
@@ -138,6 +141,7 @@ async def get_pages(
     response_model=Page,
     summary="Create a new page",
     status_code=201,
+    tags=[ApiTags.pages],
 )
 async def post_page(
     request_data: PostPageRequest,
@@ -230,6 +234,7 @@ async def post_page(
     "/pages/{page}/source",
     summary="Get the source parameterized notebook (ipynb)",
     name="get_page_source",
+    tags=[ApiTags.pages],
 )
 async def get_page_source(
     page: str = page_path_parameter,
@@ -259,6 +264,7 @@ async def get_page_source(
     "/pages/{page}/rendered",
     summary="Get the unexecuted notebook source with rendered parameters",
     name="get_rendered_notebook",
+    tags=[ApiTags.pages],
 )
 async def get_rendered_notebook(
     page: str = page_path_parameter,
@@ -280,6 +286,7 @@ async def get_rendered_notebook(
     "/pages/{page}/html",
     summary="Get the HTML page of an computed notebook",
     name="get_page_html",
+    tags=[ApiTags.pages],
 )
 async def get_page_html(
     page: str = page_path_parameter,
@@ -305,6 +312,7 @@ async def get_page_html(
     summary="Get the status of a page's HTML rendering",
     name="get_page_html_status",
     response_model=HtmlStatus,
+    tags=[ApiTags.pages],
 )
 async def get_page_html_status(
     page: str = page_path_parameter,
@@ -324,6 +332,7 @@ async def get_page_html_status(
     summary="Get a tree of GitHub-backed pages",
     name="get_github_tree",
     response_model=GitHubContentsRoot,
+    tags=[ApiTags.github],
 )
 async def get_github_tree(
     context: RequestContext = Depends(context_dependency),
@@ -346,6 +355,7 @@ async def get_github_tree(
     response_model=Page,
     summary="Metadata for GitHub-backed page",
     name="get_github_page",
+    tags=[ApiTags.github],
 )
 async def get_github_page(
     display_path: str = display_path_parameter,
@@ -372,6 +382,7 @@ async def get_github_page(
     summary="Get a tree of GitHub PR preview pages",
     name="get_github_pr_tree",
     response_model=GitHubPrContents,
+    tags=[ApiTags.pr],
 )
 async def get_github_pr_tree(
     owner: str = github_owner_parameter,
@@ -420,8 +431,9 @@ async def get_github_pr_tree(
 @v1_router.get(
     "/github-pr/{owner}/{repo}/{commit}/{path:path}",
     response_model=Page,
-    summary="Metadata for GitHub-backed page",
+    summary="Metadata for page in a pull request",
     name="get_github_pr_page",
+    tags=[ApiTags.pr],
 )
 async def get_github_pr_page(
     owner: str = github_owner_parameter,
