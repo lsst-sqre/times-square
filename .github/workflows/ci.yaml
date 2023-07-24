@@ -77,3 +77,41 @@ jobs:
         with:
           image: ${{ github.repository }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Ensure the documentation gets the right version.
+          fetch-depth: 0
+
+      - name: Update package lists
+        run: sudo apt-get update
+
+      - name: Install extra packages
+        run: sudo apt install -y graphviz
+
+      - name: Run tox
+        uses: lsst-sqre/run-tox@v1
+        with:
+          python-version: "3.11"
+          tox-envs: "docs,docs-linkcheck"
+
+      # Only attempt documentation uploads for long-lived branches, tagged
+      # releases, and pull requests from ticket branches.  This avoids version
+      # clutter in the docs and failures when a PR doesn't have access to
+      # secrets.
+      - name: Upload to LSST the Docs
+        uses: lsst-sqre/ltd-upload@v1
+        with:
+          project: times-square
+          dir: "docs/_build/html"
+          username: ${{ secrets.LTD_USERNAME }}
+          password: ${{ secrets.LTD_PASSWORD }}
+        if: >
+          github.event_name != 'merge_group'
+          && (github.event_name != 'pull_request'
+            || startsWith(github.head_ref, 'tickets/'))
