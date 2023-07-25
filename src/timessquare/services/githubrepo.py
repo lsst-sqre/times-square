@@ -111,6 +111,11 @@ class GitHubRepoService:
                 "github_app_id and github_app_private_key must be set to "
                 "create the GitHubRepoService."
             )
+        if owner not in config.accepted_github_orgs:
+            raise SlackException(
+                f"GitHub organization {owner} is not in the list of accepted "
+                f"organizations: {config.accepted_github_orgs}"
+            )
         github_client_factory = GitHubAppClientFactory(
             http_client=http_client,
             id=config.github_app_id,
