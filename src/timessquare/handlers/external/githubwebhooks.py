@@ -4,9 +4,14 @@ endpoint.
 
 from __future__ import annotations
 
+import functools
+from collections.abc import Callable
+from typing import Any
+
 from gidgethub.routing import Router
 from gidgethub.sansio import Event
 from safir.arq import ArqQueue
+from safir.github import GitHubAppClientFactory
 from safir.github.webhooks import (
     GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
@@ -41,11 +46,59 @@ router = Router()
 """GitHub webhook router."""
 
 
+def filter_installation_owner(func: Callable) -> Callable:
+    """Ignore GitHub events for owners that are not in the accepted orgs
+    (webhook function decorator).
+    """
+
+    async def noop(
+        event: Event,
+        logger: BoundLogger,
+        owner: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Log that we're ignoring the event."""
+        logger.debug(
+            "Ignoring GitHub event for unaccepted org",
+            owner=owner,
+            accepted_orgs=config.accepted_github_orgs,
+        )
+
+    @functools.wraps(func)
+    async def wrapper_filter_installation_owner(
+        event: Event,
+        logger: BoundLogger,
+        arq_queue: ArqQueue,
+        github_client_factory: GitHubAppClientFactory,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        installation_id = event.data["installation"]["id"]
+        github_client = github_client_factory.create_anonymous_client()
+        installation = await github_client.getitem(
+            "/app/installations/{installation_id}",
+            url_vars={"installation_id": installation_id},
+            jwt=github_client_factory.get_app_jwt(),
+        )
+        owner = installation["account"]["login"]
+        if owner not in config.accepted_github_orgs:
+            return await noop(event, logger, owner)
+        return await func(
+            event, logger, arq_queue, github_client_factory, *args, **kwargs
+        )
+
+    return wrapper_filter_installation_owner
+
+
 @router.register("installation", action="created")
+@filter_installation_owner
 async def handle_installation_created(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``installation`` (created) webhook event from
     GitHub.
@@ -59,9 +112,11 @@ async def handle_installation_created(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
+    owner = event.data["installation"]["account"]["login"]
+
     logger.info(
         "GitHub installation created event",
-        owner=event.data["installation"]["account"]["login"],
+        owner=owner,
         repos=event.data["repositories"],
     )
 
@@ -72,10 +127,13 @@ async def handle_installation_created(
 
 
 @router.register("installation", action="unsuspend")
+@filter_installation_owner
 async def handle_installation_unsuspend(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``installation`` (unsuspend) webhook event from
     GitHub.
@@ -89,9 +147,11 @@ async def handle_installation_unsuspend(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
+    owner = event.data["installation"]["account"]["login"]
+
     logger.info(
         "GitHub installation unsuspend event",
-        owner=event.data["installation"]["account"]["login"],
+        owner=owner,
         repos=event.data["repositories"],
     )
 
@@ -106,6 +166,8 @@ async def handle_installation_deleted(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``installation`` (deleted) webhook event from
     GitHub.
@@ -119,9 +181,11 @@ async def handle_installation_deleted(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
+    owner = event.data["installation"]["account"]["login"]
+
     logger.info(
         "GitHub installation deleted event",
-        owner=event.data["installation"]["account"]["login"],
+        owner=owner,
     )
 
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
@@ -135,6 +199,8 @@ async def handle_installation_suspend(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``installation`` (suspend) webhook event from
     GitHub.
@@ -148,9 +214,11 @@ async def handle_installation_suspend(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
+    owner = event.data["installation"]["account"]["login"]
+
     logger.info(
         "GitHub installation suspended event",
-        owner=event.data["installation"]["account"]["login"],
+        owner=owner,
     )
 
     payload = GitHubAppInstallationEventModel.parse_obj(event.data)
@@ -160,10 +228,13 @@ async def handle_installation_suspend(
 
 
 @router.register("installation_repositories", action="added")
+@filter_installation_owner
 async def handle_repositories_added(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``installation_repositories`` (added) webhook event from
     GitHub.
@@ -177,6 +248,15 @@ async def handle_repositories_added(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
+    owner = event.data["installation"]["account"]["login"]
+    if owner not in config.accepted_github_orgs:
+        logger.debug(
+            "Ignoring GitHub installation suspend event for unaccepted org",
+            owner=owner,
+            accepted_orgs=config.accepted_github_orgs,
+        )
+        return
+
     logger.info(
         "GitHub installation_repositories added event",
         repos=event.data["repositories_added"],
@@ -193,6 +273,8 @@ async def handle_repositories_removed(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``installation_repositories`` (removed) webhook event from
     GitHub.
@@ -218,10 +300,13 @@ async def handle_repositories_removed(
 
 
 @router.register("push")
+@filter_installation_owner
 async def handle_push_event(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``push`` webhook event from GitHub.
 
@@ -249,10 +334,13 @@ async def handle_push_event(
 
 
 @router.register("pull_request", action="opened")
+@filter_installation_owner
 async def handle_pr_opened(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``pull_request`` (opened) webhook event from
     GitHub.
@@ -281,10 +369,13 @@ async def handle_pr_opened(
 
 
 @router.register("pull_request", action="synchronize")
+@filter_installation_owner
 async def handle_pr_sync(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``pull_request`` (synchronize) webhook event from
     GitHub.
@@ -313,10 +404,13 @@ async def handle_pr_sync(
 
 
 @router.register("check_suite")
+@filter_installation_owner
 async def handle_check_suite_request(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``check_suite`` (requested and rerequested) webhook event
     from GitHub.
@@ -359,10 +453,13 @@ async def handle_check_suite_request(
 
 
 @router.register("check_run", action="created")
+@filter_installation_owner
 async def handle_check_run_created(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``check_run`` (created) webhook event from GitHub.
 
@@ -396,10 +493,13 @@ async def handle_check_run_created(
 
 
 @router.register("check_run", action="rerequested")
+@filter_installation_owner
 async def handle_check_run_rerequested(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``check_run`` (rerequested) webhook event from GitHub.
 
@@ -432,6 +532,8 @@ async def handle_ping(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     """Handle the ``ping` webhook event from GitHub to let us know we've
     set up the app properly.
