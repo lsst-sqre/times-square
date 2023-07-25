@@ -70,3 +70,7 @@ See the `Phalanx documentation for Times Square <https://phalanx.lsst.io/applica
 .. envvar:: TS_ENABLE_GITHUB_APP
 
    (boolean, default: true) Enable the GitHub App integration.
+
+.. envvar:: TS_GITHUB_ORGS
+
+   (string) A comma-separated list of GitHub organizations that Times Square will sync notebooks from. This is used to filter out GitHub App installations from the general public.
