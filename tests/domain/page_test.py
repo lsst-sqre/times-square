@@ -24,7 +24,10 @@ def test_parameter_name_validation() -> None:
 
     with pytest.raises(ParameterNameValidationError):
         PageModel.validate_parameter_name(" M")
+    with pytest.raises(ParameterNameValidationError):
         PageModel.validate_parameter_name("1p")
+    with pytest.raises(ParameterNameValidationError):
+        PageModel.validate_parameter_name("lambda")
 
 
 def test_parameter_default_exists() -> None:

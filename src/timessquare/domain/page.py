@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import keyword
 import re
 from base64 import b64encode
 from collections.abc import Mapping
@@ -391,7 +392,15 @@ class PageModel:
 
     @staticmethod
     def validate_parameter_name(name: str) -> None:
+        """Validate a parameter's name.
+
+        Parameters must be valid Python variable names, which means they must
+        start with a letter and contain only letters, numbers and underscores.
+        They also cannot be Python keywords.
+        """
         if parameter_name_pattern.match(name) is None:
+            raise ParameterNameValidationError(name)
+        if keyword.iskeyword(name):
             raise ParameterNameValidationError(name)
 
     def resolve_and_validate_values(
