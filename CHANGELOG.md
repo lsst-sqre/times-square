@@ -8,7 +8,20 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.9.0'></a>
+
+## 0.9.0 (2023-07-27)
+
+### Backwards-incompatible changes
+
+- New treatment for templating in notebooks. Times Square no longer treats all cells as Jinja templates. Instead, the first cell is considered to be under the control of Times Square for setting variables. When a parameters are rendered into a notebook, the first code cell is replaced with new source that sets the parameter variables to their values. This means that notebook authors can now use that first cell to set and experiment with parameter values for interactive debugging, knowing that Times Square will replace that cell with new values when the notebook is rendered.
+
+### Bug fixes
+
+- Parameter names are now validated against Python keyword names using `keyword.iskeyword()`. This prevents parameter names from shadowing Python keywords.
+
 <a id='changelog-0.8.0'></a>
+
 ## 0.8.0 (2023-07-27)
 
 ### New features
