@@ -457,7 +457,19 @@ class PageModel:
 
         # Read notebook and render cell-by-cell
         notebook = PageModel.read_ipynb(self.ipynb)
+        processed_first_cell = False
         for cell in notebook.cells:
+            if cell.cell_type == "code":
+                if processed_first_cell is False:
+                    # Handle first code cell specially by replacing it with a
+                    # cell that sets Python variables to their values
+                    cell.source = self._create_parameters_template(values)
+                    processed_first_cell = True
+                else:
+                    # Only process the first code cell
+                    continue
+
+            # Render the templated cell
             template = jinja_env.from_string(cell.source)
             cell.source = template.render()
 
@@ -468,6 +480,18 @@ class PageModel:
 
         # Render notebook back to a string and return
         return PageModel.write_ipynb(notebook)
+
+    def _create_parameters_template(self, values: Mapping[str, Any]) -> str:
+        """Create a Jinja-tempalated source cell value that sets Python
+        variables for each parameter to their values.
+        """
+        sorted_variables = sorted(values.keys())
+        code_lines = [
+            f"{variable_name} = {{{{ params.{variable_name} }}}}"
+            for variable_name in sorted_variables
+        ]
+        code_lines.insert(0, "# Parameters")
+        return "\n".join(code_lines)
 
 
 @dataclass
