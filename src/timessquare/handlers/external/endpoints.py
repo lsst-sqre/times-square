@@ -14,6 +14,10 @@ from safir.metadata import get_metadata
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
+from timessquare.dependencies.requestcontext import (
+    RequestContext,
+    context_dependency,
+)
 
 from .githubwebhooks import router as webhook_router
 from .models import Index
@@ -62,7 +66,7 @@ async def get_index(
     status_code=status.HTTP_200_OK,
 )
 async def post_github_webhook(
-    request: Request,
+    context: RequestContext = Depends(context_dependency),
     logger: BoundLogger = Depends(logger_dependency),
     arq_queue: ArqQueue = Depends(arq_dependency),
 ) -> Response:
@@ -73,7 +77,7 @@ async def post_github_webhook(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
         )
 
-    body = await request.body()
+    body = await context.request.body()
 
     if config.github_webhook_secret is None:
         return Response(
@@ -82,16 +86,24 @@ async def post_github_webhook(
         )
 
     webhook_secret = config.github_webhook_secret.get_secret_value()
-    event = Event.from_http(request.headers, body, secret=webhook_secret)
+    event = Event.from_http(
+        context.request.headers, body, secret=webhook_secret
+    )
+
+    github_client_factory = context.create_github_client_factory()
 
     # Bind the X-GitHub-Delivery header to the logger context; this identifies
     # the webhook request in GitHub's API and UI for diagnostics
-    logger = logger.bind(github_delivery=event.delivery_id)
+    logger = logger.bind(
+        github_delivery_id=event.delivery_id, github_event=event.event
+    )
 
     logger.debug("Received GitHub webhook", payload=event.data)
 
     # Give GitHub some time to reach internal consistency.
     await asyncio.sleep(1)
-    await webhook_router.dispatch(event, logger, arq_queue)
+    await webhook_router.dispatch(
+        event, logger, arq_queue, github_client_factory
+    )
 
     return Response(status_code=status.HTTP_202_ACCEPTED)

@@ -1,5 +1,3 @@
-docs/_static/openapi.json
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -72,6 +70,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/_static/openapi.json
 
 # PyBuilder
 target/

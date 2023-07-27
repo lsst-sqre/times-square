@@ -139,6 +139,15 @@ class Config(BaseSettings):
         ),
     )
 
+    accepted_github_orgs: list[str] = Field(
+        env="TS_GITHUB_ORGS",
+        description=(
+            "A comma-separated list of GitHub organizations that can sync"
+            "with Times Square."
+        ),
+        default_factory=lambda: ["lsst-sqre"],
+    )
+
     redis_queue_url: RedisDsn = Field(
         env="TS_REDIS_QUEUE_URL",
         default_factory=lambda: RedisDsn(
@@ -160,6 +169,13 @@ class Config(BaseSettings):
             "The Arq mode to use for the worker (production or testing)."
         ),
     )
+
+    class Config:
+        @classmethod
+        def parse_env_var(cls, field_name: str, raw_val: str) -> Any:
+            if field_name == "accepted_github_orgs":
+                return [v.strip() for v in raw_val.split(",")]
+            return cls.json_loads(raw_val)  # type: ignore [attr-defined]
 
     @validator("path_prefix")
     def validate_path_prefix(cls, v: str) -> str:

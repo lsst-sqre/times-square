@@ -44,6 +44,13 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 
 
 @pytest_asyncio.fixture
+async def http_client() -> AsyncIterator[AsyncClient]:
+    """Return an ``httpx.AsyncClient``."""
+    async with AsyncClient() as client:
+        yield client
+
+
+@pytest_asyncio.fixture
 async def github_client() -> AsyncIterator[GitHubAPI]:
     """Return a HTTPX GitHub API client."""
     async with AsyncClient() as client:

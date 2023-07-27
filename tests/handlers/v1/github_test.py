@@ -109,7 +109,6 @@ async def test_github(client: AsyncClient) -> None:
     assert r.status_code == 200
     data = r.json()
     assert "contents" in data
-    print(data)
     assert data["contents"][0]["node_type"] == "owner"
     assert data["contents"][0]["title"] == "lsst"
     assert data["contents"][0]["path"] == "lsst"
