@@ -2,7 +2,7 @@
 Environment variables
 #####################
 
-Noteburst uses environment variables for configuration.
+Times Square uses environment variables for configuration.
 In practice, these variables are typically set as Helm values and 1Password/Vault secrets that are injected into the container as environment variables.
 See the `Phalanx documentation for Times Square <https://phalanx.lsst.io/applications/times-square/index.html>`__ for more information on the Phalanx-specific configurations.
 
@@ -73,4 +73,4 @@ See the `Phalanx documentation for Times Square <https://phalanx.lsst.io/applica
 
 .. envvar:: TS_GITHUB_ORGS
 
-   (string) A comma-separated list of GitHub organizations that Times Square will sync notebooks from. This is used to filter out GitHub App installations from the general public.
+   (string) A comma-separated list of GitHub organizations that Times Square will sync notebooks from. This is used to filter out incidental GitHub App installations from the general public.
