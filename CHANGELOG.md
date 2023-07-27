@@ -8,6 +8,24 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.8.0'></a>
+## 0.8.0 (2023-07-27)
+
+### New features
+
+- Add a new `TS_GITHUB_ORGS` environment variable. This can be set to a comma-separated list of GitHub organizations that can install the Times Square GitHub App and sync notebooks into the Times Square service. This is a an important security feature if the Times Square GitHub App is set to public so that multiple GitHub organizations can sync repositories with Times Square. GitHub webhook handlers filter out events from non-accepted organizations. The `GitHubRepoService` also checks the ownership on initialization.
+
+### Other changes
+
+- Adopt scriv for managing the changelog.
+- Adopt ruff for linting, and update the codebase accordingly.
+- Adopt the new neophile workflow for managing dependencies.
+- Adopt the new `lsst-sqre/build-and-push-to-ghcr` GitHub Action for building and pushing Docker images.
+- Adopt the new FastAPI lifespan function for handling start-up and shutdown.
+- Create a Sphinx documentation site at `times-square.lsst.io`.
+
+- Add documentation for configuring the Times Square GitHub App, including a sample URL with the app settings built-in.
+
 ## 0.7.0 (2023-04-19)
 
 ### New features
