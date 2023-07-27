@@ -65,7 +65,6 @@ def test_githubtreenode() -> None:
     assert owner_node.contents[0].title == "times-square-demo"
     repo_node = owner_node.contents[0]
     assert repo_node.node_type == GitHubNodeType.repo
-    print(owner_node)
 
     assert repo_node.contents[0].title == "Alpha"
     assert repo_node.contents[0].squareone_path == (
