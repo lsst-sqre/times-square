@@ -8,6 +8,7 @@ from redis.asyncio import Redis
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
+from safir.github import GitHubAppClientFactory
 from sqlalchemy.ext.asyncio import async_scoped_session
 from structlog.stdlib import BoundLogger
 
@@ -76,6 +77,23 @@ class RequestContext:
             http_client=self.http_client,
             page_service=self.page_service,
             logger=self.logger,
+        )
+
+    def create_github_client_factory(self) -> GitHubAppClientFactory:
+        """Create a GitHub client factory for accessing GitHub's API."""
+        if (
+            config.github_app_id is None
+            or config.github_app_private_key is None
+        ):
+            raise RuntimeError(
+                "GitHub App is not configured; "
+                "set GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY, "
+            )
+        return GitHubAppClientFactory(
+            id=config.github_app_id,
+            key=config.github_app_private_key.get_secret_value(),
+            name="lsst-sqre/times-square",
+            http_client=self.http_client,
         )
 
     def get_request_username(self) -> str | None:
