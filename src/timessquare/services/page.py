@@ -212,7 +212,6 @@ class PageService:
         """
         await self._page_store.update_page(page)
         await self._html_store.delete_objects_for_page(page.name)
-        await self.execute_page_with_defaults(page)
 
     async def update_page_and_execute(
         self, page: PageModel, *, enable_retry: bool = True
