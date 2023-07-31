@@ -8,6 +8,15 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.9.1'></a>
+## 0.9.1 (2023-07-31)
+
+### Bug fixes
+
+- When a page is updated (e.g., from a GitHub pull request merge), the HTML renders for that page are cleared.
+- Fixed a bug where updating a page and executing it with defaults would result in two requests to Noteburst.
+- Deleting a page now deletes the page's HTML renders.
+
 <a id='changelog-0.9.0'></a>
 
 ## 0.9.0 (2023-07-27)

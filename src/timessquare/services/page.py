@@ -202,9 +202,15 @@ class PageService:
         )
 
     async def update_page_in_store(self, page: PageModel) -> None:
-        """Update the page in the database."""
+        """Update the page in the database.
+
+        Algorithm is:
+
+        1. Update the page in Postgres
+        2. Delete all cached HTML for the page from redis
+        """
         await self._page_store.update_page(page)
-        await self.execute_page_with_defaults(page)
+        await self._html_store.delete_objects_for_page(page.name)
 
     async def update_page_and_execute(
         self, page: PageModel, *, enable_retry: bool = True
@@ -233,7 +239,7 @@ class PageService:
     async def soft_delete_page(self, page: PageModel) -> None:
         """Soft delete a page by setting its date_deleted field."""
         page.date_deleted = datetime.now(UTC)
-        await self._page_store.update_page(page)
+        await self.update_page_in_store(page)
 
     async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
         """Soft delete all pages backed by a specific GitHub repository."""

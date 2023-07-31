@@ -648,16 +648,27 @@ class PageSummaryModel:
 
 
 @dataclass
-class PageInstanceIdModel:
+class PageIdModel:
+    """A domain model that identifies a page and creates a reproducible key
+    string for a page.
+    """
+
+    name: str
+    """The name of the page, which is used as a URL path component (slug)."""
+
+    @property
+    def cache_key_prefix(self) -> str:
+        return f"{self.name}/"
+
+
+@dataclass
+class PageInstanceIdModel(PageIdModel):
     """The domain model that identifies an instance of a page through the
     page's name and values of parameters.
 
     The `cache_key` property produces a reproducible key string, useful as
     a Redis key.
     """
-
-    name: str
-    """The name of the page, which is used as a URL path component (slug)."""
 
     values: dict[str, Any]
     """The values of a page instance's parameters.
@@ -673,7 +684,7 @@ class PageInstanceIdModel:
                 "utf-8"
             )
         ).decode("utf-8")
-        return f"{self.name}/{encoded_values_key}"
+        return f"{super().cache_key_prefix}{encoded_values_key}"
 
 
 @dataclass
