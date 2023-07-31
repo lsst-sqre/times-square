@@ -202,8 +202,16 @@ class PageService:
         )
 
     async def update_page_in_store(self, page: PageModel) -> None:
-        """Update the page in the database."""
+        """Update the page in the database.
+
+        Algorithm is:
+
+        1. Update the page in Postgres
+        2. Delete all cached HTML for the page from redis
+        3. Execute the page with defaults
+        """
         await self._page_store.update_page(page)
+        await self._html_store.delete_objects_for_page(page.name)
         await self.execute_page_with_defaults(page)
 
     async def update_page_and_execute(
