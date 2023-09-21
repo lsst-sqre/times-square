@@ -8,7 +8,16 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.9.2'></a>
+
+## 0.9.2 (2023-09-21)
+
+### Bug fixes
+
+- Fix how strings are rendered in the parameters cell of notebooks. Previously string parameters were missing Python quotes. Now parameters are passed to Jinja in their `repr` string forms to be proper Python code.
+
 <a id='changelog-0.9.1'></a>
+
 ## 0.9.1 (2023-07-31)
 
 ### Bug fixes
