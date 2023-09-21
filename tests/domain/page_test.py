@@ -94,7 +94,9 @@ def test_render_parameters() -> None:
         title="Demo",
         uploader_username="testuser",
     )
-    rendered = page.render_parameters(values={"A": 2, "y0": 1.0, "lambd": 0.5})
+    rendered = page.render_parameters(
+        values={"A": 2, "y0": 1.0, "lambd": 0.5, "title": "Demo"}
+    )
     rendered_nb = PageModel.read_ipynb(rendered)
 
     # Check that the markdown got rendered
@@ -110,7 +112,7 @@ def test_render_parameters() -> None:
 
     # Check that the first code cell got replaced
     assert rendered_nb["cells"][1]["source"] == (
-        "# Parameters\nA = 2\nlambd = 0.5\ny0 = 1.0"
+        "# Parameters\nA = 2\nlambd = 0.5\ntitle = 'Demo'\ny0 = 1.0"
     )
 
     # Check that the second code cell was unchanged

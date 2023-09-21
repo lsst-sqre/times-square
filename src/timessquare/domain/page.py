@@ -461,8 +461,12 @@ class PageModel:
             JSON-encoded notebook source.
         """
         # Build Jinja render context
-        jinja_env = jinja2.Environment(autoescape=True)
-        jinja_env.globals.update({"params": values})
+        # Turn off autoescaping to avoid escaping the parameter values
+        jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
+        value_code_strings = {
+            name: repr(value) for name, value in values.items()
+        }
+        jinja_env.globals.update({"params": value_code_strings})
 
         # Read notebook and render cell-by-cell
         notebook = PageModel.read_ipynb(self.ipynb)
@@ -483,7 +487,7 @@ class PageModel:
             cell.source = template.render()
 
         # Modify notebook metadata to include values
-        if "times-square" not in notebook.metadata.keys():
+        if "times-square" not in notebook.metadata:
             notebook.metadata["times-square"] = {}
         notebook.metadata["times-square"]["values"] = values
 
