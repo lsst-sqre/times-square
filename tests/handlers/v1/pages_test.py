@@ -55,13 +55,18 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             "description": "Amplitude",
             "default": 4,
         },
-        "y0": {"type": "number", "description": "Y-axis offset", "default": 0},
         "lambd": {
             "type": "number",
             "minimum": 0,
             "description": "Wavelength",
             "default": 2,
         },
+        "title": {
+            "default": "hello world",
+            "description": "A string value",
+            "type": "string",
+        },
+        "y0": {"type": "number", "description": "Y-axis offset", "default": 0},
     }
 
     # List page summaries
@@ -121,6 +126,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "A": 4,
         "y0": 0,
         "lambd": 2,
+        "title": "hello world",
     }
 
     # Render the page template with some parameters set
@@ -140,6 +146,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "A": 2,
         "y0": 0,
         "lambd": 2,
+        "title": "hello world",
     }
 
     # Try to get HTML rendering; should be unavailable right now.
