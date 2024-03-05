@@ -93,8 +93,9 @@ class NoteburstApi:
     async def submit_job(
         self, *, ipynb: str, kernel: str = "LSST", enable_retry: bool = True
     ) -> NoteburstApiResult:
+        base_url = str(config.environment_url).rstrip("/")
         r = await self._http_client.post(
-            f"{config.environment_url}/noteburst/v1/notebooks/",
+            f"{base_url}/noteburst/v1/notebooks/",
             json={
                 "ipynb": ipynb,
                 "kernel_name": kernel,
@@ -105,7 +106,7 @@ class NoteburstApi:
         if r.status_code == 202:
             return NoteburstApiResult(
                 status_code=r.status_code,
-                data=NoteburstJobResponseModel.parse_obj(r.json()),
+                data=NoteburstJobResponseModel.model_validate(r.json()),
                 error=None,
             )
         else:
@@ -120,7 +121,7 @@ class NoteburstApi:
         if r.status_code == 200:
             return NoteburstApiResult(
                 status_code=r.status_code,
-                data=NoteburstJobResponseModel.parse_obj(r.json()),
+                data=NoteburstJobResponseModel.model_validate(r.json()),
                 error=None,
             )
         else:

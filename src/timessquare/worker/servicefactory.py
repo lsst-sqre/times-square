@@ -22,7 +22,7 @@ async def create_github_repo_service(
     http_client: httpx.AsyncClient,
     db_session: async_scoped_session,
     logger: BoundLogger,
-    installation_id: str,
+    installation_id: int,
 ) -> GitHubRepoService:
     """Create a GitHubRepoService for arq tasks."""
     if not config.github_app_id or not config.github_app_private_key:

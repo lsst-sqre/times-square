@@ -13,4 +13,4 @@ class Index(BaseModel):
 
     v1_api_base: AnyHttpUrl = Field(..., title="Base URL for the v1 REST API")
 
-    api_docs: AnyHttpUrl = Field(..., tile="API documentation URL")
+    api_docs: AnyHttpUrl = Field(..., title="API documentation URL")

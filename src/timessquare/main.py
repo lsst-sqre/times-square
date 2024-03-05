@@ -46,9 +46,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator:
     logger.debug("Times Square is starting up.")
 
     await db_session_dependency.initialize(
-        config.database_url, config.database_password.get_secret_value()
+        str(config.database_url), config.database_password.get_secret_value()
     )
-    await redis_dependency.initialize(config.redis_url)
+    await redis_dependency.initialize(str(config.redis_url))
     await arq_dependency.initialize(
         mode=config.arq_mode, redis_settings=config.arq_redis_settings
     )

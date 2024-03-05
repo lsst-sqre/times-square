@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from gidgethub.sansio import Event
@@ -36,7 +37,7 @@ external_router = APIRouter()
 )
 async def get_index(
     request: Request,
-    logger: BoundLogger = Depends(logger_dependency),
+    logger: Annotated[BoundLogger, Depends(logger_dependency)],
 ) -> Index:
     """GET metadata about the application."""
     # There is no need to log simple requests since uvicorn will do this
@@ -54,8 +55,8 @@ async def get_index(
     doc_url = request.url.replace(path=f"/{config.name}/redoc")
     return Index(
         metadata=metadata,
-        v1_api_base=AnyHttpUrl(v1_api_url, scheme=request.url.scheme),
-        api_docs=AnyHttpUrl(str(doc_url), scheme=request.url.scheme),
+        v1_api_base=AnyHttpUrl(v1_api_url),
+        api_docs=AnyHttpUrl(str(doc_url)),
     )
 
 
@@ -66,9 +67,9 @@ async def get_index(
     status_code=status.HTTP_200_OK,
 )
 async def post_github_webhook(
-    context: RequestContext = Depends(context_dependency),
-    logger: BoundLogger = Depends(logger_dependency),
-    arq_queue: ArqQueue = Depends(arq_dependency),
+    context: Annotated[RequestContext, Depends(context_dependency)],
+    logger: Annotated[BoundLogger, Depends(logger_dependency)],
+    arq_queue: Annotated[ArqQueue, Depends(arq_dependency)],
 ) -> Response:
     """Process GitHub webhook events."""
     if not config.enable_github_app:

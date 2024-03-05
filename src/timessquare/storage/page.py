@@ -72,7 +72,6 @@ class PageStore:
         statement = select(SqlPage).where(SqlPage.name == page.name).limit(1)
         sql_page = await self._session.scalar(statement)
         if sql_page is None:
-            # TODO raise an database integrity error instead?
             return
 
         parameters_json = {
@@ -232,9 +231,10 @@ class PageStore:
 
         Rather than a list of `PageModel` objects, Times Square's page
         listing APIs generally need to just provide a listing of page titles
-        and metadata that's usefulf or populating index UIs. That's why
+        and metadata that's useful or populating index UIs. That's why we're
+        producing a list of `PageSummaryModel` objects here.
         """
-        # TODO consider adding other fields like title, description,
+        # Consider adding other fields like title, description,
         # date-updated, etc.. Anything that index UIs might find useful.
         statement = (
             select(SqlPage.name, SqlPage.title)

@@ -169,7 +169,6 @@ class PageService:
             display_path, commit=commit
         )
         if page is None:
-            # TODO add a commit attribute to the exception
             raise PageNotFoundError(display_path)
         return page
 
@@ -348,10 +347,12 @@ class PageService:
             return None
 
         r = await self._http_client.get(
-            job.job_url, headers=self._noteburst_auth_header
+            str(job.job_url), headers=self._noteburst_auth_header
         )
         if r.status_code == 200:
-            noteburst_response = NoteburstJobResponseModel.parse_obj(r.json())
+            noteburst_response = NoteburstJobResponseModel.model_validate(
+                r.json()
+            )
             self._logger.debug(
                 "Got noteburst job metadata",
                 status=str(noteburst_response.status),
@@ -459,8 +460,6 @@ class PageService:
                 display_settings=matrix_key,
             )
             html_matrix[matrix_key] = nbhtml
-            # TODO make lifetime a setting of page for pages that aren't
-            # idempotent.
             await self._html_store.store_nbhtml(nbhtml=nbhtml, lifetime=None)
             self._logger.debug(
                 "Stored new HTML", display_settings=asdict(matrix_key)

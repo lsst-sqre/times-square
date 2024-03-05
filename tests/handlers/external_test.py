@@ -57,7 +57,7 @@ async def test_filter_installation_owner(
     mock_github_client = MockInstallationGitHubApi()
 
     mock_client_factory = GitHubAppClientFactory(
-        id="1234",
+        id=1234,
         key=SAMPLE_PRIVATE_KEY,
         name="lsst-sqre/times-square",
         http_client=http_client,

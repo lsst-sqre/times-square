@@ -15,6 +15,7 @@ uvicorn[standard]
 # git+https://github.com/lsst-sqre/safir.git@main#egg=safir[db,arq,redis]
 safir[db,arq,redis]
 pydantic[email]
+pydantic_settings
 click
 nbformat
 nbconvert

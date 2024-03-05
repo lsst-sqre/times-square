@@ -1,22 +1,21 @@
 """Configuration definition."""
 
-
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
 from arq.connections import RedisSettings
 from pydantic import (
-    BaseSettings,
     Field,
     HttpUrl,
     PostgresDsn,
     RedisDsn,
     SecretStr,
-    validator,
+    ValidationInfo,
+    field_validator,
 )
+from pydantic_settings import BaseSettings
 from safir.arq import ArqMode
 from safir.logging import LogLevel, Profile
 
@@ -28,19 +27,19 @@ class Config(BaseSettings):
 
     name: str = Field(
         "times-square",
-        env="SAFIR_NAME",
+        alias="SAFIR_NAME",
         description="The name of the application.",
     )
 
     profile: Profile = Field(
         Profile.production,
-        env="SAFIR_PROFILE",
+        alias="SAFIR_PROFILE",
         description="The application's runtime profile to configure logging.",
     )
 
     log_level: LogLevel = Field(
         LogLevel.INFO,
-        env="SAFIR_LOG_LEVEL",
+        alias="SAFIR_LOG_LEVEL",
         description="The application's logging level.",
     )
 
@@ -51,7 +50,7 @@ class Config(BaseSettings):
 
     environment_url: HttpUrl = Field(
         ...,
-        env="TS_ENVIRONMENT_URL",
+        alias="TS_ENVIRONMENT_URL",
         description=(
             "The base URL of the Rubin Science Platform environment."
             "\n\n"
@@ -61,7 +60,7 @@ class Config(BaseSettings):
 
     gafaelfawr_token: SecretStr = Field(
         ...,
-        env="TS_GAFAELFAWR_TOKEN",
+        alias="TS_GAFAELFAWR_TOKEN",
         description=(
             "This token is used to make requests to other RSP services, "
             "such as Noteburst."
@@ -70,7 +69,7 @@ class Config(BaseSettings):
 
     path_prefix: str = Field(
         "/times-square",
-        env="TS_PATH_PREFIX",
+        alias="TS_PATH_PREFIX",
         description=(
             "The URL prefix where the application's externally-accessible "
             "endpoints are hosted."
@@ -79,27 +78,27 @@ class Config(BaseSettings):
 
     database_url: PostgresDsn = Field(
         ...,
-        env="TS_DATABASE_URL",
+        alias="TS_DATABASE_URL",
         description=("The URL for the PostgreSQL database instance."),
     )
 
     database_password: SecretStr = Field(
         ...,
-        env="TS_DATABASE_PASSWORD",
+        alias="TS_DATABASE_PASSWORD",
         description="The password for the PostgreSQL database instance.",
     )
 
     redis_url: RedisDsn = Field(
-        env="TS_REDIS_URL",
+        alias="TS_REDIS_URL",
         default_factory=lambda: RedisDsn(
-            "redis://localhost:6379/0", scheme="redis"
+            "redis://localhost:6379/0",
         ),
-        description=("URL for the redis instance, used by the worker queue."),
+        description="URL for the redis instance, used by the worker queue.",
     )
 
-    github_app_id: str | None = Field(
+    github_app_id: int | None = Field(
         None,
-        env="TS_GITHUB_APP_ID",
+        alias="TS_GITHUB_APP_ID",
         description=(
             "The GitHub App ID, as determined by GitHub when setting up a "
             "GitHub App."
@@ -108,7 +107,7 @@ class Config(BaseSettings):
 
     github_webhook_secret: SecretStr | None = Field(
         None,
-        env="TS_GITHUB_WEBHOOK_SECRET",
+        alias="TS_GITHUB_WEBHOOK_SECRET",
         description=(
             "The GitHub app's webhook secret, as set when the App was "
             "created. See "
@@ -119,7 +118,7 @@ class Config(BaseSettings):
 
     github_app_private_key: SecretStr | None = Field(
         None,
-        env="TS_GITHUB_APP_PRIVATE_KEY",
+        alias="TS_GITHUB_APP_PRIVATE_KEY",
         description=(
             "The GitHub app private key. See https://docs.github.com/en/"
             "developers/apps/building-github-apps/authenticating-with-"
@@ -129,7 +128,7 @@ class Config(BaseSettings):
 
     enable_github_app: bool = Field(
         True,
-        env="TS_ENABLE_GITHUB_APP",
+        alias="TS_ENABLE_GITHUB_APP",
         description=(
             "Toggle to enable GitHub App functionality."
             "\n\n"
@@ -140,7 +139,7 @@ class Config(BaseSettings):
     )
 
     accepted_github_orgs: list[str] = Field(
-        env="TS_GITHUB_ORGS",
+        alias="TS_GITHUB_ORGS",
         description=(
             "A comma-separated list of GitHub organizations that can sync"
             "with Times Square."
@@ -149,22 +148,22 @@ class Config(BaseSettings):
     )
 
     redis_queue_url: RedisDsn = Field(
-        env="TS_REDIS_QUEUE_URL",
+        alias="TS_REDIS_QUEUE_URL",
         default_factory=lambda: RedisDsn(
-            "redis://localhost:6379/1", scheme="redis"
+            "redis://localhost:6379/1",
         ),
         description=("URL for the redis instance, used by the worker queue."),
     )
 
     queue_name: str = Field(
         "arq:queue",
-        env="TS_REDIS_QUEUE_NAME",
+        alias="TS_REDIS_QUEUE_NAME",
         description=("Name of the arq queue that the worker processes from."),
     )
 
     arq_mode: ArqMode = Field(
         ArqMode.production,
-        env="TS_ARQ_MODE",
+        alias="TS_ARQ_MODE",
         description=(
             "The Arq mode to use for the worker (production or testing)."
         ),
@@ -177,7 +176,8 @@ class Config(BaseSettings):
                 return [v.strip() for v in raw_val.split(",")]
             return cls.json_loads(raw_val)  # type: ignore [attr-defined]
 
-    @validator("path_prefix")
+    @field_validator("path_prefix")
+    @classmethod
     def validate_path_prefix(cls, v: str) -> str:
         # Handle empty path prefix (i.e. app is hosted on its own domain)
         if v == "":
@@ -194,7 +194,11 @@ class Config(BaseSettings):
             v = "/" + v
         return v
 
-    @validator("github_webhook_secret", "github_app_private_key", pre=True)
+    @field_validator(
+        "github_webhook_secret",
+        "github_app_private_key",
+    )
+    @classmethod
     def validate_none_secret(cls, v: SecretStr | None) -> SecretStr | None:
         """Validate a SecretStr setting which may be "None" that is intended
         to be `None`.
@@ -212,8 +216,9 @@ class Config(BaseSettings):
         else:
             raise ValueError(f"Value must be None or a string: {v!r}")
 
-    @validator("enable_github_app")
-    def validate_github_app(cls, v: bool, values: Mapping[str, Any]) -> bool:
+    @field_validator("enable_github_app")
+    @classmethod
+    def validate_github_app(cls, v: bool, info: ValidationInfo) -> bool:
         """Validate ``enable_github_app`` by ensuring that other GitHub
         configurations are also set.
         """
@@ -223,9 +228,9 @@ class Config(BaseSettings):
             return False
 
         if (
-            (values.get("github_app_private_key") is None)
-            or (values.get("github_webhook_secret") is None)
-            or (values.get("github_app_id") is None)
+            (info.data.get("github_app_private_key") is None)
+            or (info.data.get("github_webhook_secret") is None)
+            or (info.data.get("github_app_id") is None)
         ):
             return False
 
@@ -234,7 +239,7 @@ class Config(BaseSettings):
     @property
     def arq_redis_settings(self) -> RedisSettings:
         """Create a Redis settings instance for arq."""
-        url_parts = urlparse(self.redis_queue_url)
+        url_parts = urlparse(str(self.redis_queue_url))
         return RedisSettings(
             host=url_parts.hostname or "localhost",
             port=url_parts.port or 6379,

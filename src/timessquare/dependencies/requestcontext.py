@@ -1,6 +1,7 @@
 """A FastAPI dependency that wraps multiple common dependencies."""
 
 from dataclasses import dataclass
+from typing import Annotated
 
 from fastapi import Depends, Request, Response
 from httpx import AsyncClient
@@ -120,10 +121,10 @@ class RequestContext:
 async def context_dependency(
     request: Request,
     response: Response,
-    logger: BoundLogger = Depends(logger_dependency),
-    session: async_scoped_session = Depends(db_session_dependency),
-    redis: Redis = Depends(redis_dependency),
-    http_client: AsyncClient = Depends(http_client_dependency),
+    logger: Annotated[BoundLogger, Depends(logger_dependency)],
+    session: Annotated[async_scoped_session, Depends(db_session_dependency)],
+    redis: Annotated[Redis, Depends(redis_dependency)],
+    http_client: Annotated[AsyncClient, Depends(http_client_dependency)],
 ) -> RequestContext:
     """Provide a RequestContext as a dependency."""
     return RequestContext(

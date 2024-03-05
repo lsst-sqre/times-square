@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os.path
 from abc import ABCMeta, abstractproperty
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any
 
 from gidgethub.httpx import GitHubAPI
@@ -136,7 +136,7 @@ class GitHubCheck(metaclass=ABCMeta):
 
         Formatted as ``{host}/times-square/github-pr/{owner}/{repo}/{commit}``
         """
-        if config.environment_url.endswith("/"):
+        if str(config.environment_url).endswith("/"):
             squareone_url = str(config.environment_url)
         else:
             squareone_url = f"{config.environment_url!s}/"
@@ -146,7 +146,8 @@ class GitHubCheck(metaclass=ABCMeta):
         )
 
     def get_preview_url(self, notebook_path: str) -> str:
-        display_path = os.path.splitext(notebook_path)[0]
+        path = PurePosixPath(notebook_path)
+        display_path = str(path.parent.joinpath(path.stem))
         return f"{self.squareone_pr_url_root}/{display_path}"
 
     def export_truncated_annotations(self) -> list[dict[str, Any]]:
@@ -162,7 +163,7 @@ class GitHubCheck(metaclass=ABCMeta):
     async def submit_in_progress(self, github_client: GitHubAPI) -> None:
         """Set the check run to "In progress"."""
         await github_client.patch(
-            self.check_run.url,
+            str(self.check_run.url),
             data={"status": GitHubCheckRunStatus.in_progress},
         )
 
@@ -175,7 +176,7 @@ class GitHubCheck(metaclass=ABCMeta):
         conclusion of the check.
         """
         await github_client.patch(
-            self.check_run.url,
+            str(self.check_run.url),
             data={
                 "status": GitHubCheckRunStatus.completed,
                 "conclusion": self.conclusion,

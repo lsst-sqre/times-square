@@ -49,9 +49,9 @@ async def startup(ctx: dict[Any, Any]) -> None:
     # Set up FastAPI dependencies; we can use them "manually" with
     # arq to provide resources similarly to FastAPI endpoints
     await db_session_dependency.initialize(
-        config.database_url, config.database_password.get_secret_value()
+        str(config.database_url), config.database_password.get_secret_value()
     )
-    await redis_dependency.initialize(config.redis_url)
+    await redis_dependency.initialize(str(config.redis_url))
 
 
 async def shutdown(ctx: dict[Any, Any]) -> None:

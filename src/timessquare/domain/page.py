@@ -596,7 +596,7 @@ class PageParameterSchema:
         """Validate a parameter value."""
         return self.validator.is_valid(v)
 
-    def cast_value(self, v: Any) -> Any:
+    def cast_value(self, v: Any) -> Any:  # noqa: C901 PLR0912
         """Cast a value to the type indicated by the schema.
 
         Often the input value is a string value usually obtained from the URL
