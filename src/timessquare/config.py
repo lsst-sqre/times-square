@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated
 from urllib.parse import urlparse
 
 from arq.connections import RedisSettings
@@ -25,17 +25,23 @@ __all__ = ["Config", "Profile", "LogLevel"]
 class Config(BaseSettings):
     """Configuration for Times Square."""
 
-    name: str = Field(
-        "times-square",
-        alias="SAFIR_NAME",
-        description="The name of the application.",
-    )
+    name: Annotated[
+        str,
+        Field(
+            alias="SAFIR_NAME",
+            description="The name of the application.",
+        ),
+    ] = "times-square"
 
-    profile: Profile = Field(
-        Profile.production,
-        alias="SAFIR_PROFILE",
-        description="The application's runtime profile to configure logging.",
-    )
+    profile: Annotated[
+        Profile,
+        Field(
+            alias="SAFIR_PROFILE",
+            description=(
+                "The application's runtime profile to configure logging."
+            ),
+        ),
+    ] = Profile.production
 
     log_level: LogLevel = Field(
         LogLevel.INFO,
@@ -43,138 +49,174 @@ class Config(BaseSettings):
         description="The application's logging level.",
     )
 
-    logger_name: str = "timessquare"
-    """The name of the logger, which is also the root Python namespace
-    of the application.
-    """
-
-    environment_url: HttpUrl = Field(
-        ...,
-        alias="TS_ENVIRONMENT_URL",
-        description=(
-            "The base URL of the Rubin Science Platform environment."
-            "\n\n"
-            "This is used for creating URLs to other RSP services."
+    logger_name: Annotated[
+        str,
+        Field(
+            description=(
+                "The name of the logger, which is also the root Python "
+                "namespace of the application."
+            )
         ),
-    )
+    ] = "timessquare"
 
-    gafaelfawr_token: SecretStr = Field(
-        ...,
-        alias="TS_GAFAELFAWR_TOKEN",
-        description=(
-            "This token is used to make requests to other RSP services, "
-            "such as Noteburst."
+    environment_url: Annotated[
+        HttpUrl,
+        Field(
+            alias="TS_ENVIRONMENT_URL",
+            description=(
+                "The base URL of the Rubin Science Platform environment."
+                "\n\n"
+                "This is used for creating URLs to other RSP services."
+            ),
         ),
-    )
+    ]
 
-    path_prefix: str = Field(
-        "/times-square",
-        alias="TS_PATH_PREFIX",
-        description=(
-            "The URL prefix where the application's externally-accessible "
-            "endpoints are hosted."
+    gafaelfawr_token: Annotated[
+        SecretStr,
+        Field(
+            alias="TS_GAFAELFAWR_TOKEN",
+            description=(
+                "This token is used to make requests to other RSP services, "
+                "such as Noteburst."
+            ),
         ),
-    )
+    ]
 
-    database_url: PostgresDsn = Field(
-        ...,
-        alias="TS_DATABASE_URL",
-        description=("The URL for the PostgreSQL database instance."),
-    )
-
-    database_password: SecretStr = Field(
-        ...,
-        alias="TS_DATABASE_PASSWORD",
-        description="The password for the PostgreSQL database instance.",
-    )
-
-    redis_url: RedisDsn = Field(
-        alias="TS_REDIS_URL",
-        default_factory=lambda: RedisDsn(
-            "redis://localhost:6379/0",
+    path_prefix: Annotated[
+        str,
+        Field(
+            alias="TS_PATH_PREFIX",
+            description=(
+                "The URL prefix where the application's externally-accessible "
+                "endpoints are hosted."
+            ),
         ),
-        description="URL for the redis instance, used by the worker queue.",
-    )
+    ] = "/times-square"
 
-    github_app_id: int | None = Field(
-        None,
-        alias="TS_GITHUB_APP_ID",
-        description=(
-            "The GitHub App ID, as determined by GitHub when setting up a "
-            "GitHub App."
+    database_url: Annotated[
+        PostgresDsn,
+        Field(
+            alias="TS_DATABASE_URL",
+            description="The URL for the PostgreSQL database instance.",
         ),
-    )
+    ]
 
-    github_webhook_secret: SecretStr | None = Field(
-        None,
-        alias="TS_GITHUB_WEBHOOK_SECRET",
-        description=(
-            "The GitHub app's webhook secret, as set when the App was "
-            "created. See "
-            "https://docs.github.com/en/developers/webhooks-and-events/"
-            "webhooks/securing-your-webhooks"
+    database_password: Annotated[
+        SecretStr,
+        Field(
+            alias="TS_DATABASE_PASSWORD",
+            description="The password for the PostgreSQL database instance.",
         ),
-    )
+    ]
 
-    github_app_private_key: SecretStr | None = Field(
-        None,
-        alias="TS_GITHUB_APP_PRIVATE_KEY",
-        description=(
-            "The GitHub app private key. See https://docs.github.com/en/"
-            "developers/apps/building-github-apps/authenticating-with-"
-            "github-apps#generating-a-private-key"
+    redis_url: Annotated[
+        RedisDsn,
+        Field(
+            alias="TS_REDIS_URL",
+            default_factory=lambda: RedisDsn(
+                "redis://localhost:6379/0",
+            ),
+            description=(
+                "URL for the redis instance, used by the worker queue."
+            ),
         ),
-    )
+    ]
 
-    enable_github_app: bool = Field(
-        True,
-        alias="TS_ENABLE_GITHUB_APP",
-        description=(
-            "Toggle to enable GitHub App functionality."
-            "\n\n"
-            "If configurations required to function as a GitHub App are not "
-            "set, this configuration is automatically toggled to False. It "
-            "can also also be manually toggled to False if necessary."
+    github_app_id: Annotated[
+        int | None,
+        Field(
+            alias="TS_GITHUB_APP_ID",
+            description=(
+                "The GitHub App ID, as determined by GitHub when setting up a "
+                "GitHub App."
+            ),
         ),
-    )
+    ] = None
 
-    accepted_github_orgs: list[str] = Field(
-        alias="TS_GITHUB_ORGS",
-        description=(
-            "A comma-separated list of GitHub organizations that can sync"
-            "with Times Square."
+    github_webhook_secret: Annotated[
+        SecretStr | None,
+        Field(
+            alias="TS_GITHUB_WEBHOOK_SECRET",
+            description=(
+                "The GitHub app's webhook secret, as set when the App was "
+                "created. See "
+                "https://docs.github.com/en/developers/webhooks-and-events/"
+                "webhooks/securing-your-webhooks"
+            ),
         ),
-        default_factory=lambda: ["lsst-sqre"],
-    )
+    ] = None
 
-    redis_queue_url: RedisDsn = Field(
-        alias="TS_REDIS_QUEUE_URL",
-        default_factory=lambda: RedisDsn(
-            "redis://localhost:6379/1",
+    github_app_private_key: Annotated[
+        SecretStr | None,
+        Field(
+            alias="TS_GITHUB_APP_PRIVATE_KEY",
+            description=(
+                "The GitHub app private key. See https://docs.github.com/en/"
+                "developers/apps/building-github-apps/authenticating-with-"
+                "github-apps#generating-a-private-key"
+            ),
         ),
-        description=("URL for the redis instance, used by the worker queue."),
-    )
+    ] = None
 
-    queue_name: str = Field(
-        "arq:queue",
-        alias="TS_REDIS_QUEUE_NAME",
-        description=("Name of the arq queue that the worker processes from."),
-    )
-
-    arq_mode: ArqMode = Field(
-        ArqMode.production,
-        alias="TS_ARQ_MODE",
-        description=(
-            "The Arq mode to use for the worker (production or testing)."
+    enable_github_app: Annotated[
+        bool,
+        Field(
+            alias="TS_ENABLE_GITHUB_APP",
+            description=(
+                "Toggle to enable GitHub App functionality."
+                "\n\n"
+                "If configurations required to function as a GitHub App are "
+                "not set, this configuration is automatically toggled to "
+                "False. It can also also be manually toggled to False if "
+                "necessary."
+            ),
         ),
-    )
+    ] = True
 
-    class Config:
-        @classmethod
-        def parse_env_var(cls, field_name: str, raw_val: str) -> Any:
-            if field_name == "accepted_github_orgs":
-                return [v.strip() for v in raw_val.split(",")]
-            return cls.json_loads(raw_val)  # type: ignore [attr-defined]
+    github_orgs: Annotated[
+        str,
+        Field(
+            alias="TS_GITHUB_ORGS",
+            description=(
+                "A comma-separated list of GitHub organizations that can sync"
+                "with Times Square."
+            ),
+        ),
+    ] = "lsst-sqre"
+
+    redis_queue_url: Annotated[
+        RedisDsn,
+        Field(
+            alias="TS_REDIS_QUEUE_URL",
+            default_factory=lambda: RedisDsn(
+                "redis://localhost:6379/1",
+            ),
+            description=(
+                "URL for the redis instance, used by the worker queue."
+            ),
+        ),
+    ]
+
+    queue_name: Annotated[
+        str,
+        Field(
+            alias="TS_REDIS_QUEUE_NAME",
+            description=(
+                "Name of the arq queue that the worker processes from."
+            ),
+        ),
+    ] = "arq:queue"
+
+    arq_mode: Annotated[
+        ArqMode,
+        Field(
+            ArqMode.production,
+            alias="TS_ARQ_MODE",
+            description=(
+                "The Arq mode to use for the worker (production or testing)."
+            ),
+        ),
+    ]
 
     @field_validator("path_prefix")
     @classmethod
@@ -245,6 +287,15 @@ class Config(BaseSettings):
             port=url_parts.port or 6379,
             database=int(url_parts.path.lstrip("/")) if url_parts.path else 0,
         )
+
+    @property
+    def accepted_github_orgs(self) -> list[str]:
+        """Get the list of allowed GitHub organizations.
+
+        This is based on the `github_orgs` configuration, which is a
+        comma-separated list of GitHub organizations.
+        """
+        return [v.strip() for v in self.github_orgs.split(",")]
 
 
 config = Config()
