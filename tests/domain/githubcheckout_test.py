@@ -79,7 +79,7 @@ async def test_repository_git_tree(
     repo = GitHubRepositoryCheckout(
         owner_name="lsst-sqre",
         name="rsp_broadcast",
-        settings=RepositorySettingsFile(),
+        settings=RepositorySettingsFile(ignore=[]),
         git_ref="refs/heads/main",
         head_sha="46372dfa5a432026d68d262899755ef0333ef8c0",
         trees_url=(
@@ -110,7 +110,7 @@ async def test_recursive_git_tree_find_notebooks() -> None:
     repo_tree = RecursiveGitTreeModel.model_validate_json(
         json_path.read_text()
     )
-    settings = RepositorySettingsFile()
+    settings = RepositorySettingsFile(ignore=[])
     notebook_refs = list(repo_tree.find_notebooks(settings))
     assert len(notebook_refs) == 2
 

@@ -7,10 +7,10 @@ from base64 import b64encode
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import Any
+from typing import Annotated, Any
 
 from nbconvert.exporters.html import HTMLExporter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from traitlets.config import Config
 
 from .noteburst import NoteburstJobResponseModel
@@ -24,37 +24,57 @@ class NbHtmlModel(BaseModel):
     `timessquare.storage.nbhtmlcache.NbHtmlCacheStore`.
     """
 
-    page_name: str
-    """Name of the page (`timessquare.domain.page.PageModel`) that this
-    html-rendering belongs to.
-    """
+    page_name: Annotated[
+        str,
+        Field(
+            description=(
+                "Name of the page (`timessquare.domain.page.PageModel`) that "
+                "this html-rendering belongs to."
+            )
+        ),
+    ]
 
-    html: str
-    """The HTML content."""
+    html: Annotated[str, Field(description="The HTML content.")]
 
-    html_hash: str
-    """A sha256 hash of the HTML content."""
+    html_hash: Annotated[
+        str, Field(description="A sha256 hash of the HTML content.")
+    ]
 
-    values: dict[str, Any]
-    """The parameter values, keyed by parameter name.
+    values: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "The parameter values, keyed by parameter name. "
+                "Values are native Python types (i.e., string values for "
+                "parameters originally set in a URL query string have been "
+                "converted into string, bool, int, or float Python types via "
+                "`timessquare.domain.page.PageParameterSchema.cast_value`."
+            )
+        ),
+    ]
 
-    Values are native Python types (i.e., string values for parameters
-    originally set in a URL query string have been converted into string,
-    bool, int, or float Python types via
-    `timessquare.domain.page.PageParameterSchema.cast_value`.
-    """
+    date_executed: Annotated[
+        datetime,
+        Field(description="The time when the notebook was executed (UTC)."),
+    ]
 
-    date_executed: datetime
-    """The time when the notebook was executed (UTC)."""
+    execution_duration: Annotated[
+        timedelta,
+        Field(description="The duration required to compute the notebook."),
+    ]
 
-    execution_duration: timedelta
-    """The duration required to compute the notebook."""
+    date_rendered: Annotated[
+        datetime,
+        Field(
+            description=(
+                "The time when the notebook was rendered to HTML (UTC)."
+            )
+        ),
+    ]
 
-    date_rendered: datetime
-    """The time when the notebook was rendered to HTML (UTC)."""
-
-    hide_code: bool
-    """Whether the html includes code input cells."""
+    hide_code: Annotated[
+        bool, Field(description="Whether the html includes code input cells.")
+    ]
 
     @classmethod
     def create_from_noteburst_result(
@@ -65,6 +85,7 @@ class NbHtmlModel(BaseModel):
         noteburst_result: NoteburstJobResponseModel,
         display_settings: NbDisplaySettings,
     ) -> NbHtmlModel:
+        """Create an instance from a noteburst result."""
         if not noteburst_result.start_time:
             raise RuntimeError(
                 "Noteburst result does not include a start time"

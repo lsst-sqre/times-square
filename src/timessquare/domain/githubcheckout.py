@@ -269,37 +269,50 @@ class RepositorySettingsFile(BaseModel):
     settings file.
     """
 
-    description: str | None = Field(
-        None,
-        title="Description of the repository",
-        description="Can be markdown-formatted.",
-    )
-
-    ignore: list[str] = Field(
-        title="Paths to ignore (supports globs)",
-        default_factory=list,
-        description="Relative to the repository root.",
-    )
-
-    root: str = Field(
-        "",
-        title="Root directory where Times Square notebooks are located.",
-        description=(
-            "An empty string corresponds to the root being the same as "
-            "the repository root."
+    description: Annotated[
+        str | None,
+        Field(
+            title="Description of the repository",
+            description="Can be markdown-formatted.",
         ),
-    )
+    ] = None
 
-    enabled: bool = Field(
-        True,
-        title="Toggle for activating a repository's inclusion in Times Square",
-        description=(
-            "Normally a repository is synced into Times Square if the Times "
-            "Square GitHub App is installed and the repository includes a "
-            "times-square.yaml file. You can set this field to `False` to "
-            "temporarily prevent it from being synced by Times Square."
+    ignore: Annotated[
+        list[str],
+        Field(
+            title="Paths to ignore (supports globs)",
+            default_factory=list,
+            description="Relative to the repository root.",
         ),
-    )
+    ]
+
+    root: Annotated[
+        str,
+        Field(
+            title="Root directory where Times Square notebooks are located.",
+            description=(
+                "An empty string corresponds to the root being the same as "
+                "the repository root."
+            ),
+        ),
+    ] = ""
+
+    enabled: Annotated[
+        bool,
+        Field(
+            title=(
+                "Toggle for activating a repository's inclusion in Times "
+                "Square"
+            ),
+            description=(
+                "Normally a repository is synced into Times Square if the "
+                "Times Square GitHub App is installed and the repository "
+                "includes a times-square.yaml file. You can set this field "
+                "to `False` to temporarily prevent it from being synced by "
+                "Times Square."
+            ),
+        ),
+    ] = True
 
     @classmethod
     def parse_yaml(cls, content: str) -> RepositorySettingsFile:
@@ -371,41 +384,51 @@ class ParameterSchemaModel(BaseModel):
     `PageParameterSchema`.
     """
 
-    type: JsonSchemaTypeEnum = Field(
-        title="The JSON schema type.",
-        description=(
-            "Note that Times Square parameters can only be a subset of types "
-            "describable by JSON schema."
+    type: Annotated[
+        JsonSchemaTypeEnum,
+        Field(
+            title="The JSON schema type.",
+            description=(
+                "Note that Times Square parameters can only be a subset of "
+                "types describable by JSON schema."
+            ),
         ),
-    )
+    ]
 
-    default: int | float | str | bool = Field(
-        title="Default value, when the user does not override a value"
-    )
+    default: Annotated[
+        int | float | str | bool,
+        Field(title="Default value, when the user does not override a value"),
+    ]
 
-    description: str = Field(title="Short description of a field")
+    description: Annotated[str, Field(title="Short description of a field")]
 
-    minimum: int | float | None = Field(
-        None, title="Minimum value for number or integer types."
-    )
+    minimum: Annotated[
+        int | float | None,
+        Field(title="Minimum value for number or integer types."),
+    ] = None
 
-    maximum: int | float | None = Field(
-        None, title="Maximum value for number or integer types."
-    )
+    maximum: Annotated[
+        int | float | None,
+        Field(title="Maximum value for number or integer types."),
+    ] = None
 
-    exclusiveMinimum: int | float | None = Field(  # noqa: N815
-        None, title="Exclusive minimum value for number or integer types."
-    )
+    exclusiveMinimum: Annotated[  # noqa: N815
+        int | float | None,
+        Field(title="Exclusive minimum value for number or integer types."),
+    ] = None
 
-    exclusiveMaximum: int | float | None = Field(  # noqa: N815
-        None, title="Exclusive maximum value for number or integer types."
-    )
+    exclusiveMaximum: Annotated[  # noqa: N815
+        int | float | None,
+        Field(title="Exclusive maximum value for number or integer types."),
+    ] = None
 
-    multipleOf: int | float | None = Field(  # noqa: N815
-        None, title="Required factor for number of integer types."
-    )
+    multipleOf: Annotated[  # noqa: N815
+        int | float | None,
+        Field(title="Required factor for number of integer types."),
+    ] = None
 
     def to_parameter_schema(self, name: str) -> PageParameterSchema:
+        """Convert to the domain version of this object."""
         return PageParameterSchema.create_and_validate(
             name=name, json_schema=self.model_dump(exclude_none=True)
         )
@@ -416,37 +439,51 @@ class NotebookSidecarFile(BaseModel):
     file.
     """
 
-    authors: list[SidecarPersonModel] = Field(
-        title="Authors of the notebook", default_factory=list
-    )
+    authors: Annotated[
+        list[SidecarPersonModel],
+        Field(title="Authors of the notebook", default_factory=list),
+    ]
 
-    title: str | None = Field(
-        None,
-        title="Title of a notebook (default is to use the filename)",
-    )
+    title: Annotated[
+        str | None,
+        Field(
+            title="Title of a notebook (default is to use the filename)",
+        ),
+    ] = None
 
-    description: str | None = Field(
-        None,
-        title="Description of a notebook",
-        description="Can be markdown-formatted.",
-    )
+    description: Annotated[
+        str | None,
+        Field(
+            title="Description of a notebook",
+            description="Can be markdown-formatted.",
+        ),
+    ] = None
 
-    enabled: bool = Field(
-        True,
-        title="Toggle for activating a notebook's inclusion in Times Square",
-    )
+    enabled: Annotated[
+        bool,
+        Field(
+            title=(
+                "Toggle for activating a notebook's inclusion in Times Square"
+            )
+        ),
+    ] = True
 
-    cache_ttl: int | None = Field(
-        None, title="Lifetime (seconds) of notebook page renders"
-    )
+    cache_ttl: Annotated[
+        int | None, Field(title="Lifetime (seconds) of notebook page renders")
+    ] = None
 
-    tags: list[str] = Field(
-        title="Tag keywords associated with the notebook", default_factory=list
-    )
+    tags: Annotated[
+        list[str],
+        Field(
+            title="Tag keywords associated with the notebook",
+            default_factory=list,
+        ),
+    ]
 
-    parameters: dict[str, ParameterSchemaModel] = Field(
-        title="Parameters and their schemas", default_factory=dict
-    )
+    parameters: Annotated[
+        dict[str, ParameterSchemaModel],
+        Field(title="Parameters and their schemas", default_factory=dict),
+    ]
 
     @classmethod
     def parse_yaml(cls, content: str) -> NotebookSidecarFile:
@@ -480,13 +517,13 @@ class GitTreeItem(BaseModel):
     `RecursiveGitTreeModel`.
     """
 
-    path: str
+    path: Annotated[str, Field(title="Path to the item in the repository")]
 
-    mode: GitTreeMode
+    mode: Annotated[GitTreeMode, Field(title="Mode of the item.")]
 
-    sha: str = Field(title="Git sha of tree object")
+    sha: Annotated[str, Field(title="Git sha of tree object")]
 
-    url: HttpUrl = Field(title="URL of the object")
+    url: Annotated[HttpUrl, Field(title="URL of the object")]
 
     def match_glob(self, pattern: str) -> bool:
         """Test if this path matches a glob pattern."""
@@ -510,15 +547,16 @@ class RecursiveGitTreeModel(BaseModel):
     the full contents of a GitHub repository.
     """
 
-    sha: str = Field(title="SHA of the commit.")
+    sha: Annotated[str, Field(title="SHA of the commit.")]
 
-    url: HttpUrl = Field(title="GitHub API URL of this resource")
+    url: Annotated[HttpUrl, Field(title="GitHub API URL of this resource")]
 
-    tree: list[GitTreeItem] = Field(title="Items in the git tree")
+    tree: Annotated[list[GitTreeItem], Field(title="Items in the git tree")]
 
-    truncated: bool = Field(
-        title="True if the dataset does not contain the whole repo"
-    )
+    truncated: Annotated[
+        bool,
+        Field(title="True if the dataset does not contain the whole repo"),
+    ]
 
     def find_notebooks(
         self, settings: RepositorySettingsFile
