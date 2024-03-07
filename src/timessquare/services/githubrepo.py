@@ -119,7 +119,7 @@ class GitHubRepoService:
         github_client_factory = GitHubAppClientFactory(
             http_client=http_client,
             id=config.github_app_id,
-            key=config.github_app_private_key.get_secret_value(),
+            key=config.github_app_private_key,
             name="lsst-sqre/times-square",
         )
         installation_client = (
@@ -183,7 +183,7 @@ class GitHubRepoService:
         data = await self._github_client.getitem(
             uri, url_vars={"owner": owner, "repo": repo}
         )
-        return GitHubRepositoryModel.parse_obj(data)
+        return GitHubRepositoryModel.model_validate(data)
 
     async def request_github_branch(
         self, *, url_template: str, branch: str
@@ -192,19 +192,17 @@ class GitHubRepoService:
         data = await self._github_client.getitem(
             url_template, url_vars={"branch": branch}
         )
-        return GitHubBranchModel.parse_obj(data)
+        return GitHubBranchModel.model_validate(data)
 
     async def load_settings_file(
         self, *, repo: GitHubRepositoryModel, git_ref: str
     ) -> RepositorySettingsFile:
         """Load the times-square.yaml from a repository."""
         uri = repo.contents_url + "{?ref}"
-        # TODO handle cases where the repo doesn't have settings (i.e.
-        # fail gracefully)
         data = await self._github_client.getitem(
             uri, url_vars={"path": "times-square.yaml", "ref": git_ref}
         )
-        content_data = GitHubBlobModel.parse_obj(data)
+        content_data = GitHubBlobModel.model_validate(data)
         file_content = content_data.decode()
         return RepositorySettingsFile.parse_yaml(file_content)
 
@@ -428,7 +426,7 @@ class GitHubRepoService:
                 "external_id": NotebookExecutionsCheck.external_id,
             },
         )
-        check_run = GitHubCheckRunModel.parse_obj(data)
+        check_run = GitHubCheckRunModel.model_validate(data)
         if config_check.conclusion == GitHubCheckRunConclusion.success:
             await self.run_notebook_check_run(
                 check_run=check_run,
@@ -438,7 +436,7 @@ class GitHubRepoService:
             # Set the notebook check run to "neutral" indicating that we're
             # skipping this check.
             await self._github_client.patch(
-                check_run.url,
+                str(check_run.url),
                 data={"conclusion": GitHubCheckRunConclusion.neutral},
             )
 
@@ -463,7 +461,7 @@ class GitHubRepoService:
                 repo=payload.repository,
             )
 
-    async def run_notebook_check_run(
+    async def run_notebook_check_run(  # noqa: C901 PLR0912 PLR0915
         self, *, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
     ) -> None:
         """Run the notebook execution check.
@@ -518,7 +516,8 @@ class GitHubRepoService:
             )
             page_execution_info = (
                 await self._page_service.execute_page_with_defaults(
-                    page, enable_retry=False  # fail quickly for CI
+                    page,
+                    enable_retry=False,  # fail quickly for CI
                 )
             )
             if page_execution_info.noteburst_error_message is not None:
@@ -538,8 +537,6 @@ class GitHubRepoService:
         await asyncio.sleep(5.0)  # pause for noteburst to work
 
         # Poll for noteburst results
-        # TODO add a timeout to set a null result on the check run if
-        # noteburst doesn't clear the jobs in a reasonable time frame
         checked_page_count = 0
         while len(pending_pages) > 0:
             checked_page_count += 1
@@ -551,7 +548,7 @@ class GitHubRepoService:
             if page_execution.noteburst_job is None:
                 raise RuntimeError("Noteburst job is None")
             r = await self._page_service.noteburst_api.get_job(
-                page_execution.noteburst_job.job_url
+                str(page_execution.noteburst_job.job_url)
             )
             if r.status_code >= 400:
                 # This is actually an issue with the noteburst service
@@ -571,8 +568,6 @@ class GitHubRepoService:
                 check.report_noteburst_completion(
                     page_execution=page_execution, job_result=job
                 )
-                # TODO this is where we could render that noteburst result
-                # to HTML automatically
             else:
                 # thow it back on the queue
                 self._logger.debug(
@@ -610,7 +605,7 @@ class GitHubRepoService:
         https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference
         """
         return [
-            GitHubCheckRunModel.parse_obj(item)
+            GitHubCheckRunModel.model_validate(item)
             async for item in self._github_client.getiter(
                 "/repos/{owner}/{repo}/commits/{ref}/check-runs",
                 url_vars={"owner": owner, "repo": repo, "ref": head_sha},
@@ -630,7 +625,7 @@ class GitHubRepoService:
         """
         # reduce the unique pull request urls
         pr_urls = [
-            pr.url
+            str(pr.url)
             for check_run in check_runs
             for pr in check_run.pull_requests
         ]
@@ -639,6 +634,6 @@ class GitHubRepoService:
         pull_requests: list[GitHubPullRequestModel] = []
         for pr_url in pr_urls:
             data = await self._github_client.getitem(pr_url)
-            pull_requests.append(GitHubPullRequestModel.parse_obj(data))
+            pull_requests.append(GitHubPullRequestModel.model_validate(data))
 
         return pull_requests

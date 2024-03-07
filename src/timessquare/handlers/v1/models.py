@@ -34,14 +34,14 @@ class Index(BaseModel):
 
 page_name_field = Field(
     ...,
-    example="summit-weather",
+    examples=["summit-weather"],
     title="Page name",
     description="The name is used as the page's API URL slug.",
 )
 
 page_title_field = Field(
     ...,
-    example="Summit Weather",
+    examples=["Summit Weather"],
     title="Page title",
     description="The display title (plain text).",
 )
@@ -49,7 +49,7 @@ page_title_field = Field(
 page_description_field = Field(
     ...,
     title="Page description",
-    descrition=(
+    description=(
         "The description is available as both HTML and GitHub-flavored "
         "Markdown."
     ),
@@ -57,7 +57,7 @@ page_description_field = Field(
 
 page_cache_ttl_field: int | None = Field(
     None,
-    example=864000,
+    examples=[864000],
     title="Page title",
     description="The display title (plain text).",
 )
@@ -78,28 +78,30 @@ page_tags_field = Field(default_factory=list, title="Tags (keywords)")
 
 page_url_field = Field(
     ...,
-    example="https://example.com/v1/pages/summit-weather",
+    examples=["https://example.com/v1/pages/summit-weather"],
     title="Page resource URL.",
     description="API URL for the page's metadata resource.",
 )
 
 page_source_field = Field(
     ...,
-    example="https://example.com/v1/pages/summit-weather/source",
+    examples=["https://example.com/v1/pages/summit-weather/source"],
     title="Source ipynb URL",
     description="The URL for the source ipynb file (JSON-formatted)",
 )
 
 page_parameters_field = Field(
     ...,
-    example={"units": {"enum": ["metric", "imperial"], "default": "metric"}},
+    examples=[
+        {"units": {"enum": ["metric", "imperial"], "default": "metric"}}
+    ],
     title="Parameters",
     description="Parameters and their JSON Schema descriptions.",
 )
 
 page_rendered_field = Field(
     ...,
-    example="https://example.com/v1/pages/summit-weather/rendered",
+    examples=["https://example.com/v1/pages/summit-weather/rendered"],
     title="Rendered notebook template URL",
     description=(
         "The URL for the source notebook rendered with parameter values "
@@ -109,7 +111,7 @@ page_rendered_field = Field(
 
 page_html_field = Field(
     ...,
-    example="https://example.com/v1/pages/summit-weather/html",
+    examples=["https://example.com/v1/pages/summit-weather/html"],
     title="HTML view of computed notebook",
     description=(
         "The URL for the HTML-rendering of the notebook, computed with "
@@ -119,7 +121,7 @@ page_html_field = Field(
 
 page_html_status_field = Field(
     ...,
-    example="https://example.com/v1/pages/summit-weather/htmlstatus",
+    examples=["https://example.com/v1/pages/summit-weather/htmlstatus"],
     title="URL for the status of the HTML view of a notebook",
     description=(
         "The status URL for the HTML-rendering of the notebook, computed with "
@@ -129,7 +131,7 @@ page_html_status_field = Field(
 
 ipynb_field = Field(
     ...,
-    example="{...}",
+    examples=["{...}"],
     title="ipynb",
     description="The JSON-encoded notebook content.",
 )
@@ -169,12 +171,12 @@ class FormattedText(BaseModel):
 class Person(BaseModel):
     """A description of a person, such as an author."""
 
-    name: str = Field(..., example="Vera Rubin", title="Display name")
+    name: str = Field(..., examples=["Vera Rubin"], title="Display name")
 
-    username: str | None = Field(None, example="vera", title="RSP username")
+    username: str | None = Field(None, examples=["vera"], title="RSP username")
     """A person's RSP username."""
 
-    affiliation_name: str | None = Field(None, example="Rubin/AURA")
+    affiliation_name: str | None = Field(None, examples=["Rubin/AURA"])
     """Display name of a person's main affiliation."""
 
     email: EmailStr | None = Field(None, title="Email")
@@ -312,23 +314,18 @@ class Page(BaseModel):
             parameters=parameters,
             self_url=AnyHttpUrl(
                 str(request.url_for("get_page", page=page.name)),
-                scheme=request.url.scheme,
             ),
             source_url=AnyHttpUrl(
                 str(request.url_for("get_page_source", page=page.name)),
-                scheme=request.url.scheme,
             ),
             rendered_url=AnyHttpUrl(
                 str(request.url_for("get_rendered_notebook", page=page.name)),
-                scheme=request.url.scheme,
             ),
             html_url=AnyHttpUrl(
                 str(request.url_for("get_page_html", page=page.name)),
-                scheme=request.url.scheme,
             ),
             html_status_url=AnyHttpUrl(
                 str(request.url_for("get_page_html_status", page=page.name)),
-                scheme=request.url.scheme,
             ),
             github=github_metadata,
         )
@@ -353,7 +350,6 @@ class PageSummary(BaseModel):
             title=summary.title,
             self_url=AnyHttpUrl(
                 str(request.url_for("get_page", page=summary.name)),
-                scheme=request.url.scheme,
             ),
         )
 
@@ -366,8 +362,10 @@ class HtmlStatus(BaseModel):
     available: bool = Field(
         ...,
         title="Html availability",
-        description="If true, HTML is available in the cache for this set of "
-        "parameters.",
+        description=(
+            "If true, HTML is available in the cache for this set of "
+            "parameters."
+        ),
     )
 
     html_url: AnyHttpUrl = page_html_field
@@ -375,9 +373,11 @@ class HtmlStatus(BaseModel):
     html_hash: str | None = Field(
         ...,
         title="HTML content hash",
-        description="A SHA256 hash of the HTML content. Clients can use this "
-        "hash to determine if they are showing the current version of the "
-        "HTML rendering. This field is null if the HTML is not available.",
+        description=(
+            "A SHA256 hash of the HTML content. Clients can use this "
+            "hash to determine if they are showing the current version of the "
+            "HTML rendering. This field is null if the HTML is not available."
+        ),
     )
 
     @classmethod
@@ -395,7 +395,7 @@ class HtmlStatus(BaseModel):
 
             return cls(
                 available=False,
-                html_url=AnyHttpUrl(html_url, scheme=request.url.scheme),
+                html_url=AnyHttpUrl(html_url),
                 html_hash=None,
             )
         else:
@@ -411,7 +411,7 @@ class HtmlStatus(BaseModel):
             return cls(
                 available=True,
                 html_hash=html.html_hash,
-                html_url=AnyHttpUrl(html_url, scheme=request.url.scheme),
+                html_url=AnyHttpUrl(html_url),
             )
 
 
@@ -445,21 +445,21 @@ class GitHubContentsNode(BaseModel):
         ...,
         title="Node type",
         description="Type of node in the GitHub contents tree.",
-        example="page",
+        examples=["page"],
     )
 
     path: str = Field(
         ...,
         title="Path",
         description="Squareone URL path",
-        example="lsst-sqre/times-square-demo/demo",
+        examples=["lsst-sqre/times-square-demo/demo"],
     )
 
     title: str = Field(
         ...,
         title="Title",
         description="Presentation title of the node.",
-        example="Demo",
+        examples=["Demo"],
     )
 
     contents: list[GitHubContentsNode] = Field(
@@ -510,7 +510,7 @@ class GitHubPrState(str, Enum):
     """The state of a GitHub PR."""
 
     draft = "draft"
-    open = "open"  # noqa: A003
+    open = "open"
     merged = "merged"
     closed = "closed"
 

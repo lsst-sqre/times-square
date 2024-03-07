@@ -26,11 +26,11 @@ async def test_github(client: AsyncClient) -> None:
     demo_path = data_path / "demo.ipynb"
 
     engine = create_database_engine(
-        config.database_url, config.database_password.get_secret_value()
+        str(config.database_url), config.database_password.get_secret_value()
     )
     session = await create_async_session(engine)
 
-    redis = Redis.from_url(config.redis_url)
+    redis = Redis.from_url(str(config.redis_url))
 
     page_service = PageService(
         page_store=PageStore(session=session),

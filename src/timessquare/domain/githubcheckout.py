@@ -8,11 +8,11 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Annotated, Any, Self
 
 import yaml
 from gidgethub.httpx import GitHubAPI
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, root_validator
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 from safir.github.models import GitHubBlobModel, GitHubRepositoryModel
 
 from .page import PageParameterSchema, PersonModel
@@ -83,7 +83,7 @@ class GitHubRepositoryCheckout:
         data = await github_client.getitem(
             uri, url_vars={"path": "times-square.yaml", "ref": head_sha}
         )
-        content_data = GitHubBlobModel.parse_obj(data)
+        content_data = GitHubBlobModel.model_validate(data)
         file_content = content_data.decode()
         settings = RepositorySettingsFile.parse_yaml(file_content)
         return cls(
@@ -121,7 +121,7 @@ class GitHubRepositoryCheckout:
             self.trees_url + "{?recursive}",
             url_vars={"sha": self.head_sha, "recursive": "1"},
         )
-        return RecursiveGitTreeModel.parse_obj(response)
+        return RecursiveGitTreeModel.model_validate(response)
 
     async def load_notebook(
         self,
@@ -156,7 +156,7 @@ class GitHubRepositoryCheckout:
         data = await github_client.getitem(
             self.blobs_url, url_vars={"sha": sha}
         )
-        return GitHubBlobModel.parse_obj(data)
+        return GitHubBlobModel.model_validate(data)
 
 
 @dataclass(kw_only=True)
@@ -259,9 +259,7 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
         """The ipynb file, based on the ``notebook_source`` and including
         Times Square metadata such as parameters.
         """
-        # TODO "render" the notebook_source into a Times Square notebook
-        # by including parameters data.
-        # TODO if we support jupytext, this is where we'd convert that
+        # If we support jupytext, this is where we'd convert that
         # source file into ipynb
         return self.notebook_source
 
@@ -271,68 +269,84 @@ class RepositorySettingsFile(BaseModel):
     settings file.
     """
 
-    description: str | None = Field(
-        None,
-        title="Description of the repository",
-        description="Can be markdown-formatted.",
-    )
-
-    ignore: list[str] = Field(
-        title="Paths to ignore (supports globs)",
-        default_factory=list,
-        description="Relative to the repository root.",
-    )
-
-    root: str = Field(
-        "",
-        title="Root directory where Times Square notebooks are located.",
-        description=(
-            "An empty string corresponds to the root being the same as "
-            "the repository root."
+    description: Annotated[
+        str | None,
+        Field(
+            title="Description of the repository",
+            description="Can be markdown-formatted.",
         ),
-    )
+    ] = None
 
-    enabled: bool = Field(
-        True,
-        title="Toggle for activating a repository's inclusion in Times Square",
-        description=(
-            "Normally a repository is synced into Times Square if the Times "
-            "Square GitHub App is installed and the repository includes a "
-            "times-square.yaml file. You can set this field to `False` to "
-            "temporarily prevent it from being synced by Times Square."
+    ignore: Annotated[
+        list[str],
+        Field(
+            title="Paths to ignore (supports globs)",
+            default_factory=list,
+            description="Relative to the repository root.",
         ),
-    )
+    ]
+
+    root: Annotated[
+        str,
+        Field(
+            title="Root directory where Times Square notebooks are located.",
+            description=(
+                "An empty string corresponds to the root being the same as "
+                "the repository root."
+            ),
+        ),
+    ] = ""
+
+    enabled: Annotated[
+        bool,
+        Field(
+            title=(
+                "Toggle for activating a repository's inclusion in Times "
+                "Square"
+            ),
+            description=(
+                "Normally a repository is synced into Times Square if the "
+                "Times Square GitHub App is installed and the repository "
+                "includes a times-square.yaml file. You can set this field "
+                "to `False` to temporarily prevent it from being synced by "
+                "Times Square."
+            ),
+        ),
+    ] = True
 
     @classmethod
     def parse_yaml(cls, content: str) -> RepositorySettingsFile:
         """Create a RepositorySettingsFile from the YAML content."""
-        return cls.parse_obj(yaml.safe_load(content))
+        return cls.model_validate(yaml.safe_load(content))
 
 
 class SidecarPersonModel(BaseModel):
     """A Pydantic model for a person's identity encoded in YAML."""
 
-    name: str | None = Field(title="Display name")
+    name: Annotated[str | None, Field(title="Display name")] = None
 
-    username: str | None = Field(title="RSP username")
+    username: Annotated[str | None, Field(title="RSP username")] = None
 
-    affiliation_name: str | None = Field(
-        title="Display name of a person's main affiliation"
-    )
+    affiliation_name: Annotated[
+        str | None,
+        Field(
+            title="Affiliation name",
+            description="Display name of a person's main affiliation",
+        ),
+    ] = None
 
-    email: EmailStr | None = Field(title="Email")
+    email: Annotated[EmailStr | None, Field(title="Email")] = None
 
-    slack_name: str | None = Field(title="Slack username")
+    slack_name: Annotated[str | None, Field(title="Slack username")] = None
 
-    @root_validator()
-    def check_names(cls, values: dict[str, Any]) -> dict[str, Any]:
+    @model_validator(mode="after")
+    def check_names(self) -> Self:
         """Either of name or username must be set."""
-        keys = values.keys()
-        if "name" not in keys and "username" not in keys:
+        if not (self.name or self.username):
             raise ValueError(
                 "Either name or username must be set for a person"
             )
-        return values
+        return self
 
     def to_person_model(self) -> PersonModel:
         """Convert to the domain version of this object."""
@@ -370,43 +384,53 @@ class ParameterSchemaModel(BaseModel):
     `PageParameterSchema`.
     """
 
-    type: JsonSchemaTypeEnum = Field(
-        title="The JSON schema type.",
-        description=(
-            "Note that Times Square parameters can only be a subset of types "
-            "describable by JSON schema."
+    type: Annotated[
+        JsonSchemaTypeEnum,
+        Field(
+            title="The JSON schema type.",
+            description=(
+                "Note that Times Square parameters can only be a subset of "
+                "types describable by JSON schema."
+            ),
         ),
-    )
+    ]
 
-    default: int | float | str | bool = Field(
-        title="Default value, when the user does not override a value"
-    )
+    default: Annotated[
+        int | float | str | bool,
+        Field(title="Default value, when the user does not override a value"),
+    ]
 
-    description: str = Field(title="Short description of a field")
+    description: Annotated[str, Field(title="Short description of a field")]
 
-    minimum: int | float | None = Field(
-        None, title="Minimum value for number or integer types."
-    )
+    minimum: Annotated[
+        int | float | None,
+        Field(title="Minimum value for number or integer types."),
+    ] = None
 
-    maximum: int | float | None = Field(
-        None, title="Maximum value for number or integer types."
-    )
+    maximum: Annotated[
+        int | float | None,
+        Field(title="Maximum value for number or integer types."),
+    ] = None
 
-    exclusiveMinimum: int | float | None = Field(
-        None, title="Exclusive minimum value for number or integer types."
-    )
+    exclusiveMinimum: Annotated[  # noqa: N815
+        int | float | None,
+        Field(title="Exclusive minimum value for number or integer types."),
+    ] = None
 
-    exclusiveMaximum: int | float | None = Field(
-        None, title="Exclusive maximum value for number or integer types."
-    )
+    exclusiveMaximum: Annotated[  # noqa: N815
+        int | float | None,
+        Field(title="Exclusive maximum value for number or integer types."),
+    ] = None
 
-    multipleOf: int | float | None = Field(
-        None, title="Required factor for number of integer types."
-    )
+    multipleOf: Annotated[  # noqa: N815
+        int | float | None,
+        Field(title="Required factor for number of integer types."),
+    ] = None
 
     def to_parameter_schema(self, name: str) -> PageParameterSchema:
+        """Convert to the domain version of this object."""
         return PageParameterSchema.create_and_validate(
-            name=name, json_schema=self.dict(exclude_none=True)
+            name=name, json_schema=self.model_dump(exclude_none=True)
         )
 
 
@@ -415,42 +439,56 @@ class NotebookSidecarFile(BaseModel):
     file.
     """
 
-    authors: list[SidecarPersonModel] = Field(
-        title="Authors of the notebook", default_factory=list
-    )
+    authors: Annotated[
+        list[SidecarPersonModel],
+        Field(title="Authors of the notebook", default_factory=list),
+    ]
 
-    title: str | None = Field(
-        None,
-        title="Title of a notebook (default is to use the filename)",
-    )
+    title: Annotated[
+        str | None,
+        Field(
+            title="Title of a notebook (default is to use the filename)",
+        ),
+    ] = None
 
-    description: str | None = Field(
-        None,
-        title="Description of a notebook",
-        description="Can be markdown-formatted.",
-    )
+    description: Annotated[
+        str | None,
+        Field(
+            title="Description of a notebook",
+            description="Can be markdown-formatted.",
+        ),
+    ] = None
 
-    enabled: bool = Field(
-        True,
-        title="Toggle for activating a notebook's inclusion in Times Square",
-    )
+    enabled: Annotated[
+        bool,
+        Field(
+            title=(
+                "Toggle for activating a notebook's inclusion in Times Square"
+            )
+        ),
+    ] = True
 
-    cache_ttl: int | None = Field(
-        None, title="Lifetime (seconds) of notebook page renders"
-    )
+    cache_ttl: Annotated[
+        int | None, Field(title="Lifetime (seconds) of notebook page renders")
+    ] = None
 
-    tags: list[str] = Field(
-        title="Tag keywords associated with the notebook", default_factory=list
-    )
+    tags: Annotated[
+        list[str],
+        Field(
+            title="Tag keywords associated with the notebook",
+            default_factory=list,
+        ),
+    ]
 
-    parameters: dict[str, ParameterSchemaModel] = Field(
-        title="Parameters and their schemas", default_factory=dict
-    )
+    parameters: Annotated[
+        dict[str, ParameterSchemaModel],
+        Field(title="Parameters and their schemas", default_factory=dict),
+    ]
 
     @classmethod
     def parse_yaml(cls, content: str) -> NotebookSidecarFile:
         """Create a NotebookSidecarFile from the YAML content."""
-        return cls.parse_obj(yaml.safe_load(content))
+        return cls.model_validate(yaml.safe_load(content))
 
     def export_parameters(self) -> dict[str, PageParameterSchema]:
         """Export the `parameters` attribute to `PageParameterSchema` used
@@ -479,13 +517,13 @@ class GitTreeItem(BaseModel):
     `RecursiveGitTreeModel`.
     """
 
-    path: str
+    path: Annotated[str, Field(title="Path to the item in the repository")]
 
-    mode: GitTreeMode
+    mode: Annotated[GitTreeMode, Field(title="Mode of the item.")]
 
-    sha: str = Field(title="Git sha of tree object")
+    sha: Annotated[str, Field(title="Git sha of tree object")]
 
-    url: HttpUrl = Field(title="URL of the object")
+    url: Annotated[HttpUrl, Field(title="URL of the object")]
 
     def match_glob(self, pattern: str) -> bool:
         """Test if this path matches a glob pattern."""
@@ -509,15 +547,16 @@ class RecursiveGitTreeModel(BaseModel):
     the full contents of a GitHub repository.
     """
 
-    sha: str = Field(title="SHA of the commit.")
+    sha: Annotated[str, Field(title="SHA of the commit.")]
 
-    url: HttpUrl = Field(title="GitHub API URL of this resource")
+    url: Annotated[HttpUrl, Field(title="GitHub API URL of this resource")]
 
-    tree: list[GitTreeItem] = Field(title="Items in the git tree")
+    tree: Annotated[list[GitTreeItem], Field(title="Items in the git tree")]
 
-    truncated: bool = Field(
-        title="True if the dataset does not contain the whole repo"
-    )
+    truncated: Annotated[
+        bool,
+        Field(title="True if the dataset does not contain the whole repo"),
+    ]
 
     def find_notebooks(
         self, settings: RepositorySettingsFile
@@ -527,7 +566,7 @@ class RecursiveGitTreeModel(BaseModel):
         """
         # Pre-scan to get an index of all file paths that _could_ be notebook
         # content i.e. ipynb extensions and all YAML paths.
-        # TODO if we support jupyext, add more extentions
+        # If we support jupyext, add more extentions
         # Note: PurePosixPath.suffix includes the period in the extension
         source_extensions = {".ipynb"}
         yaml_extensions = {".yaml", ".yml"}
@@ -542,21 +581,15 @@ class RecursiveGitTreeModel(BaseModel):
                     yaml_items.append(item)
 
         for yaml_item in yaml_items:
+            # Test files against the "ignore" settings
+            if self._is_ignored(yaml_item, settings):
+                continue
+
             path_stem = yaml_item.path_stem
             notebook_item_index = notebook_candidate_indices.get(path_stem)
             if notebook_item_index is None:
                 continue
             notebook_item = self.tree[notebook_item_index]
-
-            # Test files again the "ignore" settings
-            ignore = False
-            for glob_pattern in settings.ignore:
-                if yaml_item.match_glob(glob_pattern):
-                    ignore = True
-                if notebook_item.match_glob(glob_pattern):
-                    ignore = True
-            if ignore:
-                continue
 
             tree_ref = RepositoryNotebookTreeRef(
                 notebook_source_path=notebook_item.path,
@@ -565,3 +598,12 @@ class RecursiveGitTreeModel(BaseModel):
                 sidecar_git_tree_sha=yaml_item.sha,
             )
             yield tree_ref
+
+    def _is_ignored(
+        self, yaml_item: GitTreeItem, settings: RepositorySettingsFile
+    ) -> bool:
+        """Test if a file is ignored by the repository settings."""
+        for glob_pattern in settings.ignore:
+            if yaml_item.match_glob(glob_pattern):
+                return True
+        return False

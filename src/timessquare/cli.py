@@ -61,7 +61,7 @@ async def init(*, reset: bool) -> None:
     """Initialize the database storage."""
     logger = structlog.get_logger(config.logger_name)
     engine = create_database_engine(
-        config.database_url, config.database_password.get_secret_value()
+        str(config.database_url), config.database_password.get_secret_value()
     )
     await initialize_database(
         engine, logger, schema=Base.metadata, reset=reset
@@ -73,7 +73,7 @@ async def init(*, reset: bool) -> None:
 @run_with_asyncio
 async def reset_html() -> None:
     """Reset the Redis-based HTML result cache."""
-    redis = Redis.from_url(config.redis_url, password=None)
+    redis = Redis.from_url(str(config.redis_url), password=None)
     try:
         html_store = NbHtmlCacheStore(redis)
         html_store.scan("*")

@@ -26,7 +26,7 @@ async def app() -> AsyncIterator[FastAPI]:
     """
     logger = structlog.get_logger(config.logger_name)
     engine = create_database_engine(
-        config.database_url, config.database_password.get_secret_value()
+        str(config.database_url), config.database_password.get_secret_value()
     )
     await initialize_database(engine, logger, schema=Base.metadata, reset=True)
     await engine.dispose()

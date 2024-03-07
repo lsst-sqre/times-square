@@ -24,7 +24,7 @@ def test_settings_file_load() -> None:
     json_path = Path(__file__).parent.joinpath(
         "../data/times-square-demo/settings-blob.json"
     )
-    blob = GitHubBlobModel.parse_raw(json_path.read_text())
+    blob = GitHubBlobModel.model_validate_json(json_path.read_text())
     settings = RepositorySettingsFile.parse_yaml(blob.decode())
     assert settings.enabled is True
 
@@ -36,7 +36,9 @@ def test_recursive_git_tree_model_rsp_broadcast() -> None:
     json_path = Path(__file__).parent.joinpath(
         "../data/rsp_broadcast/recursive_tree.json"
     )
-    repo_tree = RecursiveGitTreeModel.parse_raw(json_path.read_text())
+    repo_tree = RecursiveGitTreeModel.model_validate_json(
+        json_path.read_text()
+    )
     assert repo_tree.sha == "46372dfa5a432026d68d262899755ef0333ef8c0"
     assert repo_tree.truncated is False
     assert len(repo_tree.tree) == 14
@@ -54,7 +56,7 @@ def test_git_blob_model_rsp_broadcast() -> None:
     json_path = Path(__file__).parent.joinpath(
         "../data/rsp_broadcast/readme_blob.json"
     )
-    blob = GitHubBlobModel.parse_raw(json_path.read_text())
+    blob = GitHubBlobModel.model_validate_json(json_path.read_text())
     assert blob.sha == "8e977bc4a1503adb11e3fe06e0ddcf759ad59a91"
     assert blob.encoding == "base64"
     assert blob.decode().startswith(
@@ -77,7 +79,7 @@ async def test_repository_git_tree(
     repo = GitHubRepositoryCheckout(
         owner_name="lsst-sqre",
         name="rsp_broadcast",
-        settings=RepositorySettingsFile(),
+        settings=RepositorySettingsFile(ignore=[]),
         git_ref="refs/heads/main",
         head_sha="46372dfa5a432026d68d262899755ef0333ef8c0",
         trees_url=(
@@ -105,8 +107,10 @@ async def test_recursive_git_tree_find_notebooks() -> None:
     json_path = Path(__file__).parent.joinpath(
         "../data/times-square-demo/recursive_tree.json"
     )
-    repo_tree = RecursiveGitTreeModel.parse_raw(json_path.read_text())
-    settings = RepositorySettingsFile()
+    repo_tree = RecursiveGitTreeModel.model_validate_json(
+        json_path.read_text()
+    )
+    settings = RepositorySettingsFile(ignore=[])
     notebook_refs = list(repo_tree.find_notebooks(settings))
     assert len(notebook_refs) == 2
 

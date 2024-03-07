@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Annotated
 
 from httpx import AsyncClient
-from pydantic import AnyHttpUrl, BaseModel
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from timessquare.config import config
 
@@ -17,11 +18,14 @@ class NoteburstJobModel(BaseModel):
     notebook.
     """
 
-    date_submitted: datetime
-    """The time when the execution job was submitted."""
+    date_submitted: Annotated[
+        datetime,
+        Field(description="The time when the execution job was submitted."),
+    ]
 
-    job_url: AnyHttpUrl
-    """The URL of the noteburst job resource."""
+    job_url: Annotated[
+        AnyHttpUrl, Field(description="The URL of the noteburst job resource.")
+    ]
 
 
 class NoteburstJobStatus(str, Enum):
@@ -39,29 +43,54 @@ class NoteburstJobResponseModel(BaseModel):
     execution request.
     """
 
-    self_url: AnyHttpUrl
-    """The URL of this resource."""
+    self_url: Annotated[
+        AnyHttpUrl, Field(description="The URL of this resource.")
+    ]
 
-    enqueue_time: datetime
-    """Time when the job was added to the queue (UTC)."""
+    enqueue_time: Annotated[
+        datetime,
+        Field(description="Time when the job was added to the queue (UTC)."),
+    ]
 
-    status: NoteburstJobStatus
-    """The current status of the notebook execution job."""
+    status: Annotated[
+        NoteburstJobStatus,
+        Field(description="The current status of the notebook execution job."),
+    ]
 
-    ipynb: str | None = None
-    """The executed notebook."""
+    ipynb: Annotated[
+        str | None,
+        Field(description="The executed notebook, if completed"),
+    ] = None
 
-    start_time: datetime | None = None
-    """Time when the notebook execution started (only set if result is
-    available).
-    """
+    start_time: Annotated[
+        datetime | None,
+        Field(
+            description=(
+                "Time when the notebook execution started (only set if "
+                "result is available)."
+            )
+        ),
+    ] = None
 
-    finish_time: datetime | None = None
-    """Time when the notebook execution finished (only set if result is
-    available).
-    """
+    finish_time: Annotated[
+        datetime | None,
+        Field(
+            description=(
+                "Time when the notebook execution finished (only set if "
+                "result is available)."
+            )
+        ),
+    ] = None
 
-    success: bool | None = None
+    success: Annotated[
+        bool | None,
+        Field(
+            description=(
+                "Whether the execution was successful or not (only set if "
+                "result is available)."
+            )
+        ),
+    ] = None
     """Whether the execution was successful or not (only set if result is
     available).
     """
@@ -78,10 +107,13 @@ class NoteburstApiResult:
     """A result from the noteburst API."""
 
     data: NoteburstJobResponseModel | None
+    """The parsed response, if any."""
 
     status_code: int
+    """The HTTP status code of the response."""
 
     error: str | None = None
+    """The error message, if any."""
 
 
 class NoteburstApi:
@@ -93,8 +125,9 @@ class NoteburstApi:
     async def submit_job(
         self, *, ipynb: str, kernel: str = "LSST", enable_retry: bool = True
     ) -> NoteburstApiResult:
+        base_url = str(config.environment_url).rstrip("/")
         r = await self._http_client.post(
-            f"{config.environment_url}/noteburst/v1/notebooks/",
+            f"{base_url}/noteburst/v1/notebooks/",
             json={
                 "ipynb": ipynb,
                 "kernel_name": kernel,
@@ -105,7 +138,7 @@ class NoteburstApi:
         if r.status_code == 202:
             return NoteburstApiResult(
                 status_code=r.status_code,
-                data=NoteburstJobResponseModel.parse_obj(r.json()),
+                data=NoteburstJobResponseModel.model_validate(r.json()),
                 error=None,
             )
         else:
@@ -120,7 +153,7 @@ class NoteburstApi:
         if r.status_code == 200:
             return NoteburstApiResult(
                 status_code=r.status_code,
-                data=NoteburstJobResponseModel.parse_obj(r.json()),
+                data=NoteburstJobResponseModel.model_validate(r.json()),
                 error=None,
             )
         else:

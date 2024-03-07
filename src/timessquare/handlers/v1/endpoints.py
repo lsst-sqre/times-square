@@ -1,5 +1,6 @@
 """Handler's for the /v1/."""
 
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -88,7 +89,7 @@ async def get_index(
     doc_url = request.url.replace(path=f"/{config.name}/docs")
     return Index(
         metadata=metadata,
-        api_docs=AnyHttpUrl(str(doc_url), scheme=request.url.scheme),
+        api_docs=AnyHttpUrl(str(doc_url)),
     )
 
 
@@ -100,8 +101,8 @@ async def get_index(
     tags=[ApiTags.pages],
 )
 async def get_page(
-    page: str = page_path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    context: Annotated[RequestContext, Depends(context_dependency)],
+    page: Annotated[str, page_path_parameter],
 ) -> Page:
     """Get metadata about a page resource, which models a webpage that is
     rendered from a parameterized Jupyter Notebook.
@@ -124,7 +125,7 @@ async def get_page(
     tags=[ApiTags.pages],
 )
 async def get_pages(
-    context: RequestContext = Depends(context_dependency),
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> list[PageSummary]:
     """List available pages."""
     page_service = context.page_service
@@ -145,7 +146,7 @@ async def get_pages(
 )
 async def post_page(
     request_data: PostPageRequest,
-    context: RequestContext = Depends(context_dependency),
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> Page:
     """Register a new page with a Jinja-templated Jupyter Notebook.
 
@@ -237,8 +238,8 @@ async def post_page(
     tags=[ApiTags.pages],
 )
 async def get_page_source(
-    page: str = page_path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> PlainTextResponse:
     """Get the content of the source ipynb file, which is unexecuted and has
     Jinja templating of parameterizations.
@@ -267,8 +268,8 @@ async def get_page_source(
     tags=[ApiTags.pages],
 )
 async def get_rendered_notebook(
-    page: str = page_path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> PlainTextResponse:
     """Get a Jupyter Notebook with the parameter values filled in. The
     notebook is still unexecuted.
@@ -289,8 +290,8 @@ async def get_rendered_notebook(
     tags=[ApiTags.pages],
 )
 async def get_page_html(
-    page: str = page_path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> HTMLResponse:
     """Get the rendered HTML of a notebook."""
     page_service = context.page_service
@@ -315,8 +316,8 @@ async def get_page_html(
     tags=[ApiTags.pages],
 )
 async def get_page_html_status(
-    page: str = page_path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> HtmlStatus:
     page_service = context.page_service
     async with context.session.begin():
@@ -335,7 +336,7 @@ async def get_page_html_status(
     tags=[ApiTags.github],
 )
 async def get_github_tree(
-    context: RequestContext = Depends(context_dependency),
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> GitHubContentsRoot:
     """Get the tree of GitHub-backed pages.
 
@@ -358,8 +359,8 @@ async def get_github_tree(
     tags=[ApiTags.github],
 )
 async def get_github_page(
-    display_path: str = display_path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    display_path: Annotated[str, display_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> Page:
     """Get the metadata for a GitHub-backed page.
 
@@ -385,10 +386,10 @@ async def get_github_page(
     tags=[ApiTags.pr],
 )
 async def get_github_pr_tree(
-    owner: str = github_owner_parameter,
-    repo: str = github_repo_parameter,
-    commit: str = pr_commit_parameter,
-    context: RequestContext = Depends(context_dependency),
+    owner: Annotated[str, github_owner_parameter],
+    repo: Annotated[str, github_repo_parameter],
+    commit: Annotated[str, pr_commit_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> GitHubPrContents:
     """Get the tree of GitHub-backed pages for a pull request.
 
@@ -398,7 +399,7 @@ async def get_github_pr_tree(
     """
     repo_service = await context.create_github_repo_service(
         owner=owner, repo=repo
-    )  # TODO handle response where the app is not installed
+    )  # consider handling response where the app is not installed
     page_service = repo_service.page_service
 
     async with context.session.begin():
@@ -410,12 +411,12 @@ async def get_github_pr_tree(
         owner=owner, repo=repo, head_sha=commit
     )
     context.logger.debug(
-        "Check runs", check_runs=[run.dict() for run in check_runs]
+        "Check runs", check_runs=[run.model_dump() for run in check_runs]
     )
 
     pull_requests = await repo_service.get_pulls_for_check_runs(check_runs)
     context.logger.debug(
-        "Pull requests", prs=[pr.dict() for pr in pull_requests]
+        "Pull requests", prs=[pr.model_dump() for pr in pull_requests]
     )
 
     return GitHubPrContents.create(
@@ -436,11 +437,11 @@ async def get_github_pr_tree(
     tags=[ApiTags.pr],
 )
 async def get_github_pr_page(
-    owner: str = github_owner_parameter,
-    repo: str = github_repo_parameter,
-    commit: str = pr_commit_parameter,
-    path: str = path_parameter,
-    context: RequestContext = Depends(context_dependency),
+    owner: Annotated[str, github_owner_parameter],
+    repo: Annotated[str, github_repo_parameter],
+    commit: Annotated[str, pr_commit_parameter],
+    path: Annotated[str, path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> Page:
     """Get the metadata for a pull request preview of a GitHub-backed page."""
     page_service = context.page_service

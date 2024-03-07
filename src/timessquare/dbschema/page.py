@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from sqlalchemy import JSON, Column, DateTime, Integer, Unicode, UnicodeText
 
@@ -39,7 +39,7 @@ class SqlPage(Base):
     ipynb: str = Column(UnicodeText, nullable=False)
     """The Jinja-parameterized notebook, as a JSON-formatted string."""
 
-    parameters: Dict[str, Any] = Column(JSON, nullable=False)
+    parameters: dict[str, Any] = Column(JSON, nullable=False)
     """Parameters and their jsonschema descriptors."""
 
     title: str = Column(UnicodeText, nullable=False)
@@ -48,14 +48,14 @@ class SqlPage(Base):
     date_added: datetime = Column(DateTime, nullable=False)
     """Date when the page is registered through the Times Square API."""
 
-    authors: List[dict[str, Any]] = Column(JSON, nullable=False)
+    authors: list[dict[str, Any]] = Column(JSON, nullable=False)
     """Authors of the notebook.
 
     The schema for this column is described by the NotebookSidecarFile
     authors field schema.
     """
 
-    tags: List[str] = Column(JSON, nullable=False)
+    tags: list[str] = Column(JSON, nullable=False)
     """Tags (keywords) assigned to this page."""
 
     uploader_username: str | None = Column(Unicode(64), nullable=True)
