@@ -80,13 +80,7 @@ async def post_github_webhook(
 
     body = await context.request.body()
 
-    if config.github_webhook_secret is None:
-        return Response(
-            "The webhook secret is not configured",
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        )
-
-    webhook_secret = config.github_webhook_secret.get_secret_value()
+    webhook_secret = config.github_webhook_secret
     event = Event.from_http(
         context.request.headers, body, secret=webhook_secret
     )

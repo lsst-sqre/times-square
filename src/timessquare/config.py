@@ -134,7 +134,7 @@ class Config(BaseSettings):
     ] = None
 
     github_webhook_secret: Annotated[
-        SecretStr | None,
+        str,
         Field(
             alias="TS_GITHUB_WEBHOOK_SECRET",
             description=(
@@ -144,10 +144,10 @@ class Config(BaseSettings):
                 "webhooks/securing-your-webhooks"
             ),
         ),
-    ] = None
+    ]
 
     github_app_private_key: Annotated[
-        SecretStr | None,
+        str,
         Field(
             alias="TS_GITHUB_APP_PRIVATE_KEY",
             description=(
@@ -156,7 +156,7 @@ class Config(BaseSettings):
                 "github-apps#generating-a-private-key"
             ),
         ),
-    ] = None
+    ]
 
     enable_github_app: Annotated[
         bool,
@@ -270,8 +270,8 @@ class Config(BaseSettings):
             return False
 
         if (
-            (info.data.get("github_app_private_key") is None)
-            or (info.data.get("github_webhook_secret") is None)
+            (info.data.get("github_app_private_key") == "")
+            or (info.data.get("github_webhook_secret") == "")
             or (info.data.get("github_app_id") is None)
         ):
             return False

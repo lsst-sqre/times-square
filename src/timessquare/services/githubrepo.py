@@ -119,7 +119,7 @@ class GitHubRepoService:
         github_client_factory = GitHubAppClientFactory(
             http_client=http_client,
             id=config.github_app_id,
-            key=config.github_app_private_key.get_secret_value(),
+            key=config.github_app_private_key,
             name="lsst-sqre/times-square",
         )
         installation_client = (
