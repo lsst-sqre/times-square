@@ -121,14 +121,14 @@ class PageService:
         """Get the page from the data store, given its name."""
         page = await self._page_store.get(name)
         if page is None:
-            raise PageNotFoundError(name)
+            raise PageNotFoundError.for_page_id(name)
         return page
 
     async def get_github_backed_page(self, display_path: str) -> PageModel:
         """Get the page based on its display path."""
         page = await self._page_store.get_github_backed_page(display_path)
         if page is None:
-            raise PageNotFoundError(display_path)
+            raise PageNotFoundError.for_page_id(display_path)
         return page
 
     async def get_github_pr_page(
@@ -169,7 +169,7 @@ class PageService:
             display_path, commit=commit
         )
         if page is None:
-            raise PageNotFoundError(display_path)
+            raise PageNotFoundError.for_page_id(display_path)
         return page
 
     async def get_page_summaries(self) -> list[PageSummaryModel]:

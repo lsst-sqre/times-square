@@ -342,7 +342,8 @@ class PageModel:
         try:
             return nbformat.reads(source, as_version=NB_VERSION)
         except Exception as e:
-            raise PageNotebookFormatError(str(e)) from e
+            message = f"The notebook is not a valid ipynb file.\n\n{e}"
+            raise PageNotebookFormatError(message) from e
 
     @staticmethod
     def write_ipynb(notebook: nbformat.NotebookNode) -> str:
@@ -399,9 +400,9 @@ class PageModel:
         They also cannot be Python keywords.
         """
         if parameter_name_pattern.match(name) is None:
-            raise ParameterNameValidationError(name)
+            raise ParameterNameValidationError.for_param(name)
         if keyword.iskeyword(name):
-            raise ParameterNameValidationError(name)
+            raise ParameterNameValidationError.for_param(name)
 
     def resolve_and_validate_values(
         self, requested_values: Mapping[str, Any]
@@ -429,14 +430,16 @@ class PageModel:
             try:
                 cast_values[name] = self.parameters[name].cast_value(value)
             except PageParameterValueCastingError as e:
-                raise PageParameterError(
+                raise PageParameterError.for_param(
                     name, value, self.parameters[name]
                 ) from e
 
         # Ensure each parameter's value is valid
         for name, value in cast_values.items():
             if not self.parameters[name].validate(value):
-                raise PageParameterError(name, value, self.parameters[name])
+                raise PageParameterError.for_param(
+                    name, value, self.parameters[name]
+                )
 
         return cast_values
 
@@ -568,14 +571,17 @@ class PageParameterSchema:
         try:
             Draft202012Validator.check_schema(json_schema)
         except jsonschema.exceptions.SchemaError as e:
-            raise ParameterSchemaError(name, str(e)) from e
+            message = f"The schema for the {name} parameter is invalid.\n\n{e}"
+            raise ParameterSchemaError.for_param(name, message) from e
 
         if "default" not in json_schema:
-            raise ParameterDefaultMissingError(name)
+            raise ParameterDefaultMissingError.for_param(name)
 
         instance = cls.create(json_schema)
         if not instance.validate(json_schema["default"]):
-            raise ParameterDefaultInvalidError(name, json_schema["default"])
+            raise ParameterDefaultInvalidError.for_param(
+                name, json_schema["default"]
+            )
 
         return instance
 
@@ -629,13 +635,17 @@ class PageParameterSchema:
                     elif v.lower() == "false":
                         return False
                     else:
-                        raise PageParameterValueCastingError(v, schema_type)
+                        raise PageParameterValueCastingError.for_value(
+                            v, schema_type
+                        )
                 else:
                     return v
             else:
-                raise PageParameterValueCastingError(v, schema_type)
+                raise PageParameterValueCastingError.for_value(v, schema_type)
         except ValueError as e:
-            raise PageParameterValueCastingError(v, schema_type) from e
+            raise PageParameterValueCastingError.for_value(
+                v, schema_type
+            ) from e
 
 
 @dataclass
