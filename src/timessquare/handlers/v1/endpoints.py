@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import AnyHttpUrl
 from safir.metadata import get_metadata
 from safir.models import ErrorLocation, ErrorModel
+from safir.slack.webhook import SlackRouteErrorHandler
 
 from timessquare.config import config
 from timessquare.dependencies.requestcontext import (
@@ -32,7 +33,7 @@ from .models import (
 
 __all__ = ["v1_router"]
 
-v1_router = APIRouter()
+v1_router = APIRouter(route_class=SlackRouteErrorHandler)
 """FastAPI router for all v1 handlers."""
 
 display_path_parameter = Path(

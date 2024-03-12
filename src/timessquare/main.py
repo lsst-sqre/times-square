@@ -23,6 +23,7 @@ from safir.dependencies.http_client import http_client_dependency
 from safir.fastapi import ClientRequestError, client_request_error_handler
 from safir.logging import configure_logging, configure_uvicorn_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
+from safir.slack.webhook import SlackRouteErrorHandler
 from structlog import get_logger
 
 from .config import config
@@ -70,6 +71,8 @@ configure_logging(
 )
 configure_uvicorn_logging(config.log_level)
 
+logger = get_logger(__name__)
+
 app = FastAPI(
     title="Times Square",
     description=Path(__file__).parent.joinpath("description.md").read_text(),
@@ -84,6 +87,11 @@ app = FastAPI(
 
 # Add middleware
 app.add_middleware(XForwardedMiddleware)
+
+if config.slack_webhook_url:
+    SlackRouteErrorHandler.initialize(
+        str(config.slack_webhook_url), "Times Square", logger
+    )
 
 # Add routers
 app.include_router(internal_router)
