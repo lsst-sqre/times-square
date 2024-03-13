@@ -218,6 +218,16 @@ class Config(BaseSettings):
         ),
     ]
 
+    slack_webhook_url: Annotated[
+        HttpUrl | None,
+        Field(
+            alias="TS_SLACK_WEBHOOK_URL",
+            description=(
+                "Webhook URL for sending error messages to a Slack channel."
+            ),
+        ),
+    ] = None
+
     @field_validator("path_prefix")
     @classmethod
     def validate_path_prefix(cls, v: str) -> str:

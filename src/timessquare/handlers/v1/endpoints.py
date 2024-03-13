@@ -6,11 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import AnyHttpUrl
 from safir.metadata import get_metadata
+from safir.models import ErrorLocation, ErrorModel
+from safir.slack.webhook import SlackRouteErrorHandler
 
 from timessquare.config import config
 from timessquare.dependencies.requestcontext import (
     RequestContext,
     context_dependency,
+)
+from timessquare.exceptions import (
+    PageNotebookFormatError,
+    PageNotFoundError,
+    ParameterSchemaValidationError,
 )
 
 from ..apitags import ApiTags
@@ -26,7 +33,7 @@ from .models import (
 
 __all__ = ["v1_router"]
 
-v1_router = APIRouter()
+v1_router = APIRouter(route_class=SlackRouteErrorHandler)
 """FastAPI router for all v1 handlers."""
 
 display_path_parameter = Path(
@@ -99,6 +106,9 @@ async def get_index(
     summary="Page metadata",
     name="get_page",
     tags=[ApiTags.pages],
+    responses={
+        404: {"description": "Page not found", "model": ErrorModel},
+    },
 )
 async def get_page(
     context: Annotated[RequestContext, Depends(context_dependency)],
@@ -109,7 +119,12 @@ async def get_page(
     """
     page_service = context.page_service
     async with context.session.begin():
-        page_domain = await page_service.get_page(page)
+        try:
+            page_domain = await page_service.get_page(page)
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
 
         context.response.headers["location"] = str(
             context.request.url_for("get_page", page=page_domain.name)
@@ -143,6 +158,12 @@ async def get_pages(
     summary="Create a new page",
     status_code=201,
     tags=[ApiTags.pages],
+    responses={
+        422: {
+            "description": "Invalid ipynb",
+            "model": ErrorModel,
+        },
+    },
 )
 async def post_page(
     request_data: PostPageRequest,
@@ -214,15 +235,22 @@ async def post_page(
     authors = [a.to_domain() for a in request_data.authors]
 
     async with context.session.begin():
-        page_exec = await page_service.create_page_with_notebook_from_upload(
-            title=request_data.title,
-            ipynb=request_data.ipynb,
-            uploader_username=username,
-            authors=authors,
-            tags=request_data.tags,
-            description=request_data.description,
-            cache_ttl=request_data.cache_ttl,
-        )
+        try:
+            page_exec = (
+                await page_service.create_page_with_notebook_from_upload(
+                    title=request_data.title,
+                    ipynb=request_data.ipynb,
+                    uploader_username=username,
+                    authors=authors,
+                    tags=request_data.tags,
+                    description=request_data.description,
+                    cache_ttl=request_data.cache_ttl,
+                )
+            )
+        except PageNotebookFormatError as e:
+            e.location = ErrorLocation.body
+            e.field_path = ["ipynb"]
+            raise
         page = await page_service.get_page(page_exec.name)
 
     context.response.headers["location"] = str(
@@ -236,6 +264,7 @@ async def post_page(
     summary="Get the source parameterized notebook (ipynb)",
     name="get_page_source",
     tags=[ApiTags.pages],
+    responses={404: {"description": "Page not found", "model": ErrorModel}},
 )
 async def get_page_source(
     page: Annotated[str, page_path_parameter],
@@ -246,7 +275,12 @@ async def get_page_source(
     """
     page_service = context.page_service
     async with context.session.begin():
-        page_domain = await page_service.get_page(page)
+        try:
+            page_domain = await page_service.get_page(page)
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
 
     response_headers = {
         "location": str(
@@ -266,6 +300,10 @@ async def get_page_source(
     summary="Get the unexecuted notebook source with rendered parameters",
     name="get_rendered_notebook",
     tags=[ApiTags.pages],
+    responses={
+        404: {"description": "Page not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
 )
 async def get_rendered_notebook(
     page: Annotated[str, page_path_parameter],
@@ -277,9 +315,18 @@ async def get_rendered_notebook(
     page_service = context.page_service
     parameters = context.request.query_params
     async with context.session.begin():
-        rendered_notebook = await page_service.render_page_template(
-            page, parameters
-        )
+        try:
+            rendered_notebook = await page_service.render_page_template(
+                page, parameters
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
     return PlainTextResponse(rendered_notebook, media_type="application/json")
 
 
@@ -288,6 +335,10 @@ async def get_rendered_notebook(
     summary="Get the HTML page of an computed notebook",
     name="get_page_html",
     tags=[ApiTags.pages],
+    responses={
+        404: {"description": "Page not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
 )
 async def get_page_html(
     page: Annotated[str, page_path_parameter],
@@ -296,9 +347,18 @@ async def get_page_html(
     """Get the rendered HTML of a notebook."""
     page_service = context.page_service
     async with context.session.begin():
-        html = await page_service.get_html(
-            name=page, query_params=context.request.query_params
-        )
+        try:
+            html = await page_service.get_html(
+                name=page, query_params=context.request.query_params
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
 
     if not html:
         raise HTTPException(
@@ -314,6 +374,10 @@ async def get_page_html(
     name="get_page_html_status",
     response_model=HtmlStatus,
     tags=[ApiTags.pages],
+    responses={
+        404: {"description": "Page not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
 )
 async def get_page_html_status(
     page: Annotated[str, page_path_parameter],
@@ -321,9 +385,18 @@ async def get_page_html_status(
 ) -> HtmlStatus:
     page_service = context.page_service
     async with context.session.begin():
-        html = await page_service.get_html(
-            name=page, query_params=context.request.query_params
-        )
+        try:
+            html = await page_service.get_html(
+                name=page, query_params=context.request.query_params
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
 
     return HtmlStatus.from_html(html=html, request=context.request)
 
@@ -357,6 +430,7 @@ async def get_github_tree(
     summary="Metadata for GitHub-backed page",
     name="get_github_page",
     tags=[ApiTags.github],
+    responses={404: {"description": "Page not found", "model": ErrorModel}},
 )
 async def get_github_page(
     display_path: Annotated[str, display_path_parameter],
@@ -370,7 +444,14 @@ async def get_github_page(
     """
     page_service = context.page_service
     async with context.session.begin():
-        page_domain = await page_service.get_github_backed_page(display_path)
+        try:
+            page_domain = await page_service.get_github_backed_page(
+                display_path
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["display_path"]
+            raise
 
         context.response.headers["location"] = str(
             context.request.url_for("get_page", page=page_domain.name)
@@ -435,6 +516,7 @@ async def get_github_pr_tree(
     summary="Metadata for page in a pull request",
     name="get_github_pr_page",
     tags=[ApiTags.pr],
+    responses={404: {"description": "Page not found", "model": ErrorModel}},
 )
 async def get_github_pr_page(
     owner: Annotated[str, github_owner_parameter],
@@ -446,12 +528,17 @@ async def get_github_pr_page(
     """Get the metadata for a pull request preview of a GitHub-backed page."""
     page_service = context.page_service
     async with context.session.begin():
-        page_domain = await page_service.get_github_pr_page(
-            owner=owner,
-            repo=repo,
-            commit=commit,
-            path=path,
-        )
+        try:
+            page_domain = await page_service.get_github_pr_page(
+                owner=owner,
+                repo=repo,
+                commit=commit,
+                path=path,
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
 
         context.response.headers["location"] = str(
             context.request.url_for("get_page", page=page_domain.name)

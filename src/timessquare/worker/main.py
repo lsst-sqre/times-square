@@ -10,7 +10,10 @@ import httpx
 import structlog
 from safir.dependencies.db_session import db_session_dependency
 from safir.logging import configure_logging
+from safir.slack.blockkit import SlackMessage, SlackTextField
+from safir.slack.webhook import SlackWebhookClient
 
+from timessquare import __version__
 from timessquare.config import config
 from timessquare.dependencies.redis import redis_dependency
 
@@ -43,8 +46,15 @@ async def startup(ctx: dict[Any, Any]) -> None:
     http_client = httpx.AsyncClient()
     ctx["http_client"] = http_client
 
+    if config.slack_webhook_url:
+        slack_client = SlackWebhookClient(
+            str(config.slack_webhook_url),
+            "Times Square worker",
+            logger=logger,
+        )
+        ctx["slack"] = slack_client
+
     ctx["logger"] = logger
-    logger.info("Start up complete")
 
     # Set up FastAPI dependencies; we can use them "manually" with
     # arq to provide resources similarly to FastAPI endpoints
@@ -52,6 +62,21 @@ async def startup(ctx: dict[Any, Any]) -> None:
         str(config.database_url), config.database_password.get_secret_value()
     )
     await redis_dependency.initialize(str(config.redis_url))
+
+    logger.info("Start up complete")
+
+    if "slack" in ctx:
+        await ctx["slack"].post(
+            SlackMessage(
+                message="Times Square worker started up.",
+                fields=[
+                    SlackTextField(
+                        heading="Version",
+                        text=__version__,
+                    ),
+                ],
+            )
+        )
 
 
 async def shutdown(ctx: dict[Any, Any]) -> None:
@@ -71,6 +96,19 @@ async def shutdown(ctx: dict[Any, Any]) -> None:
         logger.warning("Issue closing the http_client: %s", str(e))
 
     logger.info("Worker shutdown complete.")
+
+    if "slack" in ctx:
+        await ctx["slack"].post(
+            SlackMessage(
+                message="Times Square worker shut down.",
+                fields=[
+                    SlackTextField(
+                        heading="Version",
+                        text=__version__,
+                    ),
+                ],
+            )
+        )
 
 
 class WorkerSettings:

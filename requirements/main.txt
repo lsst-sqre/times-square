@@ -19,10 +19,6 @@ arq==0.25.0 \
     --hash=sha256:d176ebadfba920c039dc578814d19b7814d67fa15f82fdccccaedb4330d65dae \
     --hash=sha256:db072d0f39c0bc06b436db67ae1f315c81abc1527563b828955670531815290b
     # via safir
-async-timeout==4.0.3 \
-    --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
-    --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
-    # via redis
 asyncpg==0.29.0 \
     --hash=sha256:0009a300cae37b8c525e5b449233d59cd9868fd35431abc470a3e364d2b85cb9 \
     --hash=sha256:000c996c53c04770798053e1730d34e30cb645ad95a63265aec82da9093d88e7 \
@@ -598,9 +594,9 @@ nbformat==5.9.2 \
     #   -r requirements/main.in
     #   nbclient
     #   nbconvert
-packaging==23.2 \
-    --hash=sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5 \
-    --hash=sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7
+packaging==24.0 \
+    --hash=sha256:2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5 \
+    --hash=sha256:eb82c5e3e56209074766e6885bb04b8c38a0c015d0a30036ebe7ece34c9989e9
     # via
     #   gunicorn
     #   nbconvert
@@ -879,9 +875,9 @@ pyzmq==25.1.2 \
     --hash=sha256:faf79a302f834d9e8304fafdc11d0d042266667ac45209afa57e5efc998e3872 \
     --hash=sha256:fc31baa0c32a2ca660784d5af3b9487e13b61b3032cb01a115fce6588e1bed30
     # via jupyter-client
-redis[hiredis]==5.0.2 \
-    --hash=sha256:3f82cc80d350e93042c8e6e7a5d0596e4dd68715babffba79492733e1f367037 \
-    --hash=sha256:4caa8e1fcb6f3c0ef28dba99535101d80934b7d4cd541bbb47f4a3826ee472d1
+redis[hiredis]==5.0.3 \
+    --hash=sha256:4973bae7444c0fbed64a06b87446f79361cb7e4ec1538c022d696ed7a5015580 \
+    --hash=sha256:5da9b8fe9e1254293756c16c008e8620b3d15fcc6dde6babde9541850e72a32d
     # via
     #   arq
     #   safir
@@ -1119,9 +1115,9 @@ uritemplate==4.1.1 \
     --hash=sha256:4346edfc5c3b79f694bccd6d6099a322bbeb628dbf2cd86eea55a456ce5124f0 \
     --hash=sha256:830c08b8d99bdd312ea4ead05994a38e8936266f84b9a7878232db50b044e02e
     # via gidgethub
-uvicorn[standard]==0.27.1 \
-    --hash=sha256:3d9a267296243532db80c83a959a3400502165ade2c1338dea4e67915fd4745a \
-    --hash=sha256:5c89da2f3895767472a35556e539fd59f7edbe9b1e9c0e1c99eebeadc61838e4
+uvicorn[standard]==0.28.0 \
+    --hash=sha256:6623abbbe6176204a4226e67607b4d52cc60ff62cda0ff177613645cefa2ece1 \
+    --hash=sha256:cab4473b5d1eaeb5a0f6375ac4bc85007ffc75c3cc1768816d9e5d589857b067
     # via -r requirements/main.in
 uvloop==0.19.0 \
     --hash=sha256:0246f4fd1bf2bf702e06b0d45ee91677ee5c31242f39aab4ea6fe0c51aedd0fd \

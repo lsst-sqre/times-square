@@ -104,7 +104,6 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 422
     error_data = r.json()
     assert error_data["detail"][0]["type"] == "parameter_default_invalid"
-    assert error_data["detail"][0]["name"] == "A"
     assert error_data["detail"][0]["msg"] == (
         "Parameter A's default is invalid: -1."
     )

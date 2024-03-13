@@ -14,27 +14,23 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
 from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
+from safir.fastapi import ClientRequestError, client_request_error_handler
 from safir.logging import configure_logging, configure_uvicorn_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
+from safir.slack.webhook import SlackRouteErrorHandler
 from structlog import get_logger
 
 from .config import config
 from .dependencies.redis import redis_dependency
-from .exceptions import TimesSquareError
 from .handlers.external import external_router
 from .handlers.internal import internal_router
 from .handlers.v1 import v1_router
-
-if TYPE_CHECKING:
-    from fastapi import Request
 
 __all__ = ["app", "config"]
 
@@ -42,7 +38,7 @@ __all__ = ["app", "config"]
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator:
     """Context manager for the application lifespan."""
-    logger = get_logger("ook")
+    logger = get_logger(__name__)
     logger.debug("Times Square is starting up.")
 
     await db_session_dependency.initialize(
@@ -75,6 +71,8 @@ configure_logging(
 )
 configure_uvicorn_logging(config.log_level)
 
+logger = get_logger(__name__)
+
 app = FastAPI(
     title="Times Square",
     description=Path(__file__).parent.joinpath("description.md").read_text(),
@@ -90,20 +88,17 @@ app = FastAPI(
 # Add middleware
 app.add_middleware(XForwardedMiddleware)
 
+if config.slack_webhook_url:
+    SlackRouteErrorHandler.initialize(
+        str(config.slack_webhook_url), "Times Square", logger
+    )
+
 # Add routers
 app.include_router(internal_router)
 app.include_router(external_router, prefix=f"{config.path_prefix}")
 app.include_router(v1_router, prefix=f"{config.path_prefix}/v1")
 
-
-@app.exception_handler(TimesSquareError)
-async def ts_exception_handler(
-    request: Request, exc: TimesSquareError
-) -> JSONResponse:
-    """Handle Times Square errors."""
-    return JSONResponse(
-        status_code=exc.status_code, content={"detail": [exc.to_dict()]}
-    )
+app.exception_handler(ClientRequestError)(client_request_error_handler)
 
 
 def create_openapi() -> str:
