@@ -8,6 +8,22 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.10.0'></a>
+
+## 0.10.0 (2024-03-13)
+
+### New features
+
+- We've adopted Safir's `safir.fastapi.ClientRequestError` so that errors like 404 and 422 (input validation) now use the same error format as FastAPI uses for its built-in model validation errors. For parameter errors from endpoints like `GET /v1/pages:page/html` the parameter name is now part of the `loc` field in the error message.
+- Times Square and its worker now send uncaught exceptions to a Slack webhook for better error reporting. The webhook URL is set in the `TS_SLACK_WEBHOOK_URL` environment variable.
+
+### Other changes
+
+- Updated to Python 3.12
+- Updated to Pydantic 2
+- Adopted Ruff for linting and formatting, replacing black, flake8, and isort.
+- Switch to using Annotated for Pydantic models and FastAPI path functions.
+
 <a id='changelog-0.9.2'></a>
 
 ## 0.9.2 (2023-09-21)
