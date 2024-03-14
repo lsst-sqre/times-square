@@ -1,4 +1,4 @@
-"""Domain model for the noteburst service integration."""
+"""Interface to the noteburst service."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Annotated
 from httpx import AsyncClient
 from pydantic import AnyHttpUrl, BaseModel, Field
 
-from timessquare.config import config
+from ..config import config
 
 
 class NoteburstJobModel(BaseModel):

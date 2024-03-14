@@ -10,25 +10,25 @@ from typing import Any
 from httpx import AsyncClient
 from structlog.stdlib import BoundLogger
 
-from timessquare.config import config
-from timessquare.domain.githubtree import GitHubNode
-from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
-from timessquare.domain.noteburst import (
-    NoteburstApi,
-    NoteburstJobResponseModel,
-    NoteburstJobStatus,
-)
-from timessquare.domain.page import (
+from ..config import config
+from ..domain.githubtree import GitHubNode
+from ..domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
+from ..domain.page import (
     PageExecutionInfo,
     PageInstanceModel,
     PageModel,
     PageSummaryModel,
     PersonModel,
 )
-from timessquare.exceptions import PageNotFoundError
-from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
-from timessquare.storage.noteburstjobstore import NoteburstJobStore
-from timessquare.storage.page import PageStore
+from ..exceptions import PageNotFoundError
+from ..storage.nbhtmlcache import NbHtmlCacheStore
+from ..storage.noteburst import (
+    NoteburstApi,
+    NoteburstJobResponseModel,
+    NoteburstJobStatus,
+)
+from ..storage.noteburstjobstore import NoteburstJobStore
+from ..storage.page import PageStore
 
 
 class PageService:
