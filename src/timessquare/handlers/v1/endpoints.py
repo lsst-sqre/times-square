@@ -336,6 +336,10 @@ async def get_rendered_notebook(
     name="get_page_html",
     tags=[ApiTags.pages],
     responses={
+        200: {
+            "description": "HTML of the notebook",
+            "content": {"text/html": {}},
+        },
         404: {"description": "Page not found", "model": ErrorModel},
         422: {"description": "Invalid parameter", "model": ErrorModel},
     },
