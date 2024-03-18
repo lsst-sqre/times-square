@@ -323,7 +323,8 @@ class PageService:
         display_settings: NbDisplaySettings,
     ) -> NbHtmlModel | None:
         """Convert a noteburst job for a given page and parameter values into
-        HTML (caching that HTML as well), and triggering a new noteburst.
+        HTML (caching that HTML as well), and triggering a new noteburst job if
+        the job was not found.
 
         Parameters
         ----------
@@ -361,15 +362,11 @@ class PageService:
                 status=str(noteburst_response.status),
             )
             if noteburst_response.status == NoteburstJobStatus.complete:
-                ipynb = noteburst_response.ipynb
-                if ipynb is None:
-                    raise RuntimeError(
-                        "Noteburst job is complete but has no ipynb"
+                html_renders = (
+                    await self.render_nbhtml_matrix_from_noteburst_response(
+                        page_instance=page_instance,
+                        noteburst_response=noteburst_response,
                     )
-                html_renders = await self._create_html_matrix(
-                    page_instance=page_instance,
-                    ipynb=ipynb,
-                    noteburst_response=noteburst_response,
                 )
                 # return the specific HTML render that the client asked for
                 return html_renders[display_settings]
@@ -394,6 +391,24 @@ class PageService:
                 noteburst_body=r.text,
             )
         return None
+
+    async def soft_delete_html(
+        self, *, name: str, query_params: Mapping[str, Any]
+    ) -> None:
+        """Soft delete the HTML for a page given the query parameters."""
+        page = await self.get_page(name)
+        resolved_values = page.resolve_and_validate_values(query_params)
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_values, page=page
+        )
+        exec_info = await self.request_noteburst_execution(page_instance)
+        await self._arq_queue.enqueue(  # provides an arq job metadata
+            "replace_nbhtml",
+            page_name=page.name,
+            parameter_values=resolved_values,
+            noteburst_job=exec_info.noteburst_job,
+        )
+        # Format the job for a response
 
     async def request_noteburst_execution(
         self, page_instance: PageInstanceModel, *, enable_retry: bool = True
@@ -441,24 +456,25 @@ class PageService:
             noteburst_error_message=r.error,
         )
 
-    async def _create_html_matrix(
+    async def render_nbhtml_matrix_from_noteburst_response(
         self,
         *,
         page_instance: PageInstanceModel,
-        ipynb: str,
         noteburst_response: NoteburstJobResponseModel,
-    ) -> dict[Any, NbHtmlModel]:
-        # These keys correspond to display arguments in
-        # NbHtml.create_from_notebook_result
-        matrix_keys = [
-            NbDisplaySettings(hide_code=True),
-            NbDisplaySettings(hide_code=False),
-        ]
+    ) -> dict[NbDisplaySettings, NbHtmlModel]:
+        """Render the HTML matrix from a noteburst response.
+
+        The Noteburst Job in the NoteburstJobStore is deleted after rendering.
+        If the noteburst job did not appear in the store (because the HTML
+        was being re-rendered in the background), this method still succeeds.
+        """
         html_matrix: dict[NbDisplaySettings, NbHtmlModel] = {}
-        for matrix_key in matrix_keys:
+        if noteburst_response.ipynb is None:
+            raise RuntimeError("Noteburst job is complete but has no ipynb")
+        for matrix_key in self.html_display_settings_matrix:
             nbhtml = NbHtmlModel.create_from_noteburst_result(
                 page_instance=page_instance,
-                ipynb=ipynb,
+                ipynb=noteburst_response.ipynb,
                 noteburst_result=noteburst_response,
                 display_settings=matrix_key,
             )
@@ -468,10 +484,19 @@ class PageService:
                 "Stored new HTML", display_settings=asdict(matrix_key)
             )
 
-        await self._job_store.delete_instance(page_instance)
-        self._logger.debug("Deleted old job record")
+        deleted_job = await self._job_store.delete_instance(page_instance)
+        if deleted_job:
+            self._logger.debug("Deleted old job record")
 
         return html_matrix
+
+    @property
+    def html_display_settings_matrix(self) -> list[NbDisplaySettings]:
+        """The matrix of all display settings for HTML rendering."""
+        return [
+            NbDisplaySettings(hide_code=True),
+            NbDisplaySettings(hide_code=False),
+        ]
 
     @property
     def _noteburst_auth_header(self) -> dict[str, str]:

@@ -11,8 +11,8 @@ from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
 from timessquare.dependencies.redis import redis_dependency
+from timessquare.services.backgroundpage import BackgroundPageService
 from timessquare.services.githubrepo import GitHubRepoService
-from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore
@@ -57,12 +57,12 @@ async def create_page_service(
     http_client: httpx.AsyncClient,
     logger: BoundLogger,
     db_session: async_scoped_session,
-) -> PageService:
+) -> BackgroundPageService:
     """Create a PageService for arq tasks."""
     redis = await redis_dependency()
     arq_queue = await create_arq_queue()
 
-    return PageService(
+    return BackgroundPageService(
         page_store=PageStore(db_session),
         html_cache=NbHtmlCacheStore(redis),
         job_store=NoteburstJobStore(redis),

@@ -368,6 +368,48 @@ async def get_page_html(
     return HTMLResponse(html.html)
 
 
+@v1_router.delete(
+    "/pages/{page}/html",
+    summary="Delete the cached HTML of a notebook.",
+    name="delete_page_html",
+    tags=[ApiTags.pages],
+    responses={
+        404: {"description": "Cached HTML not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
+)
+async def delete_page_html(
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
+) -> PlainTextResponse:
+    """Delete the cached HTML of a notebook execution, causing it to be
+    recomputed in the background.
+
+    By default, the HTML is soft-deleted so that it remains available to
+    existing clients until the new HTML replaces it in the cache. This endpoint
+    triggers a background task that recomputes the notebook and replaces the
+    cached HTML.
+    """
+    page_service = context.page_service
+    async with context.session.begin():
+        try:
+            await page_service.soft_delete_html(
+                name=page, query_params=context.request.query_params
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
+
+    # Ulimately create a resource that describes the background task;
+    # or subscribe the client to a SSE stream that reports the task's progress.
+    return PlainTextResponse(status_code=202)
+
+
 @v1_router.get(
     "/pages/{page}/htmlstatus",
     summary="Get the status of a page's HTML rendering",
