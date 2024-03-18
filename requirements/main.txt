@@ -13,6 +13,7 @@ anyio==4.3.0 \
     --hash=sha256:f75253795a87df48568485fd18cdd2a3fa5c4f7c5be8e5e36637733fce06fed6
     # via
     #   httpx
+    #   sse-starlette
     #   starlette
     #   watchfiles
 arq==0.25.0 \
@@ -458,13 +459,13 @@ jsonschema-specifications==2023.12.1 \
     --hash=sha256:48a76787b3e70f5ed53f1160d2b81f586e4ca6d1548c5de7085d1682674764cc \
     --hash=sha256:87e4fdf3a94858b8a2ba2778d9ba57d8a9cafca7c7489c46ba0d30a8bc6a9c3c
     # via jsonschema
-jupyter-client==8.6.0 \
-    --hash=sha256:0642244bb83b4764ae60d07e010e15f0e2d275ec4e918a8f7b80fbbef3ca60c7 \
-    --hash=sha256:909c474dbe62582ae62b758bca86d6518c85234bdee2d908c778db6d72f39d99
+jupyter-client==8.6.1 \
+    --hash=sha256:3b7bd22f058434e3b9a7ea4b1500ed47de2713872288c0d511d19926f99b459f \
+    --hash=sha256:e842515e2bab8e19186d89fdfea7abd15e39dd581f94e399f00e2af5a1652d3f
     # via nbclient
-jupyter-core==5.7.1 \
-    --hash=sha256:c65c82126453a723a2804aa52409930434598fd9d35091d63dfb919d2b765bb7 \
-    --hash=sha256:de61a9d7fc71240f688b2fb5ab659fbb56979458dc66a71decd098e03c79e218
+jupyter-core==5.7.2 \
+    --hash=sha256:4f7315d2f6b4bcf2e3e7cb6e46772eba760ae459cd1f59d29eb57b0a01bd7409 \
+    --hash=sha256:aa5f8d32bbf6b431ac830496da7392035d6f61b4f54872f15c4bd2a9c3f536d9
     # via
     #   jupyter-client
     #   nbclient
@@ -579,17 +580,17 @@ mistune==3.0.2 \
     --hash=sha256:71481854c30fdbc938963d3605b72501f5c10a9320ecd412c121c163a1c7d205 \
     --hash=sha256:fc7f93ded930c92394ef2cb6f04a8aabab4117a91449e72dcc8dfa646a508be8
     # via nbconvert
-nbclient==0.9.0 \
-    --hash=sha256:4b28c207877cf33ef3a9838cdc7a54c5ceff981194a82eac59d558f05487295e \
-    --hash=sha256:a3a1ddfb34d4a9d17fc744d655962714a866639acd30130e9be84191cd97cd15
+nbclient==0.10.0 \
+    --hash=sha256:4b3f1b7dba531e498449c4db4f53da339c91d449dc11e9af3a43b4eb5c5abb09 \
+    --hash=sha256:f13e3529332a1f1f81d82a53210322476a168bb7090a0289c795fe9cc11c9d3f
     # via nbconvert
 nbconvert==7.16.2 \
     --hash=sha256:0c01c23981a8de0220255706822c40b751438e32467d6a686e26be08ba784382 \
     --hash=sha256:8310edd41e1c43947e4ecf16614c61469ebc024898eb808cce0999860fc9fb16
     # via -r requirements/main.in
-nbformat==5.9.2 \
-    --hash=sha256:1c5172d786a41b82bcfd0c23f9e6b6f072e8fb49c39250219e4acfff1efe89e9 \
-    --hash=sha256:5f98b5ba1997dff175e77e0c17d5c10a96eaed2cbd1de3533d1fc35d5e111192
+nbformat==5.10.3 \
+    --hash=sha256:60ed5e910ef7c6264b87d644f276b1b49e24011930deef54605188ddeb211685 \
+    --hash=sha256:d9476ca28676799af85385f409b49d95e199951477a159a576ef2a675151e5e8
     # via
     #   -r requirements/main.in
     #   nbclient
@@ -612,9 +613,9 @@ pycparser==2.21 \
     --hash=sha256:8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9 \
     --hash=sha256:e644fdec12f7872f86c58ff790da456218b10f863970249516d60a5eaca77206
     # via cffi
-pydantic[email]==2.6.3 \
-    --hash=sha256:72c6034df47f46ccdf81869fddb81aade68056003900a8724a4f160700016a2a \
-    --hash=sha256:e07805c4c7f5c6826e33a1d4c9d47950d7eaf34868e2690f8594d2e30241f11f
+pydantic[email]==2.6.4 \
+    --hash=sha256:b1704e0847db01817624a6b86766967f552dd9dbf3afba4004409f908dcc84e6 \
+    --hash=sha256:cc46fce86607580867bdc3361ad462bab9c222ef042d3da86f2fb333e1d916c5
     # via
     #   -r requirements/main.in
     #   fastapi
@@ -881,9 +882,9 @@ redis[hiredis]==5.0.3 \
     # via
     #   arq
     #   safir
-referencing==0.33.0 \
-    --hash=sha256:39240f2ecc770258f28b642dd47fd74bc8b02484de54e1882b74b35ebd779bd5 \
-    --hash=sha256:c775fedf74bc0f9189c2a3be1c12fd03e8c23f4d371dce795df44e06c5b412f7
+referencing==0.34.0 \
+    --hash=sha256:5773bd84ef41799a5a8ca72dc34590c041eb01bf9aa02632b4a973fb0181a844 \
+    --hash=sha256:d53ae300ceddd3169f1ffa9caf2cb7b769e92657e4fafb23d34b93679116dfd4
     # via
     #   jsonschema
     #   jsonschema-specifications
@@ -990,9 +991,9 @@ rpds-py==0.18.0 \
     # via
     #   jsonschema
     #   referencing
-safir[arq,db,redis]==5.2.1 \
-    --hash=sha256:1b61cc72881ddfb66e1f84b6c34ca7e062f27b5669b9d1d07377ebd117ce3ebf \
-    --hash=sha256:e39e2260e87303de9aaac157b45743ec9f82d2e84065d10b21008fceaa8aa407
+safir[arq,db,redis]==5.2.2 \
+    --hash=sha256:13069fb1413443be3685e337ce54f25fc427a86ff718c1e3ca44daaaf5c03d34 \
+    --hash=sha256:e6ad2553e60d1b74bfdbb47bda83776843bb74c3599760b66391253bb0bd4ddb
     # via -r requirements/main.in
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
@@ -1061,6 +1062,10 @@ sqlalchemy[asyncio]==2.0.28 \
     --hash=sha256:feea693c452d85ea0015ebe3bb9cd15b6f49acc1a31c28b3c50f4db0f8fb1e71 \
     --hash=sha256:fffcc8edc508801ed2e6a4e7b0d150a62196fd28b4e16ab9f65192e8186102b6
     # via safir
+sse-starlette==2.0.0 \
+    --hash=sha256:0c43cc43aca4884c88c8416b65777c4de874cc4773e6458d3579c0a353dc2fb7 \
+    --hash=sha256:c4dd134302cb9708d47cae23c365fe0a089aa2a875d2f887ac80f235a9ee5744
+    # via -r requirements/main.in
 starlette==0.36.3 \
     --hash=sha256:13d429aa93a61dc40bf503e8c801db1f1bca3dc706b10ef2434a36123568f044 \
     --hash=sha256:90a671733cfb35771d8cc605e0b679d23b992f8dcfad48cc60b38cb29aeb7080
@@ -1068,6 +1073,7 @@ starlette==0.36.3 \
     #   -r requirements/main.in
     #   fastapi
     #   safir
+    #   sse-starlette
 structlog==24.1.0 \
     --hash=sha256:3f6efe7d25fab6e86f277713c218044669906537bb717c1807a09d46bca0714d \
     --hash=sha256:41a09886e4d55df25bdcb9b5c9674bccfab723ff43e0a86a1b7b236be8e57b16
@@ -1089,9 +1095,9 @@ tornado==6.4 \
     --hash=sha256:f7894c581ecdcf91666a0912f18ce5e757213999e183ebfc2c3fdbf4d5bd764e \
     --hash=sha256:fd03192e287fbd0899dd8f81c6fb9cbbc69194d2074b38f384cb6fa72b80e9c2
     # via jupyter-client
-traitlets==5.14.1 \
-    --hash=sha256:2e5a030e6eff91737c643231bfcf04a65b0132078dad75e4936700b213652e74 \
-    --hash=sha256:8585105b371a04b8316a43d5ce29c098575c2e477850b62b848b964f1444527e
+traitlets==5.14.2 \
+    --hash=sha256:8cdd83c040dab7d1dee822678e5f5d100b514f7b72b01615b26fc5718916fdf9 \
+    --hash=sha256:fcdf85684a772ddeba87db2f398ce00b40ff550d1528c03c14dbf6a02003cd80
     # via
     #   jupyter-client
     #   jupyter-core
@@ -1118,7 +1124,9 @@ uritemplate==4.1.1 \
 uvicorn[standard]==0.28.0 \
     --hash=sha256:6623abbbe6176204a4226e67607b4d52cc60ff62cda0ff177613645cefa2ece1 \
     --hash=sha256:cab4473b5d1eaeb5a0f6375ac4bc85007ffc75c3cc1768816d9e5d589857b067
-    # via -r requirements/main.in
+    # via
+    #   -r requirements/main.in
+    #   sse-starlette
 uvloop==0.19.0 \
     --hash=sha256:0246f4fd1bf2bf702e06b0d45ee91677ee5c31242f39aab4ea6fe0c51aedd0fd \
     --hash=sha256:02506dc23a5d90e04d4f65c7791e65cf44bd91b37f24cfc3ef6cf2aff05dc7ec \
