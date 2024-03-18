@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from httpx import AsyncClient
+from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 from ..config import config
@@ -49,12 +50,14 @@ class PageService:
         job_store: NoteburstJobStore,
         http_client: AsyncClient,
         logger: BoundLogger,
+        arq_queue: ArqQueue,
     ) -> None:
         self._page_store = page_store
         self._html_store = html_cache
         self._job_store = job_store
         self._http_client = http_client
         self._logger = logger
+        self._arq_queue = arq_queue
         self.noteburst_api = NoteburstApi(http_client=http_client)
 
     async def create_page_with_notebook_from_upload(

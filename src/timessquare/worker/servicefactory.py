@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+from safir.arq import ArqMode, ArqQueue, MockArqQueue, RedisArqQueue
 from safir.github import GitHubAppClientFactory
 from safir.slack.blockkit import SlackException
 from sqlalchemy.ext.asyncio import async_scoped_session
@@ -59,6 +60,7 @@ async def create_page_service(
 ) -> PageService:
     """Create a PageService for arq tasks."""
     redis = await redis_dependency()
+    arq_queue = await create_arq_queue()
 
     return PageService(
         page_store=PageStore(db_session),
@@ -66,4 +68,19 @@ async def create_page_service(
         job_store=NoteburstJobStore(redis),
         http_client=http_client,
         logger=logger,
+        arq_queue=arq_queue,
     )
+
+
+async def create_arq_queue() -> ArqQueue:
+    """Create an ArqQueue for arq tasks."""
+    mode = config.arq_mode
+    if mode == ArqMode.production:
+        if not config.arq_redis_settings:
+            raise RuntimeError(
+                "The redis_settings argument must be set for arq in "
+                "production."
+            )
+        return await RedisArqQueue.initialize(config.arq_redis_settings)
+    else:
+        return MockArqQueue()

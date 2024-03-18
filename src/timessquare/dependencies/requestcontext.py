@@ -6,6 +6,8 @@ from typing import Annotated
 from fastapi import Depends, Request, Response
 from httpx import AsyncClient
 from redis.asyncio import Redis
+from safir.arq import ArqQueue
+from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
 from safir.dependencies.logger import logger_dependency
@@ -52,6 +54,9 @@ class RequestContext:
     redis: Redis
     """Redis connection pool."""
 
+    arq_queue: ArqQueue
+    """Client to the arq task queue."""
+
     http_client: AsyncClient
     """Shared HTTP client."""
 
@@ -64,6 +69,7 @@ class RequestContext:
             job_store=NoteburstJobStore(self.redis),
             http_client=self.http_client,
             logger=self.logger,
+            arq_queue=self.arq_queue,
         )
 
     async def create_github_repo_service(
@@ -125,6 +131,7 @@ async def context_dependency(
     session: Annotated[async_scoped_session, Depends(db_session_dependency)],
     redis: Annotated[Redis, Depends(redis_dependency)],
     http_client: Annotated[AsyncClient, Depends(http_client_dependency)],
+    arq_queue: Annotated[ArqQueue, Depends(arq_dependency)],
 ) -> RequestContext:
     """Provide a RequestContext as a dependency."""
     return RequestContext(
@@ -135,4 +142,5 @@ async def context_dependency(
         session=session,
         redis=redis,
         http_client=http_client,
+        arq_queue=arq_queue,
     )
