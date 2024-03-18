@@ -11,7 +11,6 @@ from httpx import AsyncClient
 from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
-from ..config import config
 from ..domain.githubtree import GitHubNode
 from ..domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
 from ..domain.page import (
@@ -350,47 +349,46 @@ class PageService:
             await self.request_noteburst_execution(page_instance)
             return None
 
-        r = await self._http_client.get(
-            str(job.job_url), headers=self._noteburst_auth_header
-        )
-        if r.status_code == 200:
-            noteburst_response = NoteburstJobResponseModel.model_validate(
-                r.json()
-            )
-            self._logger.debug(
-                "Got noteburst job metadata",
-                status=str(noteburst_response.status),
-            )
-            if noteburst_response.status == NoteburstJobStatus.complete:
-                html_renders = (
-                    await self.render_nbhtml_matrix_from_noteburst_response(
-                        page_instance=page_instance,
-                        noteburst_response=noteburst_response,
-                    )
-                )
-                # return the specific HTML render that the client asked for
-                return html_renders[display_settings]
+        r = await self.noteburst_api.get_job(str(job.job_url))
 
-            else:
-                # Noteburst job isn't complete
-                return None
-
-        elif r.status_code != 404:
+        if r.status_code == 404:
             # Noteburst lost the job; delete our record and try again
             self._logger.warning(
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
             await self._job_store.delete_instance(page_instance)
             await self.request_noteburst_execution(page_instance)
-        else:
+            return None
+
+        elif r.status_code >= 500:
             # server error from noteburst
             self._logger.warning(
                 "Got unknown response from noteburst job",
                 job_url=job.job_url,
                 noteburst_status=r.status_code,
-                noteburst_body=r.text,
             )
-        return None
+            return None
+        elif r.data is None:
+            self._logger.warning(
+                "Got empty response from noteburst job",
+                job_url=job.job_url,
+                noteburst_status=r.status_code,
+            )
+            return None
+
+        if r.data.status == NoteburstJobStatus.complete:
+            html_renders = (
+                await self.render_nbhtml_matrix_from_noteburst_response(
+                    page_instance=page_instance,
+                    noteburst_response=r.data,
+                )
+            )
+            # return the specific HTML render that the client asked for
+            return html_renders[display_settings]
+
+        else:
+            # Noteburst job isn't complete
+            return None
 
     async def soft_delete_html(
         self, *, name: str, query_params: Mapping[str, Any]
@@ -497,11 +495,3 @@ class PageService:
             NbDisplaySettings(hide_code=True),
             NbDisplaySettings(hide_code=False),
         ]
-
-    @property
-    def _noteburst_auth_header(self) -> dict[str, str]:
-        return {
-            "Authorization": (
-                f"Bearer {config.gafaelfawr_token.get_secret_value()}"
-            )
-        }
