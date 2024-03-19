@@ -124,8 +124,26 @@ class NbHtmlModel(BaseModel):
         return NbHtmlKey(
             name=self.page_name,
             values=dict(self.values),
-            display_settings=NbDisplaySettings(hide_code=self.hide_code),
+            display_settings=self.display_settings,
         )
+
+    @property
+    def url_params(self) -> dict[str, str]:
+        """The URL query parameters for this HTML rendering,
+        including both notebook variables and display settings.
+        """
+        # TODO(jonathansick): Do we need to worry about encoding these values
+        # back to strings. For example, a bool value should go back to a 1 or 0
+        # Perhaps this code should be coordinated with parameter casting in
+        # `timessquare.domain.page.PageParameterSchema.cast_value`.
+        params = {key: str(value) for key, value in self.values.items()}
+        params.update(self.display_settings.url_params)
+        return params
+
+    @property
+    def display_settings(self) -> NbDisplaySettings:
+        """The display settings for this HTML rendering."""
+        return NbDisplaySettings(hide_code=self.hide_code)
 
 
 @dataclass
@@ -153,3 +171,8 @@ class NbDisplaySettings:
                 "utf-8"
             )
         ).decode("utf-8")
+
+    @property
+    def url_params(self) -> dict[str, str]:
+        """Get the URL query parameters for these display settings."""
+        return {"ts_hide_code": str(int(self.hide_code))}
