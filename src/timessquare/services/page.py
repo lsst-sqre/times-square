@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -20,6 +21,7 @@ from ..domain.page import (
     PageSummaryModel,
     PersonModel,
 )
+from ..domain.ssemodels import HtmlEventsModel
 from ..exceptions import PageNotFoundError
 from ..storage.nbhtmlcache import NbHtmlCacheStore
 from ..storage.noteburst import (
@@ -495,3 +497,70 @@ class PageService:
             NbDisplaySettings(hide_code=True),
             NbDisplaySettings(hide_code=False),
         ]
+
+    async def get_html_events_iter(
+        self,
+        name: str,
+        query_params: Mapping[str, Any],
+        html_base_url: str,
+    ) -> AsyncIterator[bytes]:
+        """Get an iterator providing an event stream for the HTML rendering
+        for a page instance.
+        """
+        page = await self.get_page(name)
+        resolved_values = page.resolve_and_validate_values(query_params)
+        # also get the Display settings query params
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_values, page=page
+        )
+        try:
+            hide_code = bool(int(query_params.get("ts_hide_code", "1")))
+        except Exception as e:
+            raise ValueError("hide_code query parameter must be 1 or 0") from e
+        display_settings = NbDisplaySettings(hide_code=hide_code)
+        page_key = NbHtmlKey(
+            name=page.name,
+            values=resolved_values,
+            display_settings=display_settings,
+        )
+
+        async def iterator() -> AsyncIterator[bytes]:
+            try:
+                while True:
+                    job = await self._job_store.get_instance(page_instance)
+                    noteburst_data: NoteburstJobResponseModel | None = None
+                    # model for html status
+                    if job:
+                        self._logger.debug(
+                            "Got job in events loop", job_url=str(job.job_url)
+                        )
+                        noteburst_url = str(job.job_url)
+                        noteburst_response = await self.noteburst_api.get_job(
+                            noteburst_url
+                        )
+                        if noteburst_response.data:
+                            noteburst_data = noteburst_response.data
+
+                    nbhtml = await self._html_store.get_instance(page_key)
+
+                    payload = HtmlEventsModel.create(
+                        noteburst_job=noteburst_data,
+                        nbhtml=nbhtml,
+                        request_query_params=query_params,
+                        html_base_url=html_base_url,
+                    )
+                    self._logger.debug(
+                        "Built payload in events loop", payload=payload
+                    )
+                    yield payload.to_sse().encode()
+
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                self._logger.debug("HTML events disconnected from client")
+                # cleanup as necessary
+                raise
+            except Exception as e:
+                self._logger.exception("Error in HTML events iterator", e=e)
+                raise
+
+        return iterator()

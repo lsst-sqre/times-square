@@ -8,6 +8,7 @@ from pydantic import AnyHttpUrl
 from safir.metadata import get_metadata
 from safir.models import ErrorLocation, ErrorModel
 from safir.slack.webhook import SlackRouteErrorHandler
+from sse_starlette import EventSourceResponse
 
 from timessquare.config import config
 from timessquare.dependencies.requestcontext import (
@@ -445,6 +446,48 @@ async def get_page_html_status(
             raise
 
     return HtmlStatus.from_html(html=html, request=context.request)
+
+
+@v1_router.get(
+    "/pages/{page}/html/events",
+    summary=(
+        "Subscribe to an event stream for a page's execution and rendering."
+    ),
+    name="get_page_html_events",
+    tags=[ApiTags.pages],
+    responses={
+        200: {
+            "content": {"text/event-stream": {}},
+            "description": "Event stream",
+        },
+        404: {"description": "Page not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
+)
+async def get_page_html_events(
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
+) -> EventSourceResponse:
+    """Subscribe to an event stream for a page's execution and rendering."""
+    context.logger.debug("Subscribing to page events")
+    page_service = context.page_service
+    html_base_url = context.request.url_for("get_page_html", page=page)
+    async with context.session.begin():
+        try:
+            generator = await page_service.get_html_events_iter(
+                name=page,
+                query_params=context.request.query_params,
+                html_base_url=str(html_base_url),
+            )
+            return EventSourceResponse(generator, send_timeout=5)
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
 
 
 @v1_router.get(
