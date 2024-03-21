@@ -134,6 +134,15 @@ page_html_status_field = Field(
     ),
 )
 
+page_html_events_field = Field(
+    ...,
+    title="HTML events URL",
+    description=(
+        "The URL for the server-sent events stream that gives updates "
+        "about the HTML rendering."
+    ),
+)
+
 ipynb_field = Field(
     ...,
     examples=["{...}"],
@@ -276,6 +285,8 @@ class Page(BaseModel):
 
     html_status_url: AnyHttpUrl = page_html_status_field
 
+    html_events_url: AnyHttpUrl = page_html_events_field
+
     parameters: dict[str, dict[str, Any]] = page_parameters_field
 
     github: GitHubSourceMetadata | None = Field(
@@ -318,19 +329,22 @@ class Page(BaseModel):
             uploader_username=page.uploader_username,
             parameters=parameters,
             self_url=AnyHttpUrl(
-                str(request.url_for("get_page", page=page.name)),
+                str(request.url_for("get_page", page=page.name))
             ),
             source_url=AnyHttpUrl(
-                str(request.url_for("get_page_source", page=page.name)),
+                str(request.url_for("get_page_source", page=page.name))
             ),
             rendered_url=AnyHttpUrl(
-                str(request.url_for("get_rendered_notebook", page=page.name)),
+                str(request.url_for("get_rendered_notebook", page=page.name))
             ),
             html_url=AnyHttpUrl(
-                str(request.url_for("get_page_html", page=page.name)),
+                str(request.url_for("get_page_html", page=page.name))
             ),
             html_status_url=AnyHttpUrl(
-                str(request.url_for("get_page_html_status", page=page.name)),
+                str(request.url_for("get_page_html_status", page=page.name))
+            ),
+            html_events_url=AnyHttpUrl(
+                str(request.url_for("get_page_html_events", page=page.name))
             ),
             github=github_metadata,
         )
@@ -425,14 +439,7 @@ class DeleteHtmlResponse(BaseModel):
 
     html_url: AnyHttpUrl = page_html_field
 
-    html_events_url: AnyHttpUrl = Field(
-        ...,
-        title="HTML events URL",
-        description=(
-            "The URL for the server-sent events stream that gives updates "
-            "about the HTML rendering."
-        ),
-    )
+    html_events_url: AnyHttpUrl = page_html_events_field
 
     @classmethod
     def from_page_instance(
