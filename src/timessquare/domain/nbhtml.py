@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from base64 import b64encode
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel, Field
@@ -163,6 +164,11 @@ class NbDisplaySettings:
     """A model for display settings for an HTML rendering of a notebook."""
 
     hide_code: bool
+
+    @classmethod
+    def from_url_params(cls, params: Mapping[str, str]) -> Self:
+        """Create an instance from URL query parameters."""
+        return cls(hide_code=bool(int(params.get("ts_hide_code", 1))))
 
     @property
     def cache_key(self) -> str:

@@ -23,6 +23,7 @@ from timessquare.exceptions import (
 
 from ..apitags import ApiTags
 from .models import (
+    DeleteHtmlResponse,
     GitHubContentsRoot,
     GitHubPrContents,
     HtmlStatus,
@@ -377,6 +378,7 @@ async def get_page_html(
     "/pages/{page}/html",
     summary="Delete the cached HTML of a notebook.",
     name="delete_page_html",
+    response_model=DeleteHtmlResponse,
     tags=[ApiTags.pages],
     responses={
         404: {"description": "Cached HTML not found", "model": ErrorModel},
@@ -386,7 +388,7 @@ async def get_page_html(
 async def delete_page_html(
     page: Annotated[str, page_path_parameter],
     context: Annotated[RequestContext, Depends(context_dependency)],
-) -> PlainTextResponse:
+) -> DeleteHtmlResponse:
     """Delete the cached HTML of a notebook execution, causing it to be
     recomputed in the background.
 
@@ -398,7 +400,7 @@ async def delete_page_html(
     page_service = context.page_service
     async with context.session.begin():
         try:
-            await page_service.soft_delete_html(
+            page_instance = await page_service.soft_delete_html(
                 name=page, query_params=context.request.query_params
             )
         except PageNotFoundError as e:
@@ -412,7 +414,9 @@ async def delete_page_html(
 
     # Ulimately create a resource that describes the background task;
     # or subscribe the client to a SSE stream that reports the task's progress.
-    return PlainTextResponse(status_code=202)
+    return DeleteHtmlResponse.from_page_instance(
+        page_instance=page_instance, request=context.request
+    )
 
 
 @v1_router.get(

@@ -394,7 +394,7 @@ class PageService:
 
     async def soft_delete_html(
         self, *, name: str, query_params: Mapping[str, Any]
-    ) -> None:
+    ) -> PageInstanceModel:
         """Soft delete the HTML for a page given the query parameters."""
         page = await self.get_page(name)
         resolved_values = page.resolve_and_validate_values(query_params)
@@ -409,6 +409,7 @@ class PageService:
             noteburst_job=exec_info.noteburst_job,
         )
         # Format the job for a response
+        return page_instance
 
     async def request_noteburst_execution(
         self, page_instance: PageInstanceModel, *, enable_retry: bool = True
