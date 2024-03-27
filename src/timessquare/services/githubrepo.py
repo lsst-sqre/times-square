@@ -39,9 +39,9 @@ from timessquare.domain.githubcheckrun import (
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
 )
-from timessquare.domain.noteburst import NoteburstJobStatus
-from timessquare.domain.page import PageExecutionInfo, PageModel
 
+from ..domain.page import PageExecutionInfo, PageModel
+from ..storage.noteburst import NoteburstJobStatus
 from .page import PageService
 
 

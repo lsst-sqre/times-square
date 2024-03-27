@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from redis.asyncio import Redis
 
-from timessquare.domain.noteburst import NoteburstJobModel
-from timessquare.domain.page import PageInstanceIdModel
-
+from ..domain.page import PageInstanceIdModel
+from .noteburst import NoteburstJobModel
 from .redisbase import RedisPageInstanceStore
 
 

@@ -23,3 +23,4 @@ respx
 types-PyYAML
 types-redis
 documenteer[guide]>=1.0.0a1
+httpx-sse == 0.4.0

@@ -8,6 +8,15 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.11.0'></a>
+
+## 0.11.0 (2024-03-27)
+
+### New features
+
+- New support for background recomputation of a page instance (cached HTML) with the new `DELETE /v1/pages/:page/html?{params}` endpoint. This endpoint triggers a Noteburst computation of the page instance and deletes the currently-cached HTML once that computation is complete. This API provides a way for users to request a recomputation of a page instance without affecting other users that may be viewing that page instance.
+- A new server-sent events endpoint for getting updates on the status of a page instance's computation and HTML rendering: `GET /v1/pages/:page/html/events?{params}`. This endpoint should replace the current practice of clients polling the `GET /v1/pages/:page/htmlstatus` endpoint to determine when a page instance's HTML is ready to be displayed. The events endpoint also provides additional metadata, such as the time when the current computation job was queued so that clients can provide more detailed status information to users. This endpoint works well with the new `DELETE /v1/pages/:page/html?{params}` endpoint, as it can provide updates on the status of the recomputation job while still linking to the existing cached HTML.
+
 <a id='changelog-0.10.0'></a>
 
 ## 0.10.0 (2024-03-13)

@@ -8,6 +8,7 @@ from pydantic import AnyHttpUrl
 from safir.metadata import get_metadata
 from safir.models import ErrorLocation, ErrorModel
 from safir.slack.webhook import SlackRouteErrorHandler
+from sse_starlette import EventSourceResponse
 
 from timessquare.config import config
 from timessquare.dependencies.requestcontext import (
@@ -22,6 +23,7 @@ from timessquare.exceptions import (
 
 from ..apitags import ApiTags
 from .models import (
+    DeleteHtmlResponse,
     GitHubContentsRoot,
     GitHubPrContents,
     HtmlStatus,
@@ -336,6 +338,10 @@ async def get_rendered_notebook(
     name="get_page_html",
     tags=[ApiTags.pages],
     responses={
+        200: {
+            "description": "HTML of the notebook",
+            "content": {"text/html": {}},
+        },
         404: {"description": "Page not found", "model": ErrorModel},
         422: {"description": "Invalid parameter", "model": ErrorModel},
     },
@@ -366,6 +372,51 @@ async def get_page_html(
         )
 
     return HTMLResponse(html.html)
+
+
+@v1_router.delete(
+    "/pages/{page}/html",
+    summary="Delete the cached HTML of a notebook.",
+    name="delete_page_html",
+    response_model=DeleteHtmlResponse,
+    tags=[ApiTags.pages],
+    responses={
+        404: {"description": "Cached HTML not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
+)
+async def delete_page_html(
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
+) -> DeleteHtmlResponse:
+    """Delete the cached HTML of a notebook execution, causing it to be
+    recomputed in the background.
+
+    By default, the HTML is soft-deleted so that it remains available to
+    existing clients until the new HTML replaces it in the cache. This endpoint
+    triggers a background task that recomputes the notebook and replaces the
+    cached HTML.
+    """
+    page_service = context.page_service
+    async with context.session.begin():
+        try:
+            page_instance = await page_service.soft_delete_html(
+                name=page, query_params=context.request.query_params
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
+
+    # Ulimately create a resource that describes the background task;
+    # or subscribe the client to a SSE stream that reports the task's progress.
+    return DeleteHtmlResponse.from_page_instance(
+        page_instance=page_instance, request=context.request
+    )
 
 
 @v1_router.get(
@@ -399,6 +450,48 @@ async def get_page_html_status(
             raise
 
     return HtmlStatus.from_html(html=html, request=context.request)
+
+
+@v1_router.get(
+    "/pages/{page}/html/events",
+    summary=(
+        "Subscribe to an event stream for a page's execution and rendering."
+    ),
+    name="get_page_html_events",
+    tags=[ApiTags.pages],
+    responses={
+        200: {
+            "content": {"text/event-stream": {}},
+            "description": "Event stream",
+        },
+        404: {"description": "Page not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
+)
+async def get_page_html_events(
+    page: Annotated[str, page_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
+) -> EventSourceResponse:
+    """Subscribe to an event stream for a page's execution and rendering."""
+    context.logger.debug("Subscribing to page events")
+    page_service = context.page_service
+    html_base_url = context.request.url_for("get_page_html", page=page)
+    async with context.session.begin():
+        try:
+            generator = await page_service.get_html_events_iter(
+                name=page,
+                query_params=context.request.query_params,
+                html_base_url=str(html_base_url),
+            )
+            return EventSourceResponse(generator, send_timeout=5)
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
 
 
 @v1_router.get(

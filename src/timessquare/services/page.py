@@ -2,33 +2,35 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
 from httpx import AsyncClient
+from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
-from timessquare.config import config
-from timessquare.domain.githubtree import GitHubNode
-from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
-from timessquare.domain.noteburst import (
-    NoteburstApi,
-    NoteburstJobResponseModel,
-    NoteburstJobStatus,
-)
-from timessquare.domain.page import (
+from ..domain.githubtree import GitHubNode
+from ..domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
+from ..domain.page import (
     PageExecutionInfo,
     PageInstanceModel,
     PageModel,
     PageSummaryModel,
     PersonModel,
 )
-from timessquare.exceptions import PageNotFoundError
-from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
-from timessquare.storage.noteburstjobstore import NoteburstJobStore
-from timessquare.storage.page import PageStore
+from ..domain.ssemodels import HtmlEventsModel
+from ..exceptions import PageNotFoundError
+from ..storage.nbhtmlcache import NbHtmlCacheStore
+from ..storage.noteburst import (
+    NoteburstApi,
+    NoteburstJobResponseModel,
+    NoteburstJobStatus,
+)
+from ..storage.noteburstjobstore import NoteburstJobStore
+from ..storage.page import PageStore
 
 
 class PageService:
@@ -49,12 +51,14 @@ class PageService:
         job_store: NoteburstJobStore,
         http_client: AsyncClient,
         logger: BoundLogger,
+        arq_queue: ArqQueue,
     ) -> None:
         self._page_store = page_store
         self._html_store = html_cache
         self._job_store = job_store
         self._http_client = http_client
         self._logger = logger
+        self._arq_queue = arq_queue
         self.noteburst_api = NoteburstApi(http_client=http_client)
 
     async def create_page_with_notebook_from_upload(
@@ -320,7 +324,8 @@ class PageService:
         display_settings: NbDisplaySettings,
     ) -> NbHtmlModel | None:
         """Convert a noteburst job for a given page and parameter values into
-        HTML (caching that HTML as well), and triggering a new noteburst.
+        HTML (caching that HTML as well), and triggering a new noteburst job if
+        the job was not found.
 
         Parameters
         ----------
@@ -346,51 +351,65 @@ class PageService:
             await self.request_noteburst_execution(page_instance)
             return None
 
-        r = await self._http_client.get(
-            str(job.job_url), headers=self._noteburst_auth_header
-        )
-        if r.status_code == 200:
-            noteburst_response = NoteburstJobResponseModel.model_validate(
-                r.json()
-            )
-            self._logger.debug(
-                "Got noteburst job metadata",
-                status=str(noteburst_response.status),
-            )
-            if noteburst_response.status == NoteburstJobStatus.complete:
-                ipynb = noteburst_response.ipynb
-                if ipynb is None:
-                    raise RuntimeError(
-                        "Noteburst job is complete but has no ipynb"
-                    )
-                html_renders = await self._create_html_matrix(
-                    page_instance=page_instance,
-                    ipynb=ipynb,
-                    noteburst_response=noteburst_response,
-                )
-                # return the specific HTML render that the client asked for
-                return html_renders[display_settings]
+        r = await self.noteburst_api.get_job(str(job.job_url))
 
-            else:
-                # Noteburst job isn't complete
-                return None
-
-        elif r.status_code != 404:
+        if r.status_code == 404:
             # Noteburst lost the job; delete our record and try again
             self._logger.warning(
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
             await self._job_store.delete_instance(page_instance)
             await self.request_noteburst_execution(page_instance)
-        else:
+            return None
+
+        elif r.status_code >= 500:
             # server error from noteburst
             self._logger.warning(
                 "Got unknown response from noteburst job",
                 job_url=job.job_url,
                 noteburst_status=r.status_code,
-                noteburst_body=r.text,
             )
-        return None
+            return None
+        elif r.data is None:
+            self._logger.warning(
+                "Got empty response from noteburst job",
+                job_url=job.job_url,
+                noteburst_status=r.status_code,
+            )
+            return None
+
+        if r.data.status == NoteburstJobStatus.complete:
+            html_renders = (
+                await self.render_nbhtml_matrix_from_noteburst_response(
+                    page_instance=page_instance,
+                    noteburst_response=r.data,
+                )
+            )
+            # return the specific HTML render that the client asked for
+            return html_renders[display_settings]
+
+        else:
+            # Noteburst job isn't complete
+            return None
+
+    async def soft_delete_html(
+        self, *, name: str, query_params: Mapping[str, Any]
+    ) -> PageInstanceModel:
+        """Soft delete the HTML for a page given the query parameters."""
+        page = await self.get_page(name)
+        resolved_values = page.resolve_and_validate_values(query_params)
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_values, page=page
+        )
+        exec_info = await self.request_noteburst_execution(page_instance)
+        await self._arq_queue.enqueue(  # provides an arq job metadata
+            "replace_nbhtml",
+            page_name=page.name,
+            parameter_values=resolved_values,
+            noteburst_job=exec_info.noteburst_job,
+        )
+        # Format the job for a response
+        return page_instance
 
     async def request_noteburst_execution(
         self, page_instance: PageInstanceModel, *, enable_retry: bool = True
@@ -438,24 +457,25 @@ class PageService:
             noteburst_error_message=r.error,
         )
 
-    async def _create_html_matrix(
+    async def render_nbhtml_matrix_from_noteburst_response(
         self,
         *,
         page_instance: PageInstanceModel,
-        ipynb: str,
         noteburst_response: NoteburstJobResponseModel,
-    ) -> dict[Any, NbHtmlModel]:
-        # These keys correspond to display arguments in
-        # NbHtml.create_from_notebook_result
-        matrix_keys = [
-            NbDisplaySettings(hide_code=True),
-            NbDisplaySettings(hide_code=False),
-        ]
+    ) -> dict[NbDisplaySettings, NbHtmlModel]:
+        """Render the HTML matrix from a noteburst response.
+
+        The Noteburst Job in the NoteburstJobStore is deleted after rendering.
+        If the noteburst job did not appear in the store (because the HTML
+        was being re-rendered in the background), this method still succeeds.
+        """
         html_matrix: dict[NbDisplaySettings, NbHtmlModel] = {}
-        for matrix_key in matrix_keys:
+        if noteburst_response.ipynb is None:
+            raise RuntimeError("Noteburst job is complete but has no ipynb")
+        for matrix_key in self.html_display_settings_matrix:
             nbhtml = NbHtmlModel.create_from_noteburst_result(
                 page_instance=page_instance,
-                ipynb=ipynb,
+                ipynb=noteburst_response.ipynb,
                 noteburst_result=noteburst_response,
                 display_settings=matrix_key,
             )
@@ -465,15 +485,83 @@ class PageService:
                 "Stored new HTML", display_settings=asdict(matrix_key)
             )
 
-        await self._job_store.delete_instance(page_instance)
-        self._logger.debug("Deleted old job record")
+        deleted_job = await self._job_store.delete_instance(page_instance)
+        if deleted_job:
+            self._logger.debug("Deleted old job record")
 
         return html_matrix
 
     @property
-    def _noteburst_auth_header(self) -> dict[str, str]:
-        return {
-            "Authorization": (
-                f"Bearer {config.gafaelfawr_token.get_secret_value()}"
-            )
-        }
+    def html_display_settings_matrix(self) -> list[NbDisplaySettings]:
+        """The matrix of all display settings for HTML rendering."""
+        return [
+            NbDisplaySettings(hide_code=True),
+            NbDisplaySettings(hide_code=False),
+        ]
+
+    async def get_html_events_iter(
+        self,
+        name: str,
+        query_params: Mapping[str, Any],
+        html_base_url: str,
+    ) -> AsyncIterator[bytes]:
+        """Get an iterator providing an event stream for the HTML rendering
+        for a page instance.
+        """
+        page = await self.get_page(name)
+        resolved_values = page.resolve_and_validate_values(query_params)
+        # also get the Display settings query params
+        page_instance = PageInstanceModel(
+            name=page.name, values=resolved_values, page=page
+        )
+        try:
+            hide_code = bool(int(query_params.get("ts_hide_code", "1")))
+        except Exception as e:
+            raise ValueError("hide_code query parameter must be 1 or 0") from e
+        display_settings = NbDisplaySettings(hide_code=hide_code)
+        page_key = NbHtmlKey(
+            name=page.name,
+            values=resolved_values,
+            display_settings=display_settings,
+        )
+
+        async def iterator() -> AsyncIterator[bytes]:
+            try:
+                while True:
+                    job = await self._job_store.get_instance(page_instance)
+                    noteburst_data: NoteburstJobResponseModel | None = None
+                    # model for html status
+                    if job:
+                        self._logger.debug(
+                            "Got job in events loop", job_url=str(job.job_url)
+                        )
+                        noteburst_url = str(job.job_url)
+                        noteburst_response = await self.noteburst_api.get_job(
+                            noteburst_url
+                        )
+                        if noteburst_response.data:
+                            noteburst_data = noteburst_response.data
+
+                    nbhtml = await self._html_store.get_instance(page_key)
+
+                    payload = HtmlEventsModel.create(
+                        noteburst_job=noteburst_data,
+                        nbhtml=nbhtml,
+                        request_query_params=query_params,
+                        html_base_url=html_base_url,
+                    )
+                    self._logger.debug(
+                        "Built payload in events loop", payload=payload
+                    )
+                    yield payload.to_sse().encode()
+
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                self._logger.debug("HTML events disconnected from client")
+                # cleanup as necessary
+                raise
+            except Exception as e:
+                self._logger.exception("Error in HTML events iterator", e=e)
+                raise
+
+        return iterator()

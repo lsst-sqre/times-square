@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import json
 from base64 import b64encode
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel, Field
 from traitlets.config import Config
 
-from .noteburst import NoteburstJobResponseModel
+from ..storage.noteburst import NoteburstJobResponseModel
 from .page import PageInstanceIdModel, PageInstanceModel
 
 
@@ -124,8 +125,26 @@ class NbHtmlModel(BaseModel):
         return NbHtmlKey(
             name=self.page_name,
             values=dict(self.values),
-            display_settings=NbDisplaySettings(hide_code=self.hide_code),
+            display_settings=self.display_settings,
         )
+
+    @property
+    def url_params(self) -> dict[str, str]:
+        """The URL query parameters for this HTML rendering,
+        including both notebook variables and display settings.
+        """
+        # TODO(jonathansick): Do we need to worry about encoding these values
+        # back to strings. For example, a bool value should go back to a 1 or 0
+        # Perhaps this code should be coordinated with parameter casting in
+        # `timessquare.domain.page.PageParameterSchema.cast_value`.
+        params = {key: str(value) for key, value in self.values.items()}
+        params.update(self.display_settings.url_params)
+        return params
+
+    @property
+    def display_settings(self) -> NbDisplaySettings:
+        """The display settings for this HTML rendering."""
+        return NbDisplaySettings(hide_code=self.hide_code)
 
 
 @dataclass
@@ -146,6 +165,11 @@ class NbDisplaySettings:
 
     hide_code: bool
 
+    @classmethod
+    def from_url_params(cls, params: Mapping[str, str]) -> Self:
+        """Create an instance from URL query parameters."""
+        return cls(hide_code=bool(int(params.get("ts_hide_code", 1))))
+
     @property
     def cache_key(self) -> str:
         return b64encode(
@@ -153,3 +177,8 @@ class NbDisplaySettings:
                 "utf-8"
             )
         ).decode("utf-8")
+
+    @property
+    def url_params(self) -> dict[str, str]:
+        """Get the URL query parameters for these display settings."""
+        return {"ts_hide_code": str(int(self.hide_code))}

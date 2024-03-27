@@ -21,13 +21,13 @@ from safir.github.models import (
 
 from timessquare.config import config
 
+from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     NotebookSidecarFile,
     RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
-from .noteburst import NoteburstJobResponseModel, NoteburstJobStatus
 from .page import PageExecutionInfo
 
 

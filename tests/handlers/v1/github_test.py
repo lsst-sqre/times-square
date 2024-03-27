@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 from redis.asyncio import Redis
+from safir.arq import MockArqQueue
 from safir.database import create_async_session, create_database_engine
 from structlog import get_logger
 
@@ -38,6 +39,7 @@ async def test_github(client: AsyncClient) -> None:
         job_store=NoteburstJobStore(redis),
         http_client=client,
         logger=get_logger(),
+        arq_queue=MockArqQueue(),
     )
 
     await page_service.add_page_to_store(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 from urllib.parse import urlencode
 
 from fastapi import Request
@@ -20,8 +20,13 @@ from safir.github.models import (
 from safir.metadata import Metadata as SafirMetadata
 
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
-from timessquare.domain.nbhtml import NbHtmlModel
-from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
+from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlModel
+from timessquare.domain.page import (
+    PageInstanceIdModel,
+    PageModel,
+    PageSummaryModel,
+    PersonModel,
+)
 
 
 class Index(BaseModel):
@@ -126,6 +131,15 @@ page_html_status_field = Field(
     description=(
         "The status URL for the HTML-rendering of the notebook, computed with "
         "parameter values."
+    ),
+)
+
+page_html_events_field = Field(
+    ...,
+    title="HTML events URL",
+    description=(
+        "The URL for the server-sent events stream that gives updates "
+        "about the HTML rendering."
     ),
 )
 
@@ -271,6 +285,8 @@ class Page(BaseModel):
 
     html_status_url: AnyHttpUrl = page_html_status_field
 
+    html_events_url: AnyHttpUrl = page_html_events_field
+
     parameters: dict[str, dict[str, Any]] = page_parameters_field
 
     github: GitHubSourceMetadata | None = Field(
@@ -313,19 +329,22 @@ class Page(BaseModel):
             uploader_username=page.uploader_username,
             parameters=parameters,
             self_url=AnyHttpUrl(
-                str(request.url_for("get_page", page=page.name)),
+                str(request.url_for("get_page", page=page.name))
             ),
             source_url=AnyHttpUrl(
-                str(request.url_for("get_page_source", page=page.name)),
+                str(request.url_for("get_page_source", page=page.name))
             ),
             rendered_url=AnyHttpUrl(
-                str(request.url_for("get_rendered_notebook", page=page.name)),
+                str(request.url_for("get_rendered_notebook", page=page.name))
             ),
             html_url=AnyHttpUrl(
-                str(request.url_for("get_page_html", page=page.name)),
+                str(request.url_for("get_page_html", page=page.name))
             ),
             html_status_url=AnyHttpUrl(
-                str(request.url_for("get_page_html_status", page=page.name)),
+                str(request.url_for("get_page_html_status", page=page.name))
+            ),
+            html_events_url=AnyHttpUrl(
+                str(request.url_for("get_page_html_events", page=page.name))
             ),
             github=github_metadata,
         )
@@ -413,6 +432,41 @@ class HtmlStatus(BaseModel):
                 html_hash=html.html_hash,
                 html_url=AnyHttpUrl(html_url),
             )
+
+
+class DeleteHtmlResponse(BaseModel):
+    """Response for a successful HTML soft-deletion."""
+
+    html_url: AnyHttpUrl = page_html_field
+
+    html_events_url: AnyHttpUrl = page_html_events_field
+
+    @classmethod
+    def from_page_instance(
+        cls, *, page_instance: PageInstanceIdModel, request: Request
+    ) -> Self:
+        """Create a DeleteHtmlResponse from the deleted page instance."""
+        base_html_url = str(
+            request.url_for("get_page_html", page=page_instance.name)
+        )
+        base_html_events_url = str(
+            request.url_for("get_page_html_events", page=page_instance.name)
+        )
+        display_settings = NbDisplaySettings.from_url_params(
+            request.query_params
+        )
+        values = dict(page_instance.values)
+        values.update(display_settings.url_params)
+        qs = urlencode(values)
+        html_url = f"{base_html_url}?{qs}" if qs else base_html_url
+        html_events_url = (
+            f"{base_html_events_url}?{qs}" if qs else base_html_events_url
+        )
+
+        return cls(
+            html_url=AnyHttpUrl(html_url),
+            html_events_url=AnyHttpUrl(html_events_url),
+        )
 
 
 class PostPageRequest(BaseModel):

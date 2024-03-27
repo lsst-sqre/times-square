@@ -23,6 +23,7 @@ from .functions import (
     create_rerequested_check_run,
     ping,
     pull_request_sync,
+    replace_nbhtml,
     repo_added,
     repo_push,
     repo_removed,
@@ -126,6 +127,7 @@ class WorkerSettings:
         compute_check_run,
         create_check_run,
         create_rerequested_check_run,
+        replace_nbhtml,
     ]
 
     redis_settings = config.arq_redis_settings
