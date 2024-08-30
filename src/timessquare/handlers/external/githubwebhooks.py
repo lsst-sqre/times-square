@@ -120,7 +120,7 @@ async def handle_installation_created(
         repos=event.data["repositories"],
     )
 
-    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationEventModel.model_validate(event.data)
 
     for repo in payload.repositories:
         await arq_queue.enqueue("repo_added", payload=payload, repo=repo)
@@ -155,7 +155,7 @@ async def handle_installation_unsuspend(
         repos=event.data["repositories"],
     )
 
-    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationEventModel.model_validate(event.data)
 
     for repo in payload.repositories:
         await arq_queue.enqueue("repo_added", payload=payload, repo=repo)
@@ -188,7 +188,7 @@ async def handle_installation_deleted(
         owner=owner,
     )
 
-    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationEventModel.model_validate(event.data)
 
     for repo in payload.repositories:
         await arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
@@ -221,7 +221,7 @@ async def handle_installation_suspend(
         owner=owner,
     )
 
-    payload = GitHubAppInstallationEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationEventModel.model_validate(event.data)
 
     for repo in payload.repositories:
         await arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
@@ -262,7 +262,9 @@ async def handle_repositories_added(
         repos=event.data["repositories_added"],
     )
 
-    payload = GitHubAppInstallationRepositoriesEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationRepositoriesEventModel.model_validate(
+        event.data
+    )
 
     for repo in payload.repositories_added:
         await arq_queue.enqueue("repo_added", payload=payload, repo=repo)
@@ -293,7 +295,9 @@ async def handle_repositories_removed(
         repos=event.data["repositories_removed"],
     )
 
-    payload = GitHubAppInstallationRepositoriesEventModel.parse_obj(event.data)
+    payload = GitHubAppInstallationRepositoriesEventModel.model_validate(
+        event.data
+    )
 
     for repo in payload.repositories_removed:
         await arq_queue.enqueue("repo_removed", payload=payload, repo=repo)
@@ -326,7 +330,7 @@ async def handle_push_event(
     )
 
     # Parse webhook payload
-    payload = GitHubPushEventModel.parse_obj(event.data)
+    payload = GitHubPushEventModel.model_validate(event.data)
 
     # Only process push events for the default branch
     if payload.ref == f"refs/heads/{payload.repository.default_branch}":
@@ -360,7 +364,7 @@ async def handle_pr_opened(
         repo=event.data["repository"]["full_name"],
     )
 
-    payload = GitHubPullRequestEventModel.parse_obj(event.data)
+    payload = GitHubPullRequestEventModel.model_validate(event.data)
 
     await arq_queue.enqueue(
         "pull_request_sync",
@@ -395,7 +399,7 @@ async def handle_pr_sync(
         repo=event.data["repository"]["full_name"],
     )
 
-    payload = GitHubPullRequestEventModel.parse_obj(event.data)
+    payload = GitHubPullRequestEventModel.model_validate(event.data)
 
     await arq_queue.enqueue(
         "pull_request_sync",
@@ -440,7 +444,7 @@ async def handle_check_suite_request(
             "GitHub check suite request event",
             repo=event.data["repository"]["full_name"],
         )
-        payload = GitHubCheckSuiteEventModel.parse_obj(event.data)
+        payload = GitHubCheckSuiteEventModel.model_validate(event.data)
         logger.debug("GitHub check suite request payload", payload=payload)
 
         # Note that architecturally it might be possible to run this as part
@@ -483,7 +487,7 @@ async def handle_check_run_created(
             "GitHub check run created event",
             repo=event.data["repository"]["full_name"],
         )
-        payload = GitHubCheckRunEventModel.parse_obj(event.data)
+        payload = GitHubCheckRunEventModel.model_validate(event.data)
         logger.debug("GitHub check run request payload", payload=payload)
 
         await arq_queue.enqueue(
@@ -518,7 +522,7 @@ async def handle_check_run_rerequested(
         "GitHub check run rerequested event",
         repo=event.data["repository"]["full_name"],
     )
-    payload = GitHubCheckRunEventModel.parse_obj(event.data)
+    payload = GitHubCheckRunEventModel.model_validate(event.data)
     logger.debug("GitHub check run request payload", payload=payload)
 
     await arq_queue.enqueue(

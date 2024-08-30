@@ -23,7 +23,8 @@ async def create_rerequested_check_run(
         github_repo=payload.repository.name,
     )
     logger.info(
-        "Running create_rerequested_check_run", payload=payload.model_dump()
+        "Running create_rerequested_check_run",
+        payload=payload.model_dump(mode="json"),
     )
 
     try:

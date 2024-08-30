@@ -183,8 +183,8 @@ async def post_page(
     For example, a code cell:
 
     ```
-    a = {{ params.a }}
-    b = {{ params.b }}
+    a = {{params.a}}
+    b = {{params.b}}
     a + b
     ```
 
@@ -585,12 +585,14 @@ async def get_github_pr_tree(
         owner=owner, repo=repo, head_sha=commit
     )
     context.logger.debug(
-        "Check runs", check_runs=[run.model_dump() for run in check_runs]
+        "Check runs",
+        check_runs=[run.model_dump(mode="json") for run in check_runs],
     )
 
     pull_requests = await repo_service.get_pulls_for_check_runs(check_runs)
     context.logger.debug(
-        "Pull requests", prs=[pr.model_dump() for pr in pull_requests]
+        "Pull requests",
+        prs=[pr.model_dump(mode="json") for pr in pull_requests],
     )
 
     return GitHubPrContents.create(
