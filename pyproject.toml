@@ -105,6 +105,7 @@ skip_fragments = "_template.md.jinja"
 [tool.ruff]
 exclude = [
     "docs/**",
+    "tests/data/**",
 ]
 line-length = 79
 target-version = "py312"
