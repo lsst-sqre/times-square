@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from abc import ABCMeta, abstractproperty
+from abc import ABCMeta, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -120,12 +120,14 @@ class GitHubCheck(metaclass=ABCMeta):
 
         return GitHubCheckRunConclusion.success
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def summary(self) -> str:
         """Summary text for the check."""
         raise NotImplementedError
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def text(self) -> str:
         """Text body of the check's message."""
         raise NotImplementedError
