@@ -253,14 +253,11 @@ class Config(BaseSettings):
             # configurations.
             return False
 
-        if (
-            (info.data.get("github_app_private_key") == "")
-            or (info.data.get("github_webhook_secret") == "")
-            or (info.data.get("github_app_id") is None)
-        ):
-            return False
-
-        return True
+        return not (
+            info.data.get("github_app_private_key") == ""
+            or info.data.get("github_webhook_secret") == ""
+            or info.data.get("github_app_id") is None
+        )
 
     @property
     def arq_redis_settings(self) -> RedisSettings:
