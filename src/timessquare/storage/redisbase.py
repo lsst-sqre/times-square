@@ -1,14 +1,19 @@
-""""Base for Redis page instance cache storage."""
+"""Base for Redis page instance cache storage."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterable
+from typing import TypeVar
 
-from safir.redis import PydanticRedisStorage, S
+from pydantic import BaseModel
+from safir.redis import PydanticRedisStorage
 
 from timessquare.domain.page import PageInstanceIdModel
 
 __all__ = ["RedisPageInstanceStore"]
+
+
+S = TypeVar("S", bound="BaseModel")
 
 
 class RedisPageInstanceStore(PydanticRedisStorage[S]):

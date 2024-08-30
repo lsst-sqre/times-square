@@ -6,18 +6,11 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 from arq.connections import RedisSettings
-from pydantic import (
-    Field,
-    HttpUrl,
-    PostgresDsn,
-    RedisDsn,
-    SecretStr,
-    ValidationInfo,
-    field_validator,
-)
+from pydantic import Field, HttpUrl, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 from safir.arq import ArqMode
 from safir.logging import LogLevel, Profile
+from safir.pydantic import EnvAsyncPostgresDsn, EnvRedisDsn
 
 __all__ = ["Config", "Profile", "LogLevel"]
 
@@ -93,13 +86,10 @@ class Config(BaseSettings):
         ),
     ] = "/times-square"
 
-    database_url: Annotated[
-        PostgresDsn,
-        Field(
-            alias="TS_DATABASE_URL",
-            description="The URL for the PostgreSQL database instance.",
-        ),
-    ]
+    database_url: EnvAsyncPostgresDsn = Field(
+        alias="TS_DATABASE_URL",
+        description="The URL for the PostgreSQL database instance.",
+    )
 
     database_password: Annotated[
         SecretStr,
@@ -109,18 +99,10 @@ class Config(BaseSettings):
         ),
     ]
 
-    redis_url: Annotated[
-        RedisDsn,
-        Field(
-            alias="TS_REDIS_URL",
-            default_factory=lambda: RedisDsn(
-                "redis://localhost:6379/0",
-            ),
-            description=(
-                "URL for the redis instance, used by the worker queue."
-            ),
-        ),
-    ]
+    redis_url: EnvRedisDsn = Field(
+        alias="TS_REDIS_URL",
+        description=("URL for the redis instance, used by the worker queue."),
+    )
 
     github_app_id: Annotated[
         int | None,
@@ -184,18 +166,10 @@ class Config(BaseSettings):
         ),
     ] = "lsst-sqre"
 
-    redis_queue_url: Annotated[
-        RedisDsn,
-        Field(
-            alias="TS_REDIS_QUEUE_URL",
-            default_factory=lambda: RedisDsn(
-                "redis://localhost:6379/1",
-            ),
-            description=(
-                "URL for the redis instance, used by the worker queue."
-            ),
-        ),
-    ]
+    redis_queue_url: EnvRedisDsn = Field(
+        alias="TS_REDIS_QUEUE_URL",
+        description=("URL for the redis instance, used by the worker queue."),
+    )
 
     queue_name: Annotated[
         str,
@@ -279,14 +253,11 @@ class Config(BaseSettings):
             # configurations.
             return False
 
-        if (
-            (info.data.get("github_app_private_key") == "")
-            or (info.data.get("github_webhook_secret") == "")
-            or (info.data.get("github_app_id") is None)
-        ):
-            return False
-
-        return True
+        return not (
+            info.data.get("github_app_private_key") == ""
+            or info.data.get("github_webhook_secret") == ""
+            or info.data.get("github_app_id") is None
+        )
 
     @property
     def arq_redis_settings(self) -> RedisSettings:

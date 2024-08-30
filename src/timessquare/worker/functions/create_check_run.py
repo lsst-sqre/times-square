@@ -22,7 +22,9 @@ async def create_check_run(
         github_owner=payload.repository.owner.login,
         github_repo=payload.repository.name,
     )
-    logger.info("Running create_check_run", payload=payload.model_dump())
+    logger.info(
+        "Running create_check_run", payload=payload.model_dump(mode="json")
+    )
 
     try:
         async for db_session in db_session_dependency():

@@ -18,7 +18,9 @@ async def compute_check_run(
         github_owner=payload.repository.owner.login,
         github_repo=payload.repository.name,
     )
-    logger.info("Running compute_check_run", payload=payload.dict())
+    logger.info(
+        "Running compute_check_run", payload=payload.model_dump(mode="json")
+    )
     logger.info("Skipping compute_check_run (not configured)")
 
     return "done"

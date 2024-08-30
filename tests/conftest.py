@@ -9,7 +9,7 @@ import structlog
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from gidgethub.httpx import GitHubAPI
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from safir.database import create_database_engine, initialize_database
 
 from timessquare import main
@@ -26,7 +26,7 @@ async def app() -> AsyncIterator[FastAPI]:
     """
     logger = structlog.get_logger(config.logger_name)
     engine = create_database_engine(
-        str(config.database_url), config.database_password.get_secret_value()
+        config.database_url, config.database_password.get_secret_value()
     )
     await initialize_database(engine, logger, schema=Base.metadata, reset=True)
     await engine.dispose()
@@ -39,7 +39,10 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     """Return an ``httpx.AsyncClient`` configured to talk to the test app."""
     base = "https://example.com/"
     headers = {"X-Auth-Request-User": "testuser"}
-    async with AsyncClient(app=app, base_url=base, headers=headers) as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url=base, headers=headers
+    ) as client:
         yield client
 
 
