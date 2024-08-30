@@ -1,38 +1,48 @@
-# The dependencies need --allow-unsafe because kubernetes-asyncio and
-# (transitively) pre-commit depends on setuptools, which is normally not
-# allowed to appear in a hashed dependency file.
-.PHONY: update-deps
-update-deps:
-	pip install --upgrade pip-tools pip setuptools
-	pip-compile --upgrade --resolver=backtracking --build-isolation	\
-	    --allow-unsafe --generate-hashes \
-	    --output-file requirements/main.txt requirements/main.in
-	pip-compile --upgrade --resolver=backtracking --build-isolation	\
-	    --allow-unsafe --generate-hashes \
-	    --output-file requirements/dev.txt requirements/dev.in
-
-# Useful for testing against a Git version of Safir.
-.PHONY: update-deps-no-hashes
-update-deps-no-hashes:
-	pip install --upgrade pip-tools pip setuptools
-	pip-compile --upgrade --resolver=backtracking --build-isolation	\
-	    --allow-unsafe \
-	    --output-file requirements/main.txt requirements/main.in
-	pip-compile --upgrade --resolver=backtracking --build-isolation	\
-	    --allow-unsafe \
-	    --output-file requirements/dev.txt requirements/dev.in
+.PHONY: help
+help:
+	@echo "Make targets for example"
+	@echo "make init - Set up dev environment"
+	@echo "make run - Start a local development instance"
+	@echo "make update - Update pinned dependencies and run make init"
+	@echo "make update-deps - Update pinned dependencies"
+	@echo "make update-deps-no-hashes - Pin dependencies without hashes"
 
 .PHONY: init
 init:
-	pip install --editable .
-	pip install --upgrade -r requirements/main.txt -r requirements/dev.txt
+	pip install --upgrade uv
+	uv pip install -r requirements/main.txt -r requirements/dev.txt \
+	    -r requirements/tox.txt
+	uv pip install --editable .
 	rm -rf .tox
-	pip install --upgrade tox tox-docker scriv pre-commit
+	uv pip install --upgrade pre-commit
 	pre-commit install
+
+.PHONY: run
+run:
+	tox run -e run
 
 .PHONY: update
 update: update-deps init
 
-.PHONY: run
-run:
-	tox run -e=run
+.PHONY: update-deps
+update-deps:
+	pip install --upgrade uv
+	uv pip install --upgrade pre-commit
+	pre-commit autoupdate
+	uv pip compile --upgrade --generate-hashes			\
+	    --output-file requirements/main.txt requirements/main.in
+	uv pip compile --upgrade --generate-hashes			\
+	    --output-file requirements/dev.txt requirements/dev.in
+	uv pip compile --upgrade --generate-hashes			\
+	    --output-file requirements/tox.txt requirements/tox.in
+
+# Useful for testing against a Git version of Safir.
+.PHONY: update-deps-no-hashes
+update-deps-no-hashes:
+	pip install --upgrade uv
+	uv pip compile --upgrade					\
+	    --output-file requirements/main.txt requirements/main.in
+	uv pip compile --upgrade					\
+	    --output-file requirements/dev.txt requirements/dev.in
+	uv pip compile --upgrade					\
+	    --output-file requirements/tox.txt requirements/tox.in
