@@ -1,6 +1,8 @@
 """Redis dependency for FastAPI."""
 
-from redis.asyncio import Redis
+from redis.asyncio import BlockingConnectionPool, Redis
+from redis.asyncio.retry import Retry
+from redis.backoff import ExponentialBackoff
 
 __all__ = ["RedisDependency", "redis_dependency"]
 
@@ -20,7 +22,20 @@ class RedisDependency:
     async def initialize(
         self, redis_url: str, password: str | None = None
     ) -> None:
-        self.redis = Redis.from_url(redis_url, password=password)
+        redis_pool = BlockingConnectionPool.from_url(
+            str(redis_url),
+            password=password,
+            max_connections=25,
+            retry=Retry(
+                ExponentialBackoff(base=0.2, cap=1.0),
+                10,
+            ),
+            retry_on_timeout=True,
+            socket_keepalive=True,
+            socket_timeout=5,
+            timeout=30,
+        )
+        self.redis = Redis.from_pool(redis_pool)
 
     async def __call__(self) -> Redis:
         """Return the redis pool."""
@@ -36,7 +51,6 @@ class RedisDependency:
         """
         if self.redis:
             await self.redis.aclose()
-            await self.redis.connection_pool.disconnect()
             self.redis = None
 
 
