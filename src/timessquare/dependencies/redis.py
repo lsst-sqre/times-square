@@ -35,7 +35,7 @@ class RedisDependency:
         are cleanly shut down and any pending writes are complete.
         """
         if self.redis:
-            await self.redis.close()
+            await self.redis.aclose()
             await self.redis.connection_pool.disconnect()
             self.redis = None
 
