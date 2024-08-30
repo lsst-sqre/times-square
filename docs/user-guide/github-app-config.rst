@@ -94,7 +94,7 @@ When you do this, you can create the secret keys that Times Square needs to auth
 These are provided to Times Square as environment variables:
 
 - :envvar:`TS_GITHUB_APP_ID`: The GitHub App ID. This is shown on the GitHub App's :guilabel:`General` page under the :guilabel:`About` heading.
-- :envvar:`TS_GITHUB_APP_PRIVATE_KEY`: The GitHub App's private key. This is shown on the GitHub App's :guilabel:`General` page under :guilabel:`Client secrets`.
+- :envvar:`TS_GITHUB_APP_PRIVATE_KEY`: The GitHub App's private key. This is shown on the GitHub App's :guilabel:`General`.
 - :envvar:`TS_GITHUB_WEBHOOK_SECRET`: The webhook secret you created in the GitHub App's :guilabel:`General` page under :guilabel:`Webhooks`.
 - :envvar:`TS_GITHUB_ORGS`: A comma-separated list of the GitHub organizations that Times Square should operate on. For a private GitHub App, this should be the organization that owns the app. See also: :ref:`multiple-github-orgs`.
 
