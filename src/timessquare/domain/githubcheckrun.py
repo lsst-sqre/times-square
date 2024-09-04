@@ -18,6 +18,7 @@ from safir.github.models import (
     GitHubCheckRunStatus,
     GitHubRepositoryModel,
 )
+from yaml import YAMLError
 
 from timessquare.config import config
 
@@ -51,6 +52,7 @@ class Annotation:
     def from_validation_error(
         cls, path: str, error: ValidationError
     ) -> list[Annotation]:
+        """Create a list of annotations from a Pydantic validation error."""
         annotations: list[Annotation] = []
         for item in error.errors():
             title = cls._format_title_for_pydantic_item(item["loc"])
@@ -64,6 +66,34 @@ class Annotation:
                 )
             )
         return annotations
+
+    @classmethod
+    def from_yaml_error(cls, path: str, error: YAMLError) -> list[Annotation]:
+        """Create a list of annotations from a YAML syntax error."""
+        if hasattr(error, "problem_mark"):
+            # The YAML syntax error has a problem mark pointing to the
+            # location of the error.
+            start_line = error.problem_mark.line + 1
+            column = error.problem_mark.column + 1
+            return [
+                Annotation(
+                    path=path,
+                    start_line=start_line,
+                    message=str(error),
+                    title=f"YAML syntax error ({start_line}:{column})",
+                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
+                )
+            ]
+        return [
+            # The exact location is unknown
+            Annotation(
+                path=path,
+                start_line=1,
+                message=str(error),
+                title="YAML syntax error",
+                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+            )
+        ]
 
     @staticmethod
     def _format_title_for_pydantic_item(locations: Sequence[str | int]) -> str:
@@ -234,7 +264,7 @@ class GitHubConfigsCheck(GitHubCheck):
                 "external_id": cls.external_id,
             },
         )
-        check_run = GitHubCheckRunModel.parse_obj(data)
+        check_run = GitHubCheckRunModel.model_validate(data)
         return await cls.validate_repo(
             check_run=check_run,
             github_client=github_client,
@@ -258,6 +288,7 @@ class GitHubConfigsCheck(GitHubCheck):
         check = cls(check_run, repo)
         await check.submit_in_progress(github_client)
 
+        # Check out the repository and validate the times-square.yaml file.
         try:
             checkout = await GitHubRepositoryCheckout.create(
                 github_client=github_client,
@@ -266,6 +297,12 @@ class GitHubConfigsCheck(GitHubCheck):
             )
         except ValidationError as e:
             annotations = Annotation.from_validation_error(
+                path="times-square.yaml", error=e
+            )
+            check.annotations.extend(annotations)
+            return check
+        except YAMLError as e:
+            annotations = Annotation.from_yaml_error(
                 path="times-square.yaml", error=e
             )
             check.annotations.extend(annotations)
@@ -303,11 +340,16 @@ class GitHubConfigsCheck(GitHubCheck):
             repo.blobs_url,
             url_vars={"sha": notebook_ref.sidecar_git_tree_sha},
         )
-        sidecar_blob = GitHubBlobModel.parse_obj(data)
+        sidecar_blob = GitHubBlobModel.model_validate(data)
         try:
             NotebookSidecarFile.parse_yaml(sidecar_blob.decode())
         except ValidationError as e:
             annotations = Annotation.from_validation_error(
+                path=notebook_ref.sidecar_path, error=e
+            )
+            self.annotations.extend(annotations)
+        except YAMLError as e:
+            annotations = Annotation.from_yaml_error(
                 path=notebook_ref.sidecar_path, error=e
             )
             self.annotations.extend(annotations)
