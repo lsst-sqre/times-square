@@ -24,6 +24,7 @@ from timessquare.domain.githubcheckrun import (
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
 )
+from timessquare.exceptions import PageJinjaError
 
 from ..domain.page import PageExecutionInfo
 from ..storage.noteburst import NoteburstJobStatus
@@ -179,12 +180,19 @@ class GitHubCheckRunService:
                 notebook=notebook,
                 commit_sha=check_run.head_sha,
             )
-            page_execution_info = (
-                await self._page_service.execute_page_with_defaults(
-                    page,
-                    enable_retry=False,  # fail quickly for CI
+            try:
+                page_execution_info = (
+                    await self._page_service.execute_page_with_defaults(
+                        page,
+                        enable_retry=False,  # fail quickly for CI
+                    )
                 )
-            )
+            except PageJinjaError as e:
+                # Error rendering out the notebook's Jinja. Report in the
+                # and move on to the next notebook
+                check.report_jinja_error(page, e)
+                continue
+
             if page_execution_info.noteburst_error_message is not None:
                 self._logger.debug(
                     "Got immediate noteburst error",

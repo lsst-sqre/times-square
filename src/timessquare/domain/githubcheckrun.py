@@ -21,6 +21,7 @@ from safir.github.models import (
 from yaml import YAMLError
 
 from timessquare.config import config
+from timessquare.exceptions import PageJinjaError
 
 from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
 from .githubcheckout import (
@@ -29,7 +30,7 @@ from .githubcheckout import (
     RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
-from .page import PageExecutionInfo
+from .page import PageExecutionInfo, PageModel
 
 
 @dataclass(kw_only=True)
@@ -439,6 +440,23 @@ class NotebookExecutionsCheck(GitHubCheck):
     ) -> None:
         self.notebook_paths_checked: list[str] = []
         super().__init__(check_run=check_run, repo=repo)
+
+    def report_jinja_error(
+        self, page: PageModel, error: PageJinjaError
+    ) -> None:
+        """Report an error rendering a Jinja template in a notebook cell."""
+        path = page.repository_source_path
+        if path is None:
+            raise RuntimeError("Page execution has no notebook path")
+        annotation = Annotation(
+            path=path,
+            start_line=1,
+            message=str(error),
+            title="Notebook Jinja templating error",
+            annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        )
+        self.annotations.append(annotation)
+        self.notebook_paths_checked.append(path)
 
     def report_noteburst_failure(
         self, page_execution: PageExecutionInfo

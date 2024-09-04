@@ -91,6 +91,24 @@ class PageParameterValueCastingError(TimesSquareClientError):
         return cls(message, location=location, field_path=field_path)
 
 
+class PageJinjaError(Exception):
+    """An error occurred while rendering a template in a notebook cell.
+
+    This error is raised duirng the notebook check run.
+    """
+
+    def __init__(self, message: str, cell_index: int) -> None:
+        """Create an exception with a message and cell index."""
+        super().__init__(message)
+        self.cell_index = cell_index
+
+    def __str__(self) -> str:
+        return (
+            "Error rendering template in "
+            f"cell {self.cell_index + 1}: {self.args[0]}"
+        )
+
+
 class ParameterSchemaValidationError(TimesSquareClientError):
     """Error related to a parameter."""
 
