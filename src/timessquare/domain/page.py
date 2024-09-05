@@ -19,6 +19,7 @@ import nbformat
 from jsonschema import Draft202012Validator
 
 from timessquare.exceptions import (
+    PageJinjaError,
     PageNotebookFormatError,
     PageParameterError,
     PageParameterValueCastingError,
@@ -462,6 +463,11 @@ class PageModel:
         -------
         ipynb : str
             JSON-encoded notebook source.
+
+        Raises
+        ------
+        PageJinjaError
+            Raised if there is an error rendering the Jinja template.
         """
         # Build Jinja render context
         # Turn off autoescaping to avoid escaping the parameter values
@@ -474,7 +480,7 @@ class PageModel:
         # Read notebook and render cell-by-cell
         notebook = PageModel.read_ipynb(self.ipynb)
         processed_first_cell = False
-        for cell in notebook.cells:
+        for cell_index, cell in enumerate(notebook.cells):
             if cell.cell_type == "code":
                 if processed_first_cell is False:
                     # Handle first code cell specially by replacing it with a
@@ -486,8 +492,11 @@ class PageModel:
                     continue
 
             # Render the templated cell
-            template = jinja_env.from_string(cell.source)
-            cell.source = template.render()
+            try:
+                template = jinja_env.from_string(cell.source)
+                cell.source = template.render()
+            except Exception as e:
+                raise PageJinjaError(str(e), cell_index) from e
 
         # Modify notebook metadata to include values
         if "times-square" not in notebook.metadata:

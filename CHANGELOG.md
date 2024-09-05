@@ -8,6 +8,27 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.12.0'></a>
+
+## 0.12.0 (2024-09-04)
+
+### New features
+
+- Improved feedback in GitHub Check Runs:
+
+  - If a YAML file has bad syntax causing a parsing error, we now post the YAML error as a check run annotation — including the location of the error in the file.
+
+  - If the notebook has incorrect Jinja templating in its Markdown cells, we now post a check run annotation with the error message and cell number.
+
+### Other changes
+
+- Adopt uv and tox-uv for pinning and installing dependencies
+- Pin the tox dependencies with a `requirements/tox.[in|txt]` file
+- Adapt configuration for tox-docker version 5's randomized connection ports
+- Adopt [ruff-shared.toml](https://github.com/lsst/templates/blob/main/project_templates/fastapi_safir_app/example/ruff-shared.toml) for common SQuaRE ruff configuration.
+
+- The GitHub Check Run service methods are now part of a new `GitHubCheckRunService` class, separate from the `GitHubRepoService`. This internal change helps clarify what functionality is needed for the GitHub Checks functionality, as opposed to syncing data with GitHub repositories.
+
 <a id='changelog-0.11.0'></a>
 
 ## 0.11.0 (2024-03-27)

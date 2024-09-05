@@ -8,7 +8,7 @@ from safir.dependencies.db_session import db_session_dependency
 from safir.github.webhooks import GitHubPullRequestEventModel
 from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 
-from timessquare.worker.servicefactory import create_github_repo_service
+from timessquare.worker.servicefactory import create_github_check_run_service
 
 
 async def pull_request_sync(
@@ -31,7 +31,7 @@ async def pull_request_sync(
 
     try:
         async for db_session in db_session_dependency():
-            github_repo_service = await create_github_repo_service(
+            github_repo_service = await create_github_check_run_service(
                 http_client=ctx["http_client"],
                 logger=logger,
                 installation_id=payload.installation.id,
