@@ -6,6 +6,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any, ClassVar
 
+import arq
 import httpx
 import structlog
 from safir.dependencies.db_session import db_session_dependency
@@ -125,8 +126,15 @@ class WorkerSettings:
         repo_removed,
         pull_request_sync,
         compute_check_run,
-        create_check_run,
-        create_rerequested_check_run,
+        # Make the check run timeouts slightly longer than the configured
+        # timeout so we can handle the timeout gracefully inside the worker
+        arq.worker.func(  # type: ignore [list-item]
+            create_check_run, timeout=config.github_checkrun_timeout + 30.0
+        ),
+        arq.worker.func(  # type: ignore [list-item]
+            create_rerequested_check_run,
+            timeout=config.github_checkrun_timeout + 30.0,
+        ),
         replace_nbhtml,
     ]
 
