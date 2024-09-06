@@ -20,6 +20,7 @@ from safir.github.webhooks import (
 )
 from structlog.stdlib import BoundLogger
 
+from timessquare.config import config
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookModel,
@@ -193,7 +194,8 @@ class GitHubCheckRunService:
 
         try:
             await asyncio.wait_for(
-                self._poll_noteburst_results(check, pending_pages), 250
+                self._poll_noteburst_results(check, pending_pages),
+                float(config.github_checkrun_timeout),
             )
         except TimeoutError:
             self._report_notebook_timeout_errors(check, pending_pages)
@@ -283,7 +285,10 @@ class GitHubCheckRunService:
                 )
             elif (
                 job.status == NoteburstJobStatus.in_progress
-                and job.runtime > timedelta(250)  # less than job timeout
+                and job.runtime
+                > timedelta(
+                    config.github_checkrun_timeout
+                )  # less than job timeout
             ):
                 # If the job is in progress but has exceeded the timeout,
                 # report a timeout error.

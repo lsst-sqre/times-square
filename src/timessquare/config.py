@@ -166,6 +166,18 @@ class Config(BaseSettings):
         ),
     ] = "lsst-sqre"
 
+    github_checkrun_timeout: Annotated[
+        int,
+        Field(
+            gt=0,
+            alias="TS_CHECK_RUN_TIMEOUT",
+            description=(
+                "The maximum time in seconds to wait for a check run to "
+                "complete."
+            ),
+        ),
+    ] = 300
+
     redis_queue_url: EnvRedisDsn = Field(
         alias="TS_REDIS_QUEUE_URL",
         description=("URL for the redis instance, used by the worker queue."),
