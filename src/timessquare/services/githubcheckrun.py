@@ -19,14 +19,17 @@ from safir.github.webhooks import (
 )
 from structlog.stdlib import BoundLogger
 
-from timessquare.domain.githubcheckout import GitHubRepositoryCheckout
+from timessquare.domain.githubcheckout import (
+    GitHubRepositoryCheckout,
+    RepositoryNotebookModel,
+)
 from timessquare.domain.githubcheckrun import (
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
 )
 from timessquare.exceptions import PageJinjaError
 
-from ..domain.page import PageExecutionInfo
+from ..domain.page import PageExecutionInfo, PageModel
 from ..storage.noteburst import NoteburstJobStatus
 from .githubrepo import GitHubRepoService
 from .page import PageService
@@ -127,7 +130,7 @@ class GitHubCheckRunService:
                 repo=payload.repository,
             )
 
-    async def run_notebook_check_run(  # noqa: C901 PLR0912 PLR0915
+    async def run_notebook_check_run(
         self, *, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
     ) -> None:
         """Run the notebook execution check.
@@ -144,20 +147,7 @@ class GitHubCheckRunService:
             repo=repo,
             head_sha=check_run.head_sha,
         )
-
-        # Look for any existing pages for this repo's SHA. If they already
-        # exist it indicates the check is being re-run, so we'll delete those
-        # old pages for this commit
-        for page in await self._page_service.get_pages_for_repo(
-            owner=checkout.owner_name,
-            name=checkout.name,
-            commit=check_run.head_sha,
-        ):
-            await self._page_service.soft_delete_page(page)
-            self._logger.debug(
-                "Deleted existing page for notebook check run",
-                page_name=page.name,
-            )
+        await self._delete_existing_pages(checkout, check_run.head_sha)
 
         tree = await checkout.get_git_tree(self._github_client)
         pending_pages: deque[PageExecutionInfo] = deque()
@@ -175,21 +165,12 @@ class GitHubCheckRunService:
                     path=notebook_ref.notebook_source_path,
                 )
                 continue
-            page = await self._repo_service.create_page(
-                checkout=checkout,
-                notebook=notebook,
-                commit_sha=check_run.head_sha,
+            page = await self._create_page(
+                checkout, notebook, check_run.head_sha
             )
             try:
-                page_execution_info = (
-                    await self._page_service.execute_page_with_defaults(
-                        page,
-                        enable_retry=False,  # fail quickly for CI
-                    )
-                )
+                page_execution_info = await self._execute_page(page)
             except PageJinjaError as e:
-                # Error rendering out the notebook's Jinja. Report in the
-                # and move on to the next notebook
                 check.report_jinja_error(page, e)
                 continue
 
@@ -209,24 +190,77 @@ class GitHubCheckRunService:
 
         await asyncio.sleep(5.0)  # pause for noteburst to work
 
-        # Poll for noteburst results
+        await self._poll_noteburst_results(check, pending_pages)
+
+        await check.submit_conclusion(github_client=self._github_client)
+
+    async def _delete_existing_pages(
+        self, checkout: GitHubRepositoryCheckout, commit_sha: str
+    ) -> None:
+        """Delete existing pages for this commit (if the check run was
+        re-run).
+        """
+        for page in await self._page_service.get_pages_for_repo(
+            owner=checkout.owner_name,
+            name=checkout.name,
+            commit=commit_sha,
+        ):
+            await self._page_service.soft_delete_page(page)
+            self._logger.debug(
+                "Deleted existing page for notebook check run",
+                page_name=page.name,
+            )
+
+    async def _create_page(
+        self,
+        checkout: GitHubRepositoryCheckout,
+        notebook: RepositoryNotebookModel,
+        commit_sha: str,
+    ) -> PageModel:
+        """Create a page representing this notebook for this check run's
+        commit SHA.
+        """
+        return await self._repo_service.create_page(
+            checkout=checkout,
+            notebook=notebook,
+            commit_sha=commit_sha,
+        )
+
+    async def _execute_page(self, page: PageModel) -> PageExecutionInfo:
+        """Execute a page with noteburst."""
+        return await self._page_service.execute_page_with_defaults(
+            page,
+            enable_retry=False,  # fail quickly for CI
+        )
+
+    async def _poll_noteburst_results(
+        self,
+        check: NotebookExecutionsCheck,
+        pending_pages: deque[PageExecutionInfo],
+    ) -> None:
+        """Poll noteburst for results from page executions until completion or
+        timeout.
+        """
         checked_page_count = 0
         while len(pending_pages) > 0:
             checked_page_count += 1
+
+            # Pop a page from the queue to check. If the page isn't complete
+            # we'll re-add it to the queue.
             page_execution = pending_pages.popleft()
+
             self._logger.debug(
                 "Polling noteburst job status",
                 path=page_execution.page.repository_source_path,
             )
+
             if page_execution.noteburst_job is None:
                 raise RuntimeError("Noteburst job is None")
+
             r = await self._page_service.noteburst_api.get_job(
                 str(page_execution.noteburst_job.job_url)
             )
             if r.status_code >= 400:
-                # This is actually an issue with the noteburst service
-                # rather the notebook; consider adding that nuance to the
-                # GitHub Check
                 check.report_noteburst_failure(page_execution)
                 continue
 
@@ -242,14 +276,12 @@ class GitHubCheckRunService:
                     page_execution=page_execution, job_result=job
                 )
             else:
-                # thow it back on the queue
+                pending_pages.append(page_execution)
                 self._logger.debug(
                     "Continuing to check noteburst job",
                     path=page_execution.page.repository_source_path,
                 )
-                pending_pages.append(page_execution)
 
-            # Once we've gone through all the pages once, pause
             if checked_page_count >= len(pending_pages):
                 self._logger.debug(
                     "Pause polling of noteburst jobs",
@@ -267,5 +299,3 @@ class GitHubCheckRunService:
                     pending_count=len(pending_pages),
                     checked_page_count=checked_page_count,
                 )
-
-        await check.submit_conclusion(github_client=self._github_client)
