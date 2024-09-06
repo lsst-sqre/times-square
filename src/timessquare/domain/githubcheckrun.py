@@ -506,23 +506,24 @@ class NotebookExecutionsCheck(GitHubCheck):
         self,
         *,
         page_execution: PageExecutionInfo,
-        job_result: NoteburstJobResponseModel,
+        job_result: NoteburstJobResponseModel | None = None,
     ) -> None:
         """Report that the notebook execution failed to complete in time."""
         path = page_execution.page.repository_source_path
         if path is None:
             raise RuntimeError("Page execution has no notebook path")
         message = "The notebook execution timed out."
-        if job_result.status == NoteburstJobStatus.in_progress:
-            message += (
-                " The notebook execution is still in progress "
-                f"after {job_result.runtime.total_seconds()} seconds."
-            )
-        elif job_result.status == NoteburstJobStatus.queued:
-            message += (
-                " The notebook execution is still in the Noteburst queue."
-                f"after {job_result.runtime.total_seconds()} seconds."
-            )
+        if job_result:
+            if job_result.status == NoteburstJobStatus.in_progress:
+                message += (
+                    " The notebook execution is still in progress "
+                    f"after {job_result.runtime.total_seconds()} seconds."
+                )
+            elif job_result.status == NoteburstJobStatus.queued:
+                message += (
+                    " The notebook execution is still in the Noteburst queue."
+                    f"after {job_result.runtime.total_seconds()} seconds."
+                )
         annotation = Annotation(
             path=path,
             start_line=1,

@@ -191,7 +191,12 @@ class GitHubCheckRunService:
 
         await asyncio.sleep(5.0)  # pause for noteburst to work
 
-        await self._poll_noteburst_results(check, pending_pages)
+        try:
+            await asyncio.wait_for(
+                self._poll_noteburst_results(check, pending_pages), 250
+            )
+        except TimeoutError:
+            self._report_notebook_timeout_errors(check, pending_pages)
 
         await check.submit_conclusion(github_client=self._github_client)
 
@@ -320,3 +325,14 @@ class GitHubCheckRunService:
                     pending_count=len(pending_pages),
                     checked_page_count=checked_page_count,
                 )
+
+    def _report_notebook_timeout_errors(
+        self,
+        check: NotebookExecutionsCheck,
+        pending_pages: deque[PageExecutionInfo],
+    ) -> None:
+        """Report timeout errors for all pending pages."""
+        for page_execution in pending_pages:
+            check.report_noteburst_timeout(
+                page_execution=page_execution, job_result=None
+            )
