@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Annotated
 
@@ -100,6 +100,35 @@ class NoteburstJobResponseModel(BaseModel):
         return NoteburstJobModel(
             date_submitted=self.enqueue_time, job_url=self.self_url
         )
+
+    @property
+    def runtime(self) -> timedelta:
+        """Return the runtime of the job.
+
+        The meaning of the runtime depends on the status of the job:
+
+        - If the job is complete, return the duration between the start time
+          and the finish time.
+        - If the job is in progress, return the duration between the start time
+          and the current time.
+        - If the job has not run, the duration is 0.
+        """
+        if self.status == NoteburstJobStatus.complete:
+            if self.start_time is None or self.finish_time is None:
+                raise ValueError(
+                    "NoteburstJobResponseModel has status 'complete' but "
+                    "missing start_time or finish_time"
+                )
+            return self.finish_time - self.start_time
+        elif self.status == NoteburstJobStatus.in_progress:
+            if self.enqueue_time is None:
+                raise ValueError(
+                    "NoteburstJobResponseModel has status 'in_progress' but "
+                    "missing enqueue_time"
+                )
+            return datetime.now(tz=UTC) - self.enqueue_time
+        else:
+            return timedelta(seconds=0)
 
 
 @dataclass

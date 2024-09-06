@@ -502,6 +502,37 @@ class NotebookExecutionsCheck(GitHubCheck):
             )
             self.annotations.append(annotation)
 
+    def report_noteburst_timeout(
+        self,
+        *,
+        page_execution: PageExecutionInfo,
+        job_result: NoteburstJobResponseModel,
+    ) -> None:
+        """Report that the notebook execution failed to complete in time."""
+        path = page_execution.page.repository_source_path
+        if path is None:
+            raise RuntimeError("Page execution has no notebook path")
+        message = "The notebook execution timed out."
+        if job_result.status == NoteburstJobStatus.in_progress:
+            message += (
+                " The notebook execution is still in progress "
+                f"after {job_result.runtime.total_seconds()} seconds."
+            )
+        elif job_result.status == NoteburstJobStatus.queued:
+            message += (
+                " The notebook execution is still in the Noteburst queue."
+                f"after {job_result.runtime.total_seconds()} seconds."
+            )
+        annotation = Annotation(
+            path=path,
+            start_line=1,
+            message=message,
+            title="Noteburst timeout",
+            annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        )
+        self.annotations.append(annotation)
+        self.notebook_paths_checked.append(path)
+
     @property
     def summary(self) -> str:
         notebooks_count = len(self.notebook_paths_checked)

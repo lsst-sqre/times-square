@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from datetime import timedelta
 
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
@@ -273,6 +274,26 @@ class GitHubCheckRunService:
                     path=page_execution.page.repository_source_path,
                 )
                 check.report_noteburst_completion(
+                    page_execution=page_execution, job_result=job
+                )
+            elif (
+                job.status == NoteburstJobStatus.in_progress
+                and job.runtime > timedelta(250)  # less than job timeout
+            ):
+                # If the job is in progress but has exceeded the timeout,
+                # report a timeout error.
+                # Because of peculiarity with arq, noteburst doesn't seem to
+                # indicate that a job is in progress, so this condition
+                # may not be triggered. Instead, a global timeout is needed
+                # for all jobs, which unfortunately is less granular because
+                # it may penalize repos with lots of notebooks, where the
+                # individual notebooks still execute in a reasonable time.
+                self._logger.debug(
+                    "Noteburst job is in progress but exeeding timeout",
+                    path=page_execution.page.repository_source_path,
+                    runtime=job.runtime.total_seconds(),
+                )
+                check.report_noteburst_timeout(
                     page_execution=page_execution, job_result=job
                 )
             else:
