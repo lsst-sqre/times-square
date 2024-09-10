@@ -493,11 +493,20 @@ class NotebookExecutionsCheck(GitHubCheck):
             raise RuntimeError("Page execution has no notebook source path")
         self.notebook_paths_checked.append(notebook_path)
         if not job_result.success:
+            if job_result.error:
+                title = f"Noteburst error: {job_result.error.code}"
+                message = (
+                    job_result.error.message
+                    or "We couldn't run this notebook successfully."
+                )
+            else:
+                title = "Noteburst error"
+                message = "We couldn't run this notebook successfully."
             annotation = Annotation(
                 path=notebook_path,
                 start_line=1,
-                message="We couldn't run this notebook successfully.",
-                title="Notebook execution error",
+                message=message,
+                title=title,
                 annotation_level=GitHubCheckRunAnnotationLevel.failure,
             )
             self.annotations.append(annotation)

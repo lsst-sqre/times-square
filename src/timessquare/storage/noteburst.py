@@ -45,6 +45,34 @@ class NotebookError(BaseModel):
     message: Annotated[str, Field(description="The exception's message.")]
 
 
+class NoteburstErrorCodes(Enum):
+    """Error codes for Noteburst errors."""
+
+    timeout = "timeout"
+    """The notebook execution timed out."""
+
+    jupyter_error = "jupyter_error"
+    """An error occurred contacting the Jupyter server."""
+
+    unknown = "unknown"
+    """An unknown error occurred."""
+
+
+class NoteburstExecutionError(BaseModel):
+    """Information about an exception that occurred during noteburst's
+    execution of a notebook (other than an exception raised in the notebook
+    itself).
+    """
+
+    code: NoteburstErrorCodes = Field(
+        description="The reference code of the error."
+    )
+
+    message: str | None = Field(
+        None, description="Additional information about the exception."
+    )
+
+
 class NoteburstJobResponseModel(BaseModel):
     """A model for a subset of the noteburst response body for a notebook
     execution request.
@@ -105,9 +133,17 @@ class NoteburstJobResponseModel(BaseModel):
             )
         ),
     ] = None
-    """Whether the execution was successful or not (only set if result is
-    available).
-    """
+
+    error: Annotated[
+        NoteburstExecutionError | None,
+        Field(
+            description=(
+                "An error occurred during notebook execution, other than an "
+                "exception in the notebook itself. This field is null if an "
+                "error did not occur."
+            )
+        ),
+    ] = None
 
     def to_job_model(self) -> NoteburstJobModel:
         """Export to a `NoteburstJobModel` for storage."""
