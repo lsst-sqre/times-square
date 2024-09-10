@@ -23,7 +23,11 @@ from yaml import YAMLError
 from timessquare.config import config
 from timessquare.exceptions import PageJinjaError
 
-from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
+from ..storage.noteburst import (
+    NoteburstErrorCodes,
+    NoteburstJobResponseModel,
+    NoteburstJobStatus,
+)
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     NotebookSidecarFile,
@@ -494,11 +498,21 @@ class NotebookExecutionsCheck(GitHubCheck):
         self.notebook_paths_checked.append(notebook_path)
         if not job_result.success:
             if job_result.error:
-                title = f"Noteburst error: {job_result.error.code}"
-                message = (
-                    job_result.error.message
-                    or "We couldn't run this notebook successfully."
-                )
+                if (
+                    job_result.error.code == NoteburstErrorCodes.timeout
+                    and job_result.timeout
+                ):
+                    title = "Notebook execution timeout"
+                    message = (
+                        "The notebook execution timed out "
+                        f"({job_result.timeout:.0f} sec.)."
+                    )
+                else:
+                    title = f"Noteburst error: {job_result.error.code}"
+                    message = (
+                        job_result.error.message
+                        or "We couldn't run this notebook successfully."
+                    )
             else:
                 title = "Noteburst error"
                 message = "We couldn't run this notebook successfully."

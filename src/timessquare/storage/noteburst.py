@@ -145,6 +145,15 @@ class NoteburstJobResponseModel(BaseModel):
         ),
     ] = None
 
+    timeout: Annotated[
+        float | None,
+        Field(
+            description=(
+                "The timeout set on the notebook execution job, in seconds."
+            )
+        ),
+    ] = None
+
     def to_job_model(self) -> NoteburstJobModel:
         """Export to a `NoteburstJobModel` for storage."""
         return NoteburstJobModel(
