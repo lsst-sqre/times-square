@@ -502,6 +502,16 @@ class NotebookExecutionsCheck(GitHubCheck):
             )
             self.annotations.append(annotation)
 
+        if job_result.ipynb_error:
+            # An exception occured in the notebook execution
+            annotation = Annotation(
+                path=notebook_path,
+                start_line=1,
+                message=job_result.ipynb_error.message,
+                title=f"Notebook exception: {job_result.ipynb_error.name}",
+                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+            )
+
     def report_noteburst_timeout(
         self,
         *,

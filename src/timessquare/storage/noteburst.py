@@ -38,6 +38,13 @@ class NoteburstJobStatus(str, Enum):
     not_found = "not_found"
 
 
+class NotebookError(BaseModel):
+    """Information about an exception that occurred during notebook exec."""
+
+    name: Annotated[str, Field(description="The name of the exception.")]
+    message: Annotated[str, Field(description="The exception's message.")]
+
+
 class NoteburstJobResponseModel(BaseModel):
     """A model for a subset of the noteburst response body for a notebook
     execution request.
@@ -60,6 +67,13 @@ class NoteburstJobResponseModel(BaseModel):
     ipynb: Annotated[
         str | None,
         Field(description="The executed notebook, if completed"),
+    ] = None
+
+    ipynb_error: Annotated[
+        NotebookError | None,
+        Field(
+            description="The error that occurred during notebook execution."
+        ),
     ] = None
 
     start_time: Annotated[
