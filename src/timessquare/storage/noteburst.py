@@ -45,7 +45,7 @@ class NotebookError(BaseModel):
     message: Annotated[str, Field(description="The exception's message.")]
 
 
-class NoteburstErrorCodes(Enum):
+class NoteburstErrorCodes(str, Enum):
     """Error codes for Noteburst errors."""
 
     timeout = "timeout"
