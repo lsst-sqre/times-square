@@ -211,7 +211,12 @@ class NoteburstApi:
         self._http_client = http_client
 
     async def submit_job(
-        self, *, ipynb: str, kernel: str = "LSST", enable_retry: bool = True
+        self,
+        *,
+        ipynb: str,
+        kernel: str = "LSST",
+        enable_retry: bool = True,
+        timeout: timedelta | None = None,
     ) -> NoteburstApiResult:
         base_url = str(config.environment_url).rstrip("/")
         r = await self._http_client.post(
@@ -220,6 +225,7 @@ class NoteburstApi:
                 "ipynb": ipynb,
                 "kernel_name": kernel,
                 "enable_retry": enable_retry,
+                "timeout": timeout.total_seconds() if timeout else None,
             },
             headers=self._noteburst_auth_header,
         )

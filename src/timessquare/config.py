@@ -178,6 +178,18 @@ class Config(BaseSettings):
         ),
     ] = 300
 
+    default_execution_timeout: Annotated[
+        int,
+        Field(
+            gt=0,
+            alias="TS_DEFAULT_EXECUTION_TIMEOUT",
+            description=(
+                "The default execution timeout for notebook execution jobs, "
+                "in seconds."
+            ),
+        ),
+    ] = 60
+
     redis_queue_url: EnvRedisDsn = Field(
         alias="TS_REDIS_QUEUE_URL",
         description=("URL for the redis instance, used by the worker queue."),
