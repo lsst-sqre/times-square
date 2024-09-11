@@ -176,7 +176,7 @@ class Config(BaseSettings):
                 "complete."
             ),
         ),
-    ] = 300
+    ] = 600
 
     default_execution_timeout: Annotated[
         int,
