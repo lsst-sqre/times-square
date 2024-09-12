@@ -23,7 +23,11 @@ from yaml import YAMLError
 from timessquare.config import config
 from timessquare.exceptions import PageJinjaError
 
-from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
+from ..storage.noteburst import (
+    NoteburstErrorCodes,
+    NoteburstJobResponseModel,
+    NoteburstJobStatus,
+)
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     NotebookSidecarFile,
@@ -493,14 +497,75 @@ class NotebookExecutionsCheck(GitHubCheck):
             raise RuntimeError("Page execution has no notebook source path")
         self.notebook_paths_checked.append(notebook_path)
         if not job_result.success:
+            if job_result.error:
+                if (
+                    job_result.error.code == NoteburstErrorCodes.timeout
+                    and job_result.timeout
+                ):
+                    title = "Notebook execution timeout"
+                    message = (
+                        "The notebook execution timed out "
+                        f"({job_result.timeout:.0f} sec.)."
+                    )
+                else:
+                    title = f"Noteburst error: {job_result.error.code}"
+                    message = (
+                        job_result.error.message
+                        or "We couldn't run this notebook successfully."
+                    )
+            else:
+                title = "Noteburst error"
+                message = "We couldn't run this notebook successfully."
             annotation = Annotation(
                 path=notebook_path,
                 start_line=1,
-                message="We couldn't run this notebook successfully.",
-                title="Notebook execution error",
+                message=message,
+                title=title,
                 annotation_level=GitHubCheckRunAnnotationLevel.failure,
             )
             self.annotations.append(annotation)
+
+        if job_result.ipynb_error:
+            # An exception occured in the notebook execution
+            annotation = Annotation(
+                path=notebook_path,
+                start_line=1,
+                message=job_result.ipynb_error.message,
+                title=f"Notebook exception: {job_result.ipynb_error.name}",
+                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+            )
+
+    def report_noteburst_timeout(
+        self,
+        *,
+        page_execution: PageExecutionInfo,
+        job_result: NoteburstJobResponseModel | None = None,
+    ) -> None:
+        """Report that the notebook execution failed to complete in time."""
+        path = page_execution.page.repository_source_path
+        if path is None:
+            raise RuntimeError("Page execution has no notebook path")
+        message = "The notebook execution timed out."
+        if job_result:
+            if job_result.status == NoteburstJobStatus.in_progress:
+                message += (
+                    " The notebook execution is still in progress "
+                    f"after {job_result.runtime.total_seconds()} seconds."
+                )
+            elif job_result.status == NoteburstJobStatus.queued:
+                message += (
+                    " The notebook execution is still in the Noteburst queue."
+                    f"after {job_result.runtime.total_seconds()} seconds."
+                )
+        annotation = Annotation(
+            path=path,
+            start_line=1,
+            message=message,
+            title="Noteburst timeout",
+            annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        )
+        self.annotations.append(annotation)
+        self.notebook_paths_checked.append(path)
 
     @property
     def summary(self) -> str:

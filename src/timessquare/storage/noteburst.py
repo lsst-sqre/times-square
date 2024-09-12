@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Annotated
 
@@ -38,6 +38,41 @@ class NoteburstJobStatus(str, Enum):
     not_found = "not_found"
 
 
+class NotebookError(BaseModel):
+    """Information about an exception that occurred during notebook exec."""
+
+    name: Annotated[str, Field(description="The name of the exception.")]
+    message: Annotated[str, Field(description="The exception's message.")]
+
+
+class NoteburstErrorCodes(str, Enum):
+    """Error codes for Noteburst errors."""
+
+    timeout = "timeout"
+    """The notebook execution timed out."""
+
+    jupyter_error = "jupyter_error"
+    """An error occurred contacting the Jupyter server."""
+
+    unknown = "unknown"
+    """An unknown error occurred."""
+
+
+class NoteburstExecutionError(BaseModel):
+    """Information about an exception that occurred during noteburst's
+    execution of a notebook (other than an exception raised in the notebook
+    itself).
+    """
+
+    code: NoteburstErrorCodes = Field(
+        description="The reference code of the error."
+    )
+
+    message: str | None = Field(
+        None, description="Additional information about the exception."
+    )
+
+
 class NoteburstJobResponseModel(BaseModel):
     """A model for a subset of the noteburst response body for a notebook
     execution request.
@@ -60,6 +95,13 @@ class NoteburstJobResponseModel(BaseModel):
     ipynb: Annotated[
         str | None,
         Field(description="The executed notebook, if completed"),
+    ] = None
+
+    ipynb_error: Annotated[
+        NotebookError | None,
+        Field(
+            description="The error that occurred during notebook execution."
+        ),
     ] = None
 
     start_time: Annotated[
@@ -91,15 +133,61 @@ class NoteburstJobResponseModel(BaseModel):
             )
         ),
     ] = None
-    """Whether the execution was successful or not (only set if result is
-    available).
-    """
+
+    error: Annotated[
+        NoteburstExecutionError | None,
+        Field(
+            description=(
+                "An error occurred during notebook execution, other than an "
+                "exception in the notebook itself. This field is null if an "
+                "error did not occur."
+            )
+        ),
+    ] = None
+
+    timeout: Annotated[
+        float | None,
+        Field(
+            description=(
+                "The timeout set on the notebook execution job, in seconds."
+            )
+        ),
+    ] = None
 
     def to_job_model(self) -> NoteburstJobModel:
         """Export to a `NoteburstJobModel` for storage."""
         return NoteburstJobModel(
             date_submitted=self.enqueue_time, job_url=self.self_url
         )
+
+    @property
+    def runtime(self) -> timedelta:
+        """Return the runtime of the job.
+
+        The meaning of the runtime depends on the status of the job:
+
+        - If the job is complete, return the duration between the start time
+          and the finish time.
+        - If the job is in progress, return the duration between the start time
+          and the current time.
+        - If the job has not run, the duration is 0.
+        """
+        if self.status == NoteburstJobStatus.complete:
+            if self.start_time is None or self.finish_time is None:
+                raise ValueError(
+                    "NoteburstJobResponseModel has status 'complete' but "
+                    "missing start_time or finish_time"
+                )
+            return self.finish_time - self.start_time
+        elif self.status == NoteburstJobStatus.in_progress:
+            if self.enqueue_time is None:
+                raise ValueError(
+                    "NoteburstJobResponseModel has status 'in_progress' but "
+                    "missing enqueue_time"
+                )
+            return datetime.now(tz=UTC) - self.enqueue_time
+        else:
+            return timedelta(seconds=0)
 
 
 @dataclass
@@ -123,7 +211,12 @@ class NoteburstApi:
         self._http_client = http_client
 
     async def submit_job(
-        self, *, ipynb: str, kernel: str = "LSST", enable_retry: bool = True
+        self,
+        *,
+        ipynb: str,
+        kernel: str = "LSST",
+        enable_retry: bool = True,
+        timeout: timedelta | None = None,
     ) -> NoteburstApiResult:
         base_url = str(config.environment_url).rstrip("/")
         r = await self._http_client.post(
@@ -132,6 +225,7 @@ class NoteburstApi:
                 "ipynb": ipynb,
                 "kernel_name": kernel,
                 "enable_retry": enable_retry,
+                "timeout": timeout.total_seconds() if timeout else None,
             },
             headers=self._noteburst_auth_header,
         )

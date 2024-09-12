@@ -419,7 +419,9 @@ class PageService:
         """
         ipynb = page_instance.page.render_parameters(page_instance.values)
         r = await self.noteburst_api.submit_job(
-            ipynb=ipynb, enable_retry=enable_retry
+            ipynb=ipynb,
+            enable_retry=enable_retry,
+            timeout=page_instance.page.execution_timeout,
         )
         if r.status_code != 202 or r.data is None:
             self._logger.warning(

@@ -8,7 +8,7 @@ import re
 from base64 import b64encode
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any
 from uuid import uuid4
@@ -29,6 +29,7 @@ from timessquare.exceptions import (
     ParameterSchemaError,
 )
 
+from ..config import config
 from ..storage.noteburst import NoteburstJobModel
 
 NB_VERSION = 4
@@ -331,6 +332,19 @@ class PageModel:
                 sidecar_filename
             )
         )
+
+    @property
+    def execution_timeout(self) -> timedelta:
+        """The execution timeout for the page, in seconds.
+
+        Note
+        ----
+        Currently this timeout defaults to the `default_execution_timeout`
+        configuration value. In the future, this setting may be configurable
+        per-page. At that time, this property will use the per-page setting,
+        falling back to the Times Square default if not set.
+        """
+        return timedelta(seconds=config.default_execution_timeout)
 
     @staticmethod
     def read_ipynb(source: str) -> nbformat.NotebookNode:
