@@ -8,6 +8,16 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.13.0'></a>
+
+## 0.13.0 (2024-09-12)
+
+### New features
+
+- Times Square now specifies a timeout for notebook executions with Noteburst. This provides better feedback for notebook executions that have hung, either when rendering new pages for users, for when doing a GitHub Check Run. Currently this timeout is set app-wide with the `TS_DEFAULT_EXECUTION_TIMEOUT` environment variable. The default timeout is 60 seconds. In the future we intend to add per-notebook timeout configuration.
+
+- Times Square enforces a timeout when polling for Noteburst results during a GitHub Check run. This prevents the Check Run from hanging indefinitely if the Noteburst service is unable to time out a notebook execution or fails for any reason. This timeout is configurable via the `TS_CHECK_RUN_TIMEOUT` environment variable. The default timeout is 600 seconds.
+
 <a id='changelog-0.12.0'></a>
 
 ## 0.12.0 (2024-09-04)
