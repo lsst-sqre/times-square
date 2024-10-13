@@ -14,3 +14,5 @@ Times Square uses [Noteburst](https://noteburst.lsst.io) ([GitHub](https://githu
 This Times Square API service is developed at https://github.com/lsst-sqre/times-square.
 It's user interface is part of [Squareone](https://github.com/lsst-sqre/squareone).
 Times Square is deployed with [Phalanx](https://phalanx.lsst.io/applications/times-square/index.html).
+
+Documentation on how to set up notebooks for times-square is at https://rsp.lsst.io/v/usdfdev/guides/times-square/authoring/authoring-howto.html ,
