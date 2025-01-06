@@ -9,7 +9,7 @@ from contextlib import suppress
 import gidgethub.abc as gh_abc
 from gidgethub import sansio
 
-__all__ = ["MockGitHubAPI", "SAMPLE_PRIVATE_KEY"]
+__all__ = ["SAMPLE_PRIVATE_KEY", "MockGitHubAPI"]
 
 
 SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----

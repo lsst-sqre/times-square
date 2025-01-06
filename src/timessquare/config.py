@@ -12,7 +12,7 @@ from safir.arq import ArqMode
 from safir.logging import LogLevel, Profile
 from safir.pydantic import EnvAsyncPostgresDsn, EnvRedisDsn
 
-__all__ = ["Config", "Profile", "LogLevel"]
+__all__ = ["Config", "LogLevel", "Profile"]
 
 
 class Config(BaseSettings):

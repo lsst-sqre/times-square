@@ -82,7 +82,6 @@ pr_commit_parameter = Path(
 
 @v1_router.get(
     "/",
-    response_model=Index,
     summary="v1 API metadata",
 )
 async def get_index(
@@ -104,7 +103,6 @@ async def get_index(
 
 @v1_router.get(
     "/pages/{page}",
-    response_model=Page,
     summary="Page metadata",
     name="get_page",
     tags=[ApiTags.pages],
@@ -136,7 +134,6 @@ async def get_page(
 
 @v1_router.get(
     "/pages",
-    response_model=list[PageSummary],
     summary="List pages",
     name="get_pages",
     tags=[ApiTags.pages],
@@ -156,7 +153,6 @@ async def get_pages(
 
 @v1_router.post(
     "/pages",
-    response_model=Page,
     summary="Create a new page",
     status_code=201,
     tags=[ApiTags.pages],
@@ -378,7 +374,6 @@ async def get_page_html(
     "/pages/{page}/html",
     summary="Delete the cached HTML of a notebook.",
     name="delete_page_html",
-    response_model=DeleteHtmlResponse,
     tags=[ApiTags.pages],
     responses={
         404: {"description": "Cached HTML not found", "model": ErrorModel},
@@ -423,7 +418,6 @@ async def delete_page_html(
     "/pages/{page}/htmlstatus",
     summary="Get the status of a page's HTML rendering",
     name="get_page_html_status",
-    response_model=HtmlStatus,
     tags=[ApiTags.pages],
     responses={
         404: {"description": "Page not found", "model": ErrorModel},
@@ -498,7 +492,6 @@ async def get_page_html_events(
     "/github",
     summary="Get a tree of GitHub-backed pages",
     name="get_github_tree",
-    response_model=GitHubContentsRoot,
     tags=[ApiTags.github],
 )
 async def get_github_tree(
@@ -519,7 +512,6 @@ async def get_github_tree(
 
 @v1_router.get(
     "/github/{display_path:path}",
-    response_model=Page,
     summary="Metadata for GitHub-backed page",
     name="get_github_page",
     tags=[ApiTags.github],
@@ -556,7 +548,6 @@ async def get_github_page(
     "/github-pr/{owner}/{repo}/{commit}",
     summary="Get a tree of GitHub PR preview pages",
     name="get_github_pr_tree",
-    response_model=GitHubPrContents,
     tags=[ApiTags.pr],
 )
 async def get_github_pr_tree(
@@ -607,7 +598,6 @@ async def get_github_pr_tree(
 
 @v1_router.get(
     "/github-pr/{owner}/{repo}/{commit}/{path:path}",
-    response_model=Page,
     summary="Metadata for page in a pull request",
     name="get_github_pr_page",
     tags=[ApiTags.pr],

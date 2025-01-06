@@ -23,7 +23,7 @@ from timessquare.dependencies.requestcontext import (
 from .githubwebhooks import router as webhook_router
 from .models import Index
 
-__all__ = ["get_index", "external_router", "post_github_webhook"]
+__all__ = ["external_router", "get_index", "post_github_webhook"]
 
 external_router = APIRouter()
 """FastAPI router for all external handlers."""
