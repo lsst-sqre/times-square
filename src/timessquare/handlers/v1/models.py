@@ -73,13 +73,13 @@ page_date_added_field = Field(
     description="Date when the page was originally added.",
 )
 
-page_authors_field = Field(
-    default_factory=list,
+page_authors_field: list[Person] = Field(
+    default=[],
     title="Page authors",
     description="Authors of the page",
 )
 
-page_tags_field = Field(default_factory=list, title="Tags (keywords)")
+page_tags_field: list[str] = Field(default=[], title="Tags (keywords)")
 
 page_url_field = Field(
     ...,
