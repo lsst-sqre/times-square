@@ -57,6 +57,13 @@ COPY --from=install-image /opt/venv /opt/venv
 
 COPY scripts/start-api.sh /start-api.sh
 
+# Copy the Alembic configuration and migrations, and set that path as the
+# working directory so that Alembic can be run with a simple entry command
+# and no extra configuration.
+COPY --from=install-image /workdir/alembic.ini /app/alembic.ini
+COPY --from=install-image /workdir/alembic /app/alembic
+WORKDIR /app
+
 # Make sure we use the virtualenv
 ENV PATH="/opt/venv/bin:$PATH"
 

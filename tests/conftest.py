@@ -10,7 +10,11 @@ from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from gidgethub.httpx import GitHubAPI
 from httpx import ASGITransport, AsyncClient
-from safir.database import create_database_engine, initialize_database
+from safir.database import (
+    create_database_engine,
+    initialize_database,
+    stamp_database_async,
+)
 
 from timessquare import main
 from timessquare.config import config
@@ -25,10 +29,12 @@ async def app() -> AsyncIterator[FastAPI]:
     events are sent during test execution.
     """
     logger = structlog.get_logger(config.logger_name)
+
     engine = create_database_engine(
         config.database_url, config.database_password.get_secret_value()
     )
     await initialize_database(engine, logger, schema=Base.metadata, reset=True)
+    await stamp_database_async(engine)
     await engine.dispose()
     async with LifespanManager(main.app):
         yield main.app

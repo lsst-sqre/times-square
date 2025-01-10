@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from safir.database import create_database_engine, is_database_current
 from safir.dependencies.arq import arq_dependency
 from safir.dependencies.db_session import db_session_dependency
 from safir.dependencies.http_client import http_client_dependency
@@ -40,6 +41,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator:
     """Context manager for the application lifespan."""
     logger = get_logger(__name__)
     logger.debug("Times Square is starting up.")
+
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+    await engine.dispose()
 
     await db_session_dependency.initialize(
         str(config.database_url), config.database_password.get_secret_value()

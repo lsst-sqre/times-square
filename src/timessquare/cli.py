@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import click
 import structlog
 import uvicorn
 from redis.asyncio import Redis
 from safir.asyncio import run_with_asyncio
-from safir.database import create_database_engine, initialize_database
+from safir.database import (
+    create_database_engine,
+    initialize_database,
+    is_database_current,
+    stamp_database,
+)
 
 from .config import config
 from .dbschema import Base
@@ -54,11 +62,18 @@ def develop(port: int) -> None:
 
 @main.command()
 @click.option(
+    "--alembic-config-path",
+    envvar="TS_ALEMBIC_CONFIG_PATH",
+    type=click.Path(path_type=Path),
+    default=Path("/app/alembic.ini"),
+    help="Alembic configuration file.",
+)
+@click.option(
     "--reset", is_flag=True, help="Delete all existing database data."
 )
 @run_with_asyncio
-async def init(*, reset: bool) -> None:
-    """Initialize the database storage."""
+async def init(*, alembic_config_path: Path, reset: bool) -> None:
+    """Initialize the SQL database storage."""
     logger = structlog.get_logger(config.logger_name)
     engine = create_database_engine(
         str(config.database_url), config.database_password.get_secret_value()
@@ -67,6 +82,43 @@ async def init(*, reset: bool) -> None:
         engine, logger, schema=Base.metadata, reset=reset
     )
     await engine.dispose()
+    stamp_database(alembic_config_path)
+
+
+@main.command()
+@click.option(
+    "--alembic-config-path",
+    envvar="TS_ALEMBIC_CONFIG_PATH",
+    type=click.Path(path_type=Path),
+    default=Path("/app/alembic.ini"),
+    help="Alembic configuration file.",
+)
+def update_db_schema(*, alembic_config_path: Path) -> None:
+    """Update the SQL database schema."""
+    subprocess.run(
+        ["alembic", "upgrade", "head"],
+        check=True,
+        cwd=str(alembic_config_path.parent),
+    )
+
+
+@main.command()
+@click.option(
+    "--alembic-config-path",
+    envvar="TS_ALEMBIC_CONFIG_PATH",
+    type=click.Path(path_type=Path),
+    default=Path("/app/alembic.ini"),
+    help="Alembic configuration file.",
+)
+@run_with_asyncio
+async def validate_db_schema(*, alembic_config_path: Path) -> None:
+    """Validate that the SQL database schema is current."""
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    logger = structlog.get_logger("timessquare")
+    if not await is_database_current(engine, logger, alembic_config_path):
+        raise click.ClickException("Database schema is not current")
 
 
 @main.command("reset-html")

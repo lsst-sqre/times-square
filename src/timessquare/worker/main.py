@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 import arq
 import httpx
 import structlog
+from safir.database import create_database_engine, is_database_current
 from safir.dependencies.db_session import db_session_dependency
 from safir.logging import configure_logging
 from safir.slack.blockkit import SlackMessage, SlackTextField
@@ -57,6 +58,14 @@ async def startup(ctx: dict[Any, Any]) -> None:
         ctx["slack"] = slack_client
 
     ctx["logger"] = logger
+
+    # Check if the database schema is up to date
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+    await engine.dispose()
 
     # Set up FastAPI dependencies; we can use them "manually" with
     # arq to provide resources similarly to FastAPI endpoints
