@@ -113,6 +113,10 @@ extend-exclude = [
 "alembic/env.py" = [
     "INP001",  # Alembic config isn't a package
 ]
+"alembic/versions/**" = [
+    "INP001",  # Alembic config isn't a package
+    "D103",    # Alembic migrations don't need docstrings
+]
 "src/timessquare/config.py" = [
     "FBT001",  # Pydantic validators take boolean arguments
 ]
@@ -130,4 +134,5 @@ extend-exclude = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["timessquare", "tests"]
+known-third-party = ["alembic"]
 split-on-trailing-comma = false
