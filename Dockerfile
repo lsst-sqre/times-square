@@ -67,6 +67,10 @@ WORKDIR /app
 # Make sure we use the virtualenv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Set environment variable for Alembic config; other variables are set
+# via Kubernetes.
+ENV TS_ALEMBIC_CONFIG_PATH="/app/alembic.ini"
+
 # Switch to the non-root user.
 USER appuser
 

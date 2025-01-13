@@ -65,7 +65,6 @@ def develop(port: int) -> None:
     "--alembic-config-path",
     envvar="TS_ALEMBIC_CONFIG_PATH",
     type=click.Path(path_type=Path),
-    default=Path("/app/alembic.ini"),
     help="Alembic configuration file.",
 )
 @click.option(
@@ -90,7 +89,6 @@ async def init(*, alembic_config_path: Path, reset: bool) -> None:
     "--alembic-config-path",
     envvar="TS_ALEMBIC_CONFIG_PATH",
     type=click.Path(path_type=Path),
-    default=Path("/app/alembic.ini"),
     help="Alembic configuration file.",
 )
 def update_db_schema(*, alembic_config_path: Path) -> None:
@@ -107,7 +105,6 @@ def update_db_schema(*, alembic_config_path: Path) -> None:
     "--alembic-config-path",
     envvar="TS_ALEMBIC_CONFIG_PATH",
     type=click.Path(path_type=Path),
-    default=Path("/app/alembic.ini"),
     help="Alembic configuration file.",
 )
 @run_with_asyncio
