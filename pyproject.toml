@@ -130,6 +130,7 @@ extend-exclude = [
     "S106",    # tests are allowed to hard-code dummy passwords
     "SLF001",  # tests are allowed to access private members
     "T201",    # tests are allowed to use print
+    "ASYNC221",  # async tests are allowed to use sync functions
 ]
 
 [tool.ruff.lint.isort]
