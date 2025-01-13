@@ -24,12 +24,14 @@ Setting up a local development environment
 Times Square is a Python project that should be developed within a virtual environment.
 
 If you already have a Python virtual environment set up in your shell, you can use the :command:`make init` command to install Times Square and its development dependencies into it.
+This complete procedure shows how to use uv to create a virtual environment and install Times Square into it:
 
 .. code-block:: sh
 
     git clone https://github.com/lsst-sqre/times-square.git
     cd times-square
-    pip install tox
+    uv venv
+    source .venv/bin/activate
     make init
 
 .. _pre-commit-hooks:
@@ -39,12 +41,7 @@ Pre-commit
 
 The pre-commit hooks, which are automatically installed by running the :command:`make init` command on :ref:`set up <dev-environment>`, ensure that files are valid and properly formatted.
 Some pre-commit hooks automatically reformat code:
-
-``ruff``
-    Sorts Python imports and automatically fixes some common Python issues.
-
-``black``
-    Automatically formats Python code.
+The ``ruff`` hook automatically fixes some common Python issues and sorts Python imports.
 
 When these hooks fail, your Git commit will be aborted.
 To proceed, stage the new modifications and proceed with your Git commit.
@@ -106,7 +103,7 @@ When preparing a pull request, run
 
 .. code-block:: sh
 
-   scrive create
+   scriv create
 
 This will create a change log fragment in :file:`changelog.d`.
 Edit that fragment, removing the sections that do not apply and adding entries for your pull request.
