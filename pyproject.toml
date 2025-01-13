@@ -110,6 +110,13 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"alembic/env.py" = [
+    "INP001",  # Alembic config isn't a package
+]
+"alembic/versions/**" = [
+    "INP001",  # Alembic config isn't a package
+    "D103",    # Alembic migrations don't need docstrings
+]
 "src/timessquare/config.py" = [
     "FBT001",  # Pydantic validators take boolean arguments
 ]
@@ -123,8 +130,10 @@ extend-exclude = [
     "S106",    # tests are allowed to hard-code dummy passwords
     "SLF001",  # tests are allowed to access private members
     "T201",    # tests are allowed to use print
+    "ASYNC221",  # async tests are allowed to use sync functions
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["timessquare", "tests"]
+known-third-party = ["alembic"]
 split-on-trailing-comma = false

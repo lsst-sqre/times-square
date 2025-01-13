@@ -8,6 +8,22 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.14.0'></a>
+
+## 0.14.0 (2025-01-13)
+
+### Other changes
+
+- Times Square now uses Alembic to manage database schema versioning and migrations.
+
+- Begin SQLAlchemy 2 adoption with the new `DeclarativeBase`, `mapped_column`, and the `Mapped` type.
+
+- Update the `make update` command in the Makefile to use the `--universal` flag with `uv pip compile`.
+
+- Fix type checking issues for Pydantic fields to use empty lists as the default, rather than using a default factory.
+
+- Explicitly set `asyncio_default_fixture_loop_scope` to `function`. An explicit setting is now required by pytest-asyncio.
+
 <a id='changelog-0.13.0'></a>
 
 ## 0.13.0 (2024-09-12)
