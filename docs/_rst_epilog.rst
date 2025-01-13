@@ -4,4 +4,5 @@
 .. _scriv: https://scriv.readthedocs.io/en/latest/
 .. _semver: https://semver.org
 .. _tox: https://tox.readthedocs.io/en/latest/
+.. _Alembic: https://alembic.sqlalchemy.org/en/latest/
 

@@ -68,6 +68,14 @@ To see a listing of specific tox sessions, run:
 
 Times Square requires Docker to run its tests.
 
+Database migrations
+===================
+
+Times Square uses Alembic_ for database migrations.
+If your work involves changing the database schema (in :file:`/src/timessquare/dbschema`) you will need to prepare an Alembic migration in the same PR.
+This process is outlined in the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#testing-database-migrations>`__.
+Note that in Times Square the :file:`docker-compose.yaml` is hosted in the root of the repository rather than in the :file:`alembic` directory.
+
 Building documentation
 ======================
 
