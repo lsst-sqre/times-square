@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from pathlib import Path
 
@@ -12,13 +13,12 @@ from redis.asyncio import Redis
 from safir.asyncio import run_with_asyncio
 from safir.database import (
     create_database_engine,
-    initialize_database,
     is_database_current,
     stamp_database,
 )
 
 from .config import config
-from .dbschema import Base
+from .database import init_database
 from .storage.nbhtmlcache import NbHtmlCacheStore
 
 
@@ -70,18 +70,13 @@ def develop(port: int) -> None:
 @click.option(
     "--reset", is_flag=True, help="Delete all existing database data."
 )
-@run_with_asyncio
-async def init(*, alembic_config_path: Path, reset: bool) -> None:
+def init(*, alembic_config_path: Path, reset: bool) -> None:
     """Initialize the SQL database storage."""
-    logger = structlog.get_logger(config.logger_name)
-    engine = create_database_engine(
-        str(config.database_url), config.database_password.get_secret_value()
-    )
-    await initialize_database(
-        engine, logger, schema=Base.metadata, reset=reset
-    )
-    await engine.dispose()
+    logger = structlog.get_logger("timessquare")
+    logger.debug("Initializing database")
+    asyncio.run(init_database(config, logger, reset=reset))
     stamp_database(alembic_config_path)
+    logger.debug("Finished initializing data stores")
 
 
 @main.command()
