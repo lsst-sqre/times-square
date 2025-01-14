@@ -70,7 +70,44 @@ Database migrations
 
 Times Square uses Alembic_ for database migrations.
 If your work involves changing the database schema (in :file:`/src/timessquare/dbschema`) you will need to prepare an Alembic migration in the same PR.
-This process is outlined in the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#testing-database-migrations>`__.
+To create the migration, you will need to run a local postgres database for Alembic to compare the current schema to the new schema:
+
+1. With your existing codebase (before your changes; switch branches or stash changes if necessary), start up the database:
+
+   .. code-block:: sh
+
+      docker-compose -f docker-compose.yaml up
+
+2. Initialize the database:
+
+   .. code-block:: sh
+
+      tox run -e cli -- init
+
+3. Apply code changes to the database schema in :file:`/src/timessquare/dbschema`.
+
+4. Generate the Alembic migration:
+
+   .. code-block:: sh
+
+      tox run -e alembic -- revision --autogenerate -m "Your migration message."
+
+5. Review the migration in :file:`alembic/versions/` and make any necessary changes.
+   In particular, enums require special handling. See the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#creating-database-migrations>`__ for more information.
+
+6. Apply the migration to the running database:
+
+   .. code-block:: sh
+
+      tox run -e cli -- update-db-schema --alembic-config-path alembic.ini
+
+7. Shut down the database:
+
+   .. code-block:: sh
+
+      docker-compose -f docker-compose.yaml down
+
+For more general information about preparing Alembic migrations, see the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#testing-database-migrations>`__.
 Note that in Times Square the :file:`docker-compose.yaml` is hosted in the root of the repository rather than in the :file:`alembic` directory.
 
 Building documentation
