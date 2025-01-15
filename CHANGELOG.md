@@ -8,6 +8,22 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.15.0'></a>
+
+## 0.15.0 (2025-01-15)
+
+### Backwards-incompatible changes
+
+- Migrate the database to use `TEXT` column types where previously we used `VARCHAR` columns with a (now unnecessary) length limit. **This change requires a database migration on deployment**. In Postgres there is no functional or performance difference between `VARCHAR` and `TEXT` columns. This change simplifies the database schema and reduce the risk of future issues with column length limits.
+
+### Bug fixes
+
+- In the `cli` tox environment, fix the name of the executable to be `times-square` rather than `timessquare`.
+
+### Other changes
+
+- Improved the developer documentation for database migration to concretely provide copy-and-paste-able commands for preparing and running database migrations.
+
 <a id='changelog-0.14.0'></a>
 
 ## 0.14.0 (2025-01-13)
