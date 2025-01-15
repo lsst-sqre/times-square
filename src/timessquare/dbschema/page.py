@@ -60,7 +60,7 @@ class SqlPage(Base):
     """Tags (keywords) assigned to this page."""
 
     uploader_username: Mapped[str | None] = mapped_column(
-        Unicode(64), nullable=True
+        UnicodeText, nullable=True
     )
     """Username of the uploader, if this page is uploaded without GitHub
     backing.
@@ -79,12 +79,12 @@ class SqlPage(Base):
     indefinitely.
     """
 
-    github_owner: Mapped[str | None] = mapped_column(Unicode(255))
+    github_owner: Mapped[str | None] = mapped_column(UnicodeText)
     """The GitHub repository owner (username or organization name) for
     GitHub-backed pages.
     """
 
-    github_repo: Mapped[str | None] = mapped_column(Unicode(255))
+    github_repo: Mapped[str | None] = mapped_column(UnicodeText)
     """The GitHub repository name for GitHub-backed pages."""
 
     github_commit: Mapped[str | None] = mapped_column(Unicode(40))
@@ -92,17 +92,17 @@ class SqlPage(Base):
     associated with a GitHub Check Run.
     """
 
-    repository_path_prefix: Mapped[str | None] = mapped_column(Unicode(2048))
+    repository_path_prefix: Mapped[str | None] = mapped_column(UnicodeText)
     """The repository path prefix, relative to the root of the directory."""
 
     repository_display_path_prefix: Mapped[str | None] = mapped_column(
-        Unicode(2048)
+        UnicodeText
     )
     """The repository path prefix, relative to the configured root of Times
     Square notebooks in a repository.
     """
 
-    repository_path_stem: Mapped[str | None] = mapped_column(Unicode(255))
+    repository_path_stem: Mapped[str | None] = mapped_column(UnicodeText)
     """The filename stem (without prefix and without extension) of the
     source file in the GitHub repository for GitHub-backed pages.
 
@@ -112,7 +112,7 @@ class SqlPage(Base):
     """
 
     repository_source_extension: Mapped[str | None] = mapped_column(
-        Unicode(255)
+        UnicodeText
     )
     """The filename extension of the source file in the GitHub
     repository for GitHub-backed pages.
@@ -121,7 +121,7 @@ class SqlPage(Base):
     """
 
     repository_sidecar_extension: Mapped[str | None] = mapped_column(
-        Unicode(255)
+        UnicodeText
     )
     """The filename extension of the sidecar YAML file in the GitHub
     repository for GitHub-backed pages.
