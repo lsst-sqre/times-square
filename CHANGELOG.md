@@ -8,6 +8,13 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.16.0'></a>
+## 0.16.0 (2025-01-22)
+
+### New features
+
+- Instrument with Sentry. Don't trace the SSE endpoint because Sentry holds spans in memory as long as the connection is open.
+
 <a id='changelog-0.15.0'></a>
 
 ## 0.15.0 (2025-01-15)
