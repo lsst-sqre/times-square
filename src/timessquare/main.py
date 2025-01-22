@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from safir.database import create_database_engine, is_database_current
@@ -24,6 +25,7 @@ from safir.dependencies.http_client import http_client_dependency
 from safir.fastapi import ClientRequestError, client_request_error_handler
 from safir.logging import configure_logging, configure_uvicorn_logging
 from safir.middleware.x_forwarded import XForwardedMiddleware
+from safir.sentry import before_send_handler
 from safir.slack.webhook import SlackRouteErrorHandler
 from structlog import get_logger
 
@@ -32,8 +34,16 @@ from .dependencies.redis import redis_dependency
 from .handlers.external import external_router
 from .handlers.internal import internal_router
 from .handlers.v1 import v1_router
+from .sentry import make_traces_sampler
 
 __all__ = ["app", "config"]
+
+sentry_sdk.init(
+    dsn=config.sentry_dsn,
+    environment=config.environment_name,
+    before_send=before_send_handler,
+    traces_sampler=make_traces_sampler(config.sentry_traces_sample_rate),
+)
 
 
 @asynccontextmanager

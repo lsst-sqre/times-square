@@ -64,6 +64,16 @@ class Config(BaseSettings):
         ),
     ]
 
+    environment_name: Annotated[
+        str,
+        Field(
+            alias="TS_ENVIRONMENT_NAME",
+            description=(
+                "The Phalanx name of the Rubin Science Platform environment."
+            ),
+        ),
+    ]
+
     gafaelfawr_token: Annotated[
         SecretStr,
         Field(
@@ -225,6 +235,28 @@ class Config(BaseSettings):
             ),
         ),
     ] = None
+
+    sentry_dsn: Annotated[
+        str | None,
+        Field(
+            alias="TS_SENTRY_DSN",
+            description="DSN for sending events to Sentry.",
+        ),
+    ] = None
+
+    sentry_traces_sample_rate: Annotated[
+        float,
+        Field(
+            alias="TS_SENTRY_TRACES_SAMPLE_RATE",
+            description=(
+                "The percentage of transactions to send to Sentry, expressed "
+                "as a float between 0 and 1. 0 means send no traces, 1 means "
+                "send every trace."
+            ),
+            ge=0,
+            le=1,
+        ),
+    ] = 0
 
     @field_validator("path_prefix")
     @classmethod

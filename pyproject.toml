@@ -120,6 +120,9 @@ extend-exclude = [
 "src/timessquare/config.py" = [
     "FBT001",  # Pydantic validators take boolean arguments
 ]
+"src/timessquare/sentry.py" = [
+    "S311",  # We're not using random.random for cryptography
+]
 "tests/**" = [
     "C901",    # tests are allowed to be complex, sometimes that's convenient
     "D101",    # tests don't need docstrings
