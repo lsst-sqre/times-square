@@ -30,6 +30,11 @@ See the `Phalanx documentation for Times Square <https://phalanx.lsst.io/applica
    (string) The base URL of the Rubin Science Platform environment.
    This is used for creating URLs to services, such as JupyterHub.
 
+.. envvar:: TS_ENVIRONMENT_NAME
+
+   (string) The name of the Rubin Science Platform environment.
+   This is used as the Sentry environment.
+
 .. envvar:: TS_GAFAELFAWR_TOKEN
 
    (secret string) This token is used to make an admin API call to Gafaelfawr to get a token for the user.
@@ -74,3 +79,8 @@ See the `Phalanx documentation for Times Square <https://phalanx.lsst.io/applica
 .. envvar:: TS_GITHUB_ORGS
 
    (string) A comma-separated list of GitHub organizations that Times Square will sync notebooks from. This is used to filter out incidental GitHub App installations from the general public.
+
+.. envvar:: TS_SENTRY_TRACES_SAMPLE_RATE
+
+   (float) The percentage of transactions to send to Sentry, expressed as a float between 0 and 1. 0 means send no traces, 1 means send every trace.
+

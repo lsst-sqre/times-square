@@ -8,10 +8,12 @@ from typing import Any, ClassVar
 
 import arq
 import httpx
+import sentry_sdk
 import structlog
 from safir.database import create_database_engine, is_database_current
 from safir.dependencies.db_session import db_session_dependency
 from safir.logging import configure_logging
+from safir.sentry import before_send_handler
 from safir.slack.blockkit import SlackMessage, SlackTextField
 from safir.slack.webhook import SlackWebhookClient
 
@@ -29,6 +31,13 @@ from .functions import (
     repo_added,
     repo_push,
     repo_removed,
+)
+
+sentry_sdk.init(
+    dsn=config.sentry_dsn,
+    environment=config.environment_name,
+    before_send=before_send_handler,
+    traces_sample_rate=config.sentry_traces_sample_rate,
 )
 
 

@@ -27,4 +27,5 @@ markdown-it-py[linkify,plugins]
 mdformat
 mdformat-gfm
 PyYAML
+sentry-sdk
 sse-starlette
