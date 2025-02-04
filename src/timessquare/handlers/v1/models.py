@@ -114,6 +114,16 @@ page_rendered_field = Field(
     ),
 )
 
+github_page_rendered_field: AnyHttpUrl | None = Field(
+    None,
+    examples=["https://example.com/v1/rendered/org/repo/notebook.ipynb"],
+    title="GitHub-backed rendered notebook template URL",
+    description=(
+        "The URL for the source notebook rendered with parameter values "
+        "(JSON-formatted), by GitHub URL path."
+    ),
+)
+
 page_html_field = Field(
     ...,
     examples=["https://example.com/v1/pages/summit-weather/html"],

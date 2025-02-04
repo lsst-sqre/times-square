@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+import nbformat
 import pytest
 from httpx import AsyncClient
 from redis.asyncio import Redis
@@ -11,6 +12,7 @@ from safir.database import create_async_session, create_database_engine
 from structlog import get_logger
 
 from timessquare.config import config
+from timessquare.domain.githubcheckout import NotebookSidecarFile
 from timessquare.domain.page import PageModel
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
@@ -25,6 +27,7 @@ async def test_github(client: AsyncClient) -> None:
     """
     data_path = Path(__file__).parent.joinpath("../../data")
     demo_path = data_path / "demo.ipynb"
+    sidecar_path = data_path / "times-square-demo" / "demo.yaml"
 
     engine = create_database_engine(
         str(config.database_url), config.database_password.get_secret_value()
@@ -42,11 +45,13 @@ async def test_github(client: AsyncClient) -> None:
         arq_queue=MockArqQueue(),
     )
 
+    sidecar = NotebookSidecarFile.parse_yaml(sidecar_path.read_text())
+
     await page_service.add_page_to_store(
         PageModel(
             name="1",
             ipynb=demo_path.read_text(),
-            parameters={},
+            parameters=sidecar.export_parameters(),
             title="Demo",
             date_added=datetime.now(UTC),
             date_deleted=None,
@@ -149,8 +154,7 @@ async def test_github(client: AsyncClient) -> None:
                         "node_type": "page",
                         "title": "Gaussian 2D",
                         "path": (
-                            "lsst-sqre/times-square-demo/matplotlib/"
-                            "gaussian2d"
+                            "lsst-sqre/times-square-demo/matplotlib/gaussian2d"
                         ),
                         "contents": [],
                     },
@@ -176,3 +180,46 @@ async def test_github(client: AsyncClient) -> None:
         f"lsst-sqre/times-square-demo/matplotlib"
     )
     assert r.status_code == 404
+
+    rendered_url = (
+        f"https://example.com{config.path_prefix}/v1/github"
+        f"/rendered/lsst-sqre/times-square-demo/demo"
+    )
+
+    # Render the page template with default parameters
+    r = await client.get(rendered_url)
+    assert r.status_code == 200
+    notebook = nbformat.reads(r.text, as_version=4)
+    assert notebook.cells[0].source == (
+        "# Times Square demo\n"
+        "\n"
+        "Plot parameters:\n"
+        "\n"
+        "- Amplitude: A = 4\n"
+        "- Y offset: y0 = 0\n"
+        "- Wavelength: lambd = 2"
+    )
+    assert notebook.metadata["times-square"]["values"] == {
+        "A": 4,
+        "y0": 0,
+        "lambd": 2,
+    }
+
+    # Render the page template with some parameters set
+    r = await client.get(rendered_url, params={"A": 2})
+    assert r.status_code == 200
+    notebook = nbformat.reads(r.text, as_version=4)
+    assert notebook.cells[0].source == (
+        "# Times Square demo\n"
+        "\n"
+        "Plot parameters:\n"
+        "\n"
+        "- Amplitude: A = 2\n"
+        "- Y offset: y0 = 0\n"
+        "- Wavelength: lambd = 2"
+    )
+    assert notebook.metadata["times-square"]["values"] == {
+        "A": 2,
+        "y0": 0,
+        "lambd": 2,
+    }
