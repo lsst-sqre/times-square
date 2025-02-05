@@ -307,8 +307,8 @@ async def get_rendered_notebook(
     page: Annotated[str, page_path_parameter],
     context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> PlainTextResponse:
-    """Get a Jupyter Notebook with the parameter values filled in. The
-    notebook is still unexecuted.
+    """Get a Jupyter Notebook by page slug, with the parameter values filled
+    in. The notebook is still unexecuted.
     """
     page_service = context.page_service
     parameters = context.request.query_params
@@ -508,6 +508,50 @@ async def get_github_tree(
     async with context.session.begin():
         github_tree = await page_service.get_github_tree()
     return GitHubContentsRoot.from_tree(tree=github_tree)
+
+
+@v1_router.get(
+    "/github/rendered/{display_path:path}",
+    summary=(
+        "Get the unexecuted notebook source with rendered parameters for a "
+        "GitHub-based notebook."
+    ),
+    name="get_github_rendered_notebook",
+    tags=[ApiTags.github],
+    responses={
+        404: {"description": "Page not found", "model": ErrorModel},
+        422: {"description": "Invalid parameter", "model": ErrorModel},
+    },
+)
+async def get_github_rendered_notebook(
+    display_path: Annotated[str, display_path_parameter],
+    context: Annotated[RequestContext, Depends(context_dependency)],
+) -> PlainTextResponse:
+    """Get a Jupyter Notebook by GitHub path, with the parameter values filled
+    in. The notebook is still unexecuted.
+
+    This route provides the same functionality as ``get_rendered_notebook``,
+    but exposed at a different path so that different access controls can be
+    applied upstream.
+    """
+    page_service = context.page_service
+    parameters = context.request.query_params
+    async with context.session.begin():
+        try:
+            rendered_notebook = (
+                await page_service.render_page_template_by_display_path(
+                    display_path, parameters
+                )
+            )
+        except PageNotFoundError as e:
+            e.location = ErrorLocation.path
+            e.field_path = ["page"]
+            raise
+        except ParameterSchemaValidationError as e:
+            e.location = ErrorLocation.query
+            e.field_path = [e.parameter]
+            raise
+    return PlainTextResponse(rendered_notebook, media_type="application/json")
 
 
 @v1_router.get(

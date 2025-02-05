@@ -263,6 +263,28 @@ class PageService:
             missing, the default value is used instead.
         """
         page = await self.get_page(name)
+        return await self._render_page_template(page, values)
+
+    async def render_page_template_by_display_path(
+        self, display_path: str, values: Mapping[str, Any]
+    ) -> str:
+        """Render a GitHub-backed jupyter notebook, with the given parameter
+        values.
+
+        Parameters
+        ----------
+        display_path
+            The path to the notebook in a GitHub URL.
+        values
+            Parameter values, keyed by parameter names. If values are
+            missing, the default value is used instead.
+        """
+        page = await self.get_github_backed_page(display_path)
+        return await self._render_page_template(page, values)
+
+    async def _render_page_template(
+        self, page: PageModel, values: Mapping[str, Any]
+    ) -> str:
         resolved_values = page.resolve_and_validate_values(values)
         return page.render_parameters(resolved_values)
 
