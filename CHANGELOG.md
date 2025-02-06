@@ -8,6 +8,15 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.17.0'></a>
+## 0.17.0 (2025-02-05)
+
+### New features
+
+- `GET /v1/github/rendered/{display_path}` that returns a rendered GitHub-backed notebook template. This route provides the same functionality as `GET /v1/pages/{page}/rendered`, but finds the page based on its GitHub URL path. This is an additional path, all existing functionality, including the existing template rendering path, remains unchanged.
+
+  We need to deploy Times Square to environments where some users should not have permissions to execute notebooks, but they should have permissions to render notebook templates for certain GitHub-based notebooks. This will let us configure that access via methods that apply permissions based on URL paths.
+
 <a id='changelog-0.16.0'></a>
 ## 0.16.0 (2025-01-22)
 
