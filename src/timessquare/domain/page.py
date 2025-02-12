@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import keyword
-import re
 from base64 import b64encode
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
@@ -21,12 +19,11 @@ from timessquare.exceptions import (
     PageNotebookFormatError,
     PageParameterError,
     PageParameterValueCastingError,
-    ParameterNameValidationError,
 )
 
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
-from .pageparameters import PageParameterSchema
+from .pageparameters import PageParameters
 
 NB_VERSION = 4
 """The notebook format version used for reading and writing notebooks.
@@ -34,14 +31,6 @@ NB_VERSION = 4
 Generally this version should be upgraded as needed to support more modern
 notebook formats, while also being compatible with this app.
 """
-
-parameter_name_pattern = re.compile(
-    r"^"
-    r"[a-zA-Z]"  # initial characters are letters only
-    r"[_a-zA-Z0-9]*$"  # following characters are letters and numbers
-    r"$"
-)
-"""Regular expression that matches a valid parameter name."""
 
 
 @dataclass
@@ -58,7 +47,7 @@ class PageModel:
     ipynb: str
     """The Jinja-parameterized notebook (a JSON-formatted string)."""
 
-    parameters: dict[str, PageParameterSchema]
+    parameters: PageParameters
     """The notebook's parameter schemas, keyed by their names."""
 
     title: str
@@ -157,7 +146,7 @@ class PageModel:
         description of that paramter.
         """
         notebook = cls.read_ipynb(ipynb)
-        parameters = cls._extract_parameters(notebook)
+        parameters = PageParameters.create_from_notebook(notebook)
 
         name = uuid4().hex  # random slug for API uploads
         date_added = datetime.now(UTC)
@@ -186,7 +175,7 @@ class PageModel:
         *,
         ipynb: str,
         title: str,
-        parameters: dict[str, PageParameterSchema],
+        parameters: PageParameters,
         github_owner: str,
         github_repo: str,
         repository_path_prefix: str,
@@ -364,56 +353,6 @@ class PageModel:
         constant.
         """
         return nbformat.writes(notebook, version=NB_VERSION)
-
-    @staticmethod
-    def _extract_parameters(
-        notebook: nbformat.NotebookNode,
-    ) -> dict[str, PageParameterSchema]:
-        """Get the page parmeters from the notebook.
-
-        Parameters are located in the Jupyter Notebook's metadata under
-        the ``times-square.parameters`` path. Each key is a parameter name,
-        and each value is a JSON Schema description of that paramter.
-        """
-        try:
-            parameters_metadata = notebook.metadata["times-square"].parameters
-        except AttributeError:
-            return {}
-
-        return {
-            name: PageModel.create_and_validate_page_parameter(name, schema)
-            for name, schema in parameters_metadata.items()
-        }
-
-    @staticmethod
-    def create_and_validate_page_parameter(
-        name: str, schema: dict[str, Any]
-    ) -> PageParameterSchema:
-        """Validate a parameter's name and schema.
-
-        Raises
-        ------
-        ParameterValidationError
-            Raised if the parameter is invalid (a specific subclass is raised
-            for each type of validation check).
-        """
-        PageModel.validate_parameter_name(name)
-        return PageParameterSchema.create_and_validate(
-            name=name, json_schema=schema
-        )
-
-    @staticmethod
-    def validate_parameter_name(name: str) -> None:
-        """Validate a parameter's name.
-
-        Parameters must be valid Python variable names, which means they must
-        start with a letter and contain only letters, numbers and underscores.
-        They also cannot be Python keywords.
-        """
-        if parameter_name_pattern.match(name) is None:
-            raise ParameterNameValidationError.for_param(name)
-        if keyword.iskeyword(name):
-            raise ParameterNameValidationError.for_param(name)
 
     def resolve_and_validate_values(
         self, requested_values: Mapping[str, Any]

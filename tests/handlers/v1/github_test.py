@@ -14,6 +14,7 @@ from structlog import get_logger
 from timessquare.config import config
 from timessquare.domain.githubcheckout import NotebookSidecarFile
 from timessquare.domain.page import PageModel
+from timessquare.domain.pageparameters import PageParameters
 from timessquare.services.page import PageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
@@ -70,7 +71,7 @@ async def test_github(client: AsyncClient) -> None:
         PageModel(
             name="2",
             ipynb=demo_path.read_text(),
-            parameters={},
+            parameters=PageParameters({}),
             title="Gaussian 2D",
             date_added=datetime.now(UTC),
             date_deleted=None,
@@ -89,7 +90,7 @@ async def test_github(client: AsyncClient) -> None:
         PageModel(
             name="3",
             ipynb=demo_path.read_text(),
-            parameters={},
+            parameters=PageParameters({}),
             title="Tutorial A",
             date_added=datetime.now(UTC),
             date_deleted=None,

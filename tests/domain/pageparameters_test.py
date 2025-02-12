@@ -6,11 +6,30 @@ from typing import Any
 
 import pytest
 
-from timessquare.domain.pageparameters import PageParameterSchema
+from timessquare.domain.pageparameters import (
+    PageParameters,
+    PageParameterSchema,
+)
 from timessquare.exceptions import (
     ParameterDefaultInvalidError,
     ParameterDefaultMissingError,
+    ParameterNameValidationError,
 )
+
+
+def test_parameter_name_validation() -> None:
+    PageParameters.validate_parameter_name("myvar")
+    PageParameters.validate_parameter_name("my_var")
+    PageParameters.validate_parameter_name("myvar1")
+    PageParameters.validate_parameter_name("Myvar1")
+    PageParameters.validate_parameter_name("M")
+
+    with pytest.raises(ParameterNameValidationError):
+        PageParameters.validate_parameter_name(" M")
+    with pytest.raises(ParameterNameValidationError):
+        PageParameters.validate_parameter_name("1p")
+    with pytest.raises(ParameterNameValidationError):
+        PageParameters.validate_parameter_name("lambda")
 
 
 def test_parameter_default_exists() -> None:

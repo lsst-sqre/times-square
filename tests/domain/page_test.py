@@ -4,25 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from timessquare.domain.page import PageModel
-from timessquare.exceptions import ParameterNameValidationError
-
-
-def test_parameter_name_validation() -> None:
-    PageModel.validate_parameter_name("myvar")
-    PageModel.validate_parameter_name("my_var")
-    PageModel.validate_parameter_name("myvar1")
-    PageModel.validate_parameter_name("Myvar1")
-    PageModel.validate_parameter_name("M")
-
-    with pytest.raises(ParameterNameValidationError):
-        PageModel.validate_parameter_name(" M")
-    with pytest.raises(ParameterNameValidationError):
-        PageModel.validate_parameter_name("1p")
-    with pytest.raises(ParameterNameValidationError):
-        PageModel.validate_parameter_name("lambda")
 
 
 def test_render_parameters() -> None:

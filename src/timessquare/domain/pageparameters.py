@@ -3,18 +3,95 @@
 from __future__ import annotations
 
 import json
+import keyword
+import re
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 import jsonschema.exceptions
+import nbformat
 from jsonschema import Draft202012Validator
 
 from timessquare.exceptions import (
     PageParameterValueCastingError,
     ParameterDefaultInvalidError,
     ParameterDefaultMissingError,
+    ParameterNameValidationError,
     ParameterSchemaError,
 )
+
+PARAMETER_NAME_PATTERN = re.compile(
+    r"^"
+    r"[a-zA-Z]"  # initial characters are letters only
+    r"[_a-zA-Z0-9]*$"  # following characters are letters and numbers
+    r"$"
+)
+"""Regular expression that matches a valid parameter name."""
+
+
+class PageParameters(Mapping):
+    """Parameterizations for a page.
+
+    Parameters
+    ----------
+    parameter_schemas
+        A dictionary of parameter names to their schemas
+    """
+
+    def __init__(
+        self, parameter_schemas: dict[str, PageParameterSchema]
+    ) -> None:
+        self._parameter_schemas = parameter_schemas
+        # Validate parameter names
+        for name in self._parameter_schemas:
+            self.validate_parameter_name(name)
+
+    @classmethod
+    def create_from_notebook(cls, nb: nbformat.NotebookNode) -> Self:
+        """Create a `PageParameters` instance from a Jupyter notebook.
+
+        Parameters are extracted from the notebook's metadata. If the notebook
+        does not have any parameters, an empty `PageParameters` instance is
+        returned.
+        """
+        try:
+            parameters_metadata = nb.metadata["times-square"].parameters
+        except AttributeError:
+            return cls({})
+
+        parameters: dict[str, PageParameterSchema] = {}
+        for name, schema in parameters_metadata.items():
+            parameters[name] = PageParameterSchema.create_and_validate(
+                name, schema
+            )
+
+        return cls(parameters)
+
+    def __getitem__(self, key: str) -> Any:
+        """Retrieve a parameter schema by its name."""
+        return self._parameter_schemas[key]
+
+    def __len__(self) -> int:
+        """Return the number of parameters."""
+        return len(self._parameter_schemas)
+
+    def __iter__(self) -> Iterator[str]:
+        """Return an iterator over the parameter keys."""
+        return iter(self._parameter_schemas)
+
+    @staticmethod
+    def validate_parameter_name(name: str) -> None:
+        """Validate a parameter's name.
+
+        Parameters must be valid Python variable names, which means they must
+        start with a letter and contain only letters, numbers and underscores.
+        They also cannot be Python keywords.
+        """
+        if PARAMETER_NAME_PATTERN.match(name) is None:
+            raise ParameterNameValidationError.for_param(name)
+        if keyword.iskeyword(name):
+            raise ParameterNameValidationError.for_param(name)
 
 
 @dataclass

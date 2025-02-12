@@ -16,7 +16,7 @@ from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 from safir.github.models import GitHubBlobModel, GitHubRepositoryModel
 
 from .page import PersonModel
-from .pageparameters import PageParameterSchema
+from .pageparameters import PageParameters, PageParameterSchema
 
 
 @dataclass
@@ -491,13 +491,13 @@ class NotebookSidecarFile(BaseModel):
         """Create a NotebookSidecarFile from the YAML content."""
         return cls.model_validate(yaml.safe_load(content))
 
-    def export_parameters(self) -> dict[str, PageParameterSchema]:
+    def export_parameters(self) -> PageParameters:
         """Export the `parameters` attribute to `PageParameterSchema` used
         by the PageModel.
         """
-        return {
-            k: v.to_parameter_schema(k) for k, v in self.parameters.items()
-        }
+        return PageParameters(
+            {k: v.to_parameter_schema(k) for k, v in self.parameters.items()}
+        )
 
     def export_authors(self) -> list[PersonModel]:
         return [a.to_person_model() for a in self.authors]
