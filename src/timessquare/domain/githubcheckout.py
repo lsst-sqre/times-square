@@ -15,7 +15,8 @@ from gidgethub.httpx import GitHubAPI
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 from safir.github.models import GitHubBlobModel, GitHubRepositoryModel
 
-from .page import PageParameterSchema, PersonModel
+from .page import PersonModel
+from .pageparameters import PageParameterSchema
 
 
 @dataclass

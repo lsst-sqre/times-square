@@ -12,12 +12,8 @@ from timessquare.domain.githubtree import (
     GitHubNodeType,
     GitHubTreeQueryResult,
 )
-from timessquare.domain.page import (
-    PageModel,
-    PageParameterSchema,
-    PageSummaryModel,
-    PersonModel,
-)
+from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
+from timessquare.domain.pageparameters import PageParameterSchema
 
 
 class PageStore:
