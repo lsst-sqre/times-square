@@ -188,7 +188,7 @@ class PageStore:
         }
 
         date_deleted = (
-            datetime_from_db(sql_page.date_added)
+            datetime_from_db(sql_page.date_deleted)
             if sql_page.date_deleted
             else None
         )
