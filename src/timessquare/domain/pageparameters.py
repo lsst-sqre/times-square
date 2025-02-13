@@ -135,6 +135,23 @@ class PageParameters(Mapping):
 
         return cast_values
 
+    def stringify_values(self, values: Mapping[str, Any]) -> dict[str, str]:
+        """Stringify parameter values for insertion into notebook code."""
+        # Using repr ensures strings are quoted. But is this the best approach?
+        return {name: repr(value) for name, value in values.items()}
+
+    def create_code_template(self, values: Mapping[str, Any]) -> str:
+        """Create a Jinja-templated source cell value that sets Python
+        variables for each parameter to their values.
+        """
+        sorted_variables = sorted(values.keys())
+        code_lines = [
+            f"{variable_name} = {{{{ params.{variable_name} }}}}"
+            for variable_name in sorted_variables
+        ]
+        code_lines.insert(0, "# Parameters")
+        return "\n".join(code_lines)
+
 
 @dataclass
 class PageParameterSchema:

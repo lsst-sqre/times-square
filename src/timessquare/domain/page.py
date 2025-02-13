@@ -377,9 +377,7 @@ class PageModel:
         # Build Jinja render context
         # Turn off autoescaping to avoid escaping the parameter values
         jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
-        value_code_strings = {
-            name: repr(value) for name, value in values.items()
-        }
+        value_code_strings = self.parameters.stringify_values(values)
         jinja_env.globals.update({"params": value_code_strings})
 
         # Read notebook and render cell-by-cell
@@ -390,7 +388,7 @@ class PageModel:
                 if processed_first_cell is False:
                     # Handle first code cell specially by replacing it with a
                     # cell that sets Python variables to their values
-                    cell.source = self._create_parameters_template(values)
+                    cell.source = self.parameters.create_code_template(values)
                     processed_first_cell = True
                 else:
                     # Only process the first code cell
@@ -410,18 +408,6 @@ class PageModel:
 
         # Render notebook back to a string and return
         return PageModel.write_ipynb(notebook)
-
-    def _create_parameters_template(self, values: Mapping[str, Any]) -> str:
-        """Create a Jinja-tempalated source cell value that sets Python
-        variables for each parameter to their values.
-        """
-        sorted_variables = sorted(values.keys())
-        code_lines = [
-            f"{variable_name} = {{{{ params.{variable_name} }}}}"
-            for variable_name in sorted_variables
-        ]
-        code_lines.insert(0, "# Parameters")
-        return "\n".join(code_lines)
 
 
 @dataclass
