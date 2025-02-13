@@ -6,14 +6,17 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
-from enum import Enum
 from pathlib import PurePosixPath
-from typing import Annotated, Any
+from typing import Any
 
 from gidgethub.httpx import GitHubAPI
-from pydantic import BaseModel, Field, HttpUrl
 from safir.github.models import GitHubBlobModel, GitHubRepositoryModel
 
+from timessquare.storage.github.apimodels import (
+    GitTreeItem,
+    GitTreeMode,
+    RecursiveGitTreeModel,
+)
 from timessquare.storage.github.settingsfiles import (
     NotebookSidecarFile,
     RepositorySettingsFile,
@@ -103,9 +106,7 @@ class GitHubRepositoryCheckout:
         """The full repository name (owner/repo format)."""
         return f"{self.owner_name}/{self.name}"
 
-    async def get_git_tree(
-        self, github_client: GitHubAPI
-    ) -> RecursiveGitTreeModel:
+    async def get_git_tree(self, github_client: GitHubAPI) -> RepositoryTree:
         """Get the recursive git tree of the repository from the GitHub API
         for this checkout's HEAD SHA (commit).
 
@@ -116,14 +117,15 @@ class GitHubRepositoryCheckout:
 
         Returns
         -------
-        tree : `RecursiveGitTreeModel`
+        tree
             The contents of the repository's git tree.
         """
         response = await github_client.getitem(
             self.trees_url + "{?recursive}",
             url_vars={"sha": self.head_sha, "recursive": "1"},
         )
-        return RecursiveGitTreeModel.model_validate(response)
+        git_tree = RecursiveGitTreeModel.model_validate(response)
+        return RepositoryTree(github_tree=git_tree)
 
     async def load_notebook(
         self,
@@ -159,6 +161,63 @@ class GitHubRepositoryCheckout:
             self.blobs_url, url_vars={"sha": sha}
         )
         return GitHubBlobModel.model_validate(data)
+
+
+@dataclass(kw_only=True)
+class RepositoryTree:
+    """A domain model for the tree of contents in a GitHub repository."""
+
+    github_tree: RecursiveGitTreeModel
+
+    def find_notebooks(
+        self, settings: RepositorySettingsFile
+    ) -> Iterator[RepositoryNotebookTreeRef]:
+        """Iterate over all all source notebook+sidecar YAML file pairs in the
+        repository, respecting the repository's "ignore" settings.
+        """
+        # Pre-scan to get an index of all file paths that _could_ be notebook
+        # content i.e. ipynb extensions and all YAML paths.
+        # If we support jupyext, add more extentions
+        # Note: PurePosixPath.suffix includes the period in the extension
+        source_extensions = {".ipynb"}
+        yaml_extensions = {".yaml", ".yml"}
+        notebook_candidate_indices: dict[str, int] = {}
+        yaml_items: list[GitTreeItem] = []
+        for i, item in enumerate(self.github_tree.tree):
+            if item.mode == GitTreeMode.file:
+                suffix = item.path_extension
+                if suffix in source_extensions:
+                    notebook_candidate_indices[item.path_stem] = i
+                elif suffix in yaml_extensions:
+                    yaml_items.append(item)
+
+        for yaml_item in yaml_items:
+            # Test files against the "ignore" settings
+            if self._is_ignored(yaml_item, settings):
+                continue
+
+            path_stem = yaml_item.path_stem
+            notebook_item_index = notebook_candidate_indices.get(path_stem)
+            if notebook_item_index is None:
+                continue
+            notebook_item = self.github_tree.tree[notebook_item_index]
+
+            tree_ref = RepositoryNotebookTreeRef(
+                notebook_source_path=notebook_item.path,
+                sidecar_path=yaml_item.path,
+                notebook_git_tree_sha=notebook_item.sha,
+                sidecar_git_tree_sha=yaml_item.sha,
+            )
+            yield tree_ref
+
+    def _is_ignored(
+        self, yaml_item: GitTreeItem, settings: RepositorySettingsFile
+    ) -> bool:
+        """Test if a file is ignored by the repository settings."""
+        for glob_pattern in settings.ignore:
+            if yaml_item.match_glob(glob_pattern):
+                return True
+        return False
 
 
 @dataclass(kw_only=True)
@@ -264,110 +323,3 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
         # If we support jupytext, this is where we'd convert that
         # source file into ipynb
         return self.notebook_source
-
-
-class GitTreeMode(str, Enum):
-    """Git tree mode values."""
-
-    file = "100644"
-    executable = "100755"
-    directory = "040000"
-    submodule = "160000"
-    symlink = "120000"
-
-
-class GitTreeItem(BaseModel):
-    """A Pydantic model for a single item in the response parsed by
-    `RecursiveGitTreeModel`.
-    """
-
-    path: Annotated[str, Field(title="Path to the item in the repository")]
-
-    mode: Annotated[GitTreeMode, Field(title="Mode of the item.")]
-
-    sha: Annotated[str, Field(title="Git sha of tree object")]
-
-    url: Annotated[HttpUrl, Field(title="URL of the object")]
-
-    def match_glob(self, pattern: str) -> bool:
-        """Test if this path matches a glob pattern."""
-        p = PurePosixPath(self.path)
-        return p.match(pattern)
-
-    @property
-    def path_extension(self) -> str:
-        p = PurePosixPath(self.path)
-        return p.suffix
-
-    @property
-    def path_stem(self) -> str:
-        """The filepath, without the suffix."""
-        return self.path[: -len(self.path_extension)]
-
-
-class RecursiveGitTreeModel(BaseModel):
-    """A Pydantic model for the output of ``GET api.github.com/repos/{owner}/
-    {repo}/git/trees/{sha}?recursive=1`` for a git commit, which describes
-    the full contents of a GitHub repository.
-    """
-
-    sha: Annotated[str, Field(title="SHA of the commit.")]
-
-    url: Annotated[HttpUrl, Field(title="GitHub API URL of this resource")]
-
-    tree: Annotated[list[GitTreeItem], Field(title="Items in the git tree")]
-
-    truncated: Annotated[
-        bool,
-        Field(title="True if the dataset does not contain the whole repo"),
-    ]
-
-    def find_notebooks(
-        self, settings: RepositorySettingsFile
-    ) -> Iterator[RepositoryNotebookTreeRef]:
-        """Iterate over all all source notebook+sidecar YAML file pairs in the
-        repository, respecting the repository's "ignore" settings.
-        """
-        # Pre-scan to get an index of all file paths that _could_ be notebook
-        # content i.e. ipynb extensions and all YAML paths.
-        # If we support jupyext, add more extentions
-        # Note: PurePosixPath.suffix includes the period in the extension
-        source_extensions = {".ipynb"}
-        yaml_extensions = {".yaml", ".yml"}
-        notebook_candidate_indices: dict[str, int] = {}
-        yaml_items: list[GitTreeItem] = []
-        for i, item in enumerate(self.tree):
-            if item.mode == GitTreeMode.file:
-                suffix = item.path_extension
-                if suffix in source_extensions:
-                    notebook_candidate_indices[item.path_stem] = i
-                elif suffix in yaml_extensions:
-                    yaml_items.append(item)
-
-        for yaml_item in yaml_items:
-            # Test files against the "ignore" settings
-            if self._is_ignored(yaml_item, settings):
-                continue
-
-            path_stem = yaml_item.path_stem
-            notebook_item_index = notebook_candidate_indices.get(path_stem)
-            if notebook_item_index is None:
-                continue
-            notebook_item = self.tree[notebook_item_index]
-
-            tree_ref = RepositoryNotebookTreeRef(
-                notebook_source_path=notebook_item.path,
-                sidecar_path=yaml_item.path,
-                notebook_git_tree_sha=notebook_item.sha,
-                sidecar_git_tree_sha=yaml_item.sha,
-            )
-            yield tree_ref
-
-    def _is_ignored(
-        self, yaml_item: GitTreeItem, settings: RepositorySettingsFile
-    ) -> bool:
-        """Test if a file is ignored by the repository settings."""
-        for glob_pattern in settings.ignore:
-            if yaml_item.match_glob(glob_pattern):
-                return True
-        return False

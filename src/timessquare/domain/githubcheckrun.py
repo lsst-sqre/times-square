@@ -31,8 +31,8 @@ from ..storage.noteburst import (
 )
 from .githubcheckout import (
     GitHubRepositoryCheckout,
-    RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
+    RepositoryTree,
 )
 from .page import PageExecutionInfo, PageModel
 
@@ -245,7 +245,7 @@ class GitHubConfigsCheck(GitHubCheck):
 
         # Optional caching for data reuse
         self.checkout: GitHubRepositoryCheckout | None = None
-        self.tree: RecursiveGitTreeModel | None = None
+        self.tree: RepositoryTree | None = None
 
         super().__init__(check_run=check_run, repo=repo)
 
@@ -419,10 +419,10 @@ class GitHubConfigsCheck(GitHubCheck):
         self,
         *,
         checkout: GitHubRepositoryCheckout,
-        tree: RecursiveGitTreeModel,
+        tree: RepositoryTree,
     ) -> None:
         """Cache the checkout and Git tree (usually obtained in
-        iniitalization so they can be reused elsewhere without getting the
+        initialization so they can be reused elsewhere without getting the
         resources again from GitHub.
         """
         self.checkout = checkout
