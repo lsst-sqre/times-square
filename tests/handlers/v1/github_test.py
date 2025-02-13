@@ -12,10 +12,10 @@ from safir.database import create_async_session, create_database_engine
 from structlog import get_logger
 
 from timessquare.config import config
-from timessquare.domain.githubcheckout import NotebookSidecarFile
 from timessquare.domain.page import PageModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.services.page import PageService
+from timessquare.storage.github.settingsfiles import NotebookSidecarFile
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore

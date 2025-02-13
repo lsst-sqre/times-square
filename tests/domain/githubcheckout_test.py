@@ -14,19 +14,9 @@ from safir.github.models import GitHubBlobModel
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     GitTreeMode,
-    NotebookSidecarFile,
     RecursiveGitTreeModel,
-    RepositorySettingsFile,
 )
-
-
-def test_settings_file_load() -> None:
-    json_path = Path(__file__).parent.joinpath(
-        "../data/times-square-demo/settings-blob.json"
-    )
-    blob = GitHubBlobModel.model_validate_json(json_path.read_text())
-    settings = RepositorySettingsFile.parse_yaml(blob.decode())
-    assert settings.enabled is True
+from timessquare.storage.github.settingsfiles import RepositorySettingsFile
 
 
 def test_recursive_git_tree_model_rsp_broadcast() -> None:
@@ -118,11 +108,3 @@ async def test_recursive_git_tree_find_notebooks() -> None:
     settings2 = RepositorySettingsFile(ignore=["matplotlib/*"])
     notebook_refs2 = list(repo_tree.find_notebooks(settings2))
     assert len(notebook_refs2) == 1
-
-
-def test_load_sidecar() -> None:
-    sidecar_path = Path(__file__).parent.joinpath(
-        "../data/times-square-demo/demo.yaml"
-    )
-    sidecar = NotebookSidecarFile.parse_yaml(sidecar_path.read_text())
-    sidecar.export_parameters()

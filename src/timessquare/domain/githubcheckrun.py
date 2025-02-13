@@ -23,6 +23,7 @@ from yaml import YAMLError
 from timessquare.config import config
 from timessquare.exceptions import PageJinjaError
 
+from ..storage.github.settingsfiles import NotebookSidecarFile
 from ..storage.noteburst import (
     NoteburstErrorCodes,
     NoteburstJobResponseModel,
@@ -30,7 +31,6 @@ from ..storage.noteburst import (
 )
 from .githubcheckout import (
     GitHubRepositoryCheckout,
-    NotebookSidecarFile,
     RecursiveGitTreeModel,
     RepositoryNotebookTreeRef,
 )
