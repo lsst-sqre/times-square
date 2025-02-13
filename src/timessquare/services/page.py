@@ -231,7 +231,7 @@ class PageService:
         This is useful for the `add_page` and `update_page` methods to start
         notebook execution as soon as possible.
         """
-        resolved_values = page.resolve_and_validate_values({})
+        resolved_values = page.parameters.resolve_values({})
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_values, page=page
         )
@@ -285,7 +285,7 @@ class PageService:
     async def _render_page_template(
         self, page: PageModel, values: Mapping[str, Any]
     ) -> str:
-        resolved_values = page.resolve_and_validate_values(values)
+        resolved_values = page.parameters.resolve_values(values)
         return page.render_parameters(resolved_values)
 
     async def get_html(
@@ -315,7 +315,7 @@ class PageService:
         )
 
         page = await self.get_page(name)
-        resolved_values = page.resolve_and_validate_values(query_params)
+        resolved_values = page.parameters.resolve_values(query_params)
 
         # First try to get HTML from redis cache
         page_key = NbHtmlKey(
@@ -419,7 +419,7 @@ class PageService:
     ) -> PageInstanceModel:
         """Soft delete the HTML for a page given the query parameters."""
         page = await self.get_page(name)
-        resolved_values = page.resolve_and_validate_values(query_params)
+        resolved_values = page.parameters.resolve_values(query_params)
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_values, page=page
         )
@@ -533,7 +533,7 @@ class PageService:
         for a page instance.
         """
         page = await self.get_page(name)
-        resolved_values = page.resolve_and_validate_values(query_params)
+        resolved_values = page.parameters.resolve_values(query_params)
         # also get the Display settings query params
         page_instance = PageInstanceModel(
             name=page.name, values=resolved_values, page=page

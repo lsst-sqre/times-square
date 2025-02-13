@@ -14,12 +14,7 @@ from uuid import uuid4
 import jinja2
 import nbformat
 
-from timessquare.exceptions import (
-    PageJinjaError,
-    PageNotebookFormatError,
-    PageParameterError,
-    PageParameterValueCastingError,
-)
+from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
@@ -353,45 +348,6 @@ class PageModel:
         constant.
         """
         return nbformat.writes(notebook, version=NB_VERSION)
-
-    def resolve_and_validate_values(
-        self, requested_values: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        """Resolve and validate parameter values for a notebook based on
-        a possibly incomplete user request.
-
-        Parameters
-        ----------
-        requested_parameters : dict
-            User-specified values for parameters. If parameters are not set by
-            the user, the parameter's defaults are used intead.
-        """
-        # Collect the values for each parameter; either from the request or
-        # the default. Avoid extraneous parameters from the request for
-        # security.
-        resolved_values = {
-            name: requested_values.get(name, schema.default)
-            for name, schema in self.parameters.items()
-        }
-
-        # Cast to the correct types
-        cast_values: dict[str, Any] = {}
-        for name, value in resolved_values.items():
-            try:
-                cast_values[name] = self.parameters[name].cast_value(value)
-            except PageParameterValueCastingError as e:
-                raise PageParameterError.for_param(
-                    name, value, self.parameters[name]
-                ) from e
-
-        # Ensure each parameter's value is valid
-        for name, value in cast_values.items():
-            if not self.parameters[name].validate(value):
-                raise PageParameterError.for_param(
-                    name, value, self.parameters[name]
-                )
-
-        return cast_values
 
     def render_parameters(
         self,

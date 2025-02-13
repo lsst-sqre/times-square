@@ -14,6 +14,7 @@ import nbformat
 from jsonschema import Draft202012Validator
 
 from timessquare.exceptions import (
+    PageParameterError,
     PageParameterValueCastingError,
     ParameterDefaultInvalidError,
     ParameterDefaultMissingError,
@@ -92,6 +93,47 @@ class PageParameters(Mapping):
             raise ParameterNameValidationError.for_param(name)
         if keyword.iskeyword(name):
             raise ParameterNameValidationError.for_param(name)
+
+    def resolve_values(
+        self, input_values: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Resolve and validate parameter values for a notebook instance.
+
+        Parameters
+        ----------
+        input_values
+            A dictionary of parameter names to their values. These values may
+            be incomplete if the user has not provided all the parameters.
+
+        Returns
+        -------
+        dict
+            A dictionary of parameter names to their resolved values
+        """
+        # Collect the values for each parameter; either from the request or
+        # the default. Avoid extraneous parameters from the request for
+        # security.
+        resolved_values = {
+            name: input_values.get(name, schema.default)
+            for name, schema in self._parameter_schemas.items()
+        }
+
+        # Cast to the correct types
+        cast_values: dict[str, Any] = {}
+        for name, value in resolved_values.items():
+            try:
+                cast_values[name] = self[name].cast_value(value)
+            except PageParameterValueCastingError as e:
+                raise PageParameterError.for_param(
+                    name, value, self[name]
+                ) from e
+
+        # Ensure each parameter's value is valid
+        for name, value in cast_values.items():
+            if not self[name].validate(value):
+                raise PageParameterError.for_param(name, value, self[name])
+
+        return cast_values
 
 
 @dataclass
