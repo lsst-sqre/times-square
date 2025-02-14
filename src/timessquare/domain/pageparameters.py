@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import abc
 import json
 import keyword
 import re
@@ -21,6 +22,15 @@ from timessquare.exceptions import (
     ParameterNameValidationError,
     ParameterSchemaError,
 )
+
+__all__ = [
+    "BooleanParameterSchema",
+    "IntegerParameterSchema",
+    "NumberParameterSchema",
+    "PageParameterSchema",
+    "PageParameters",
+    "StringParameterSchema",
+]
 
 PARAMETER_NAME_PATTERN = re.compile(
     r"^"
@@ -153,8 +163,8 @@ class PageParameters(Mapping):
         return "\n".join(code_lines)
 
 
-@dataclass
-class PageParameterSchema:
+@dataclass(kw_only=True)
+class PageParameterSchema(abc.ABC):
     """The domain model for a page parameter's JSON schema, which is a template
     variable in a page's notebook (`PageModel`).
     """
@@ -170,7 +180,18 @@ class PageParameterSchema:
         being instantiated from an external source, run the
         `create_and_validate` constructor instead.
         """
-        return cls(validator=Draft202012Validator(json_schema))
+        validator = Draft202012Validator(json_schema)
+        schema_type = validator.schema.get("type", "string")
+        if schema_type == "string":
+            return StringParameterSchema(validator=validator)
+        elif schema_type == "integer":
+            return IntegerParameterSchema(validator=validator)
+        elif schema_type == "number":
+            return NumberParameterSchema(validator=validator)
+        elif schema_type == "boolean":
+            return BooleanParameterSchema(validator=validator)
+
+        raise ValueError(f"Unsupported schema type: {schema_type}")
 
     @classmethod
     def create_and_validate(
@@ -210,47 +231,68 @@ class PageParameterSchema:
         """Validate a parameter value."""
         return self.validator.is_valid(v)
 
-    def cast_value(self, v: Any) -> Any:  # noqa: C901 PLR0912
-        """Cast a value to the type indicated by the schema.
+    @abc.abstractmethod
+    def cast_value(self, v: Any) -> Any:
+        """Cast a value to its Python type."""
+        raise NotImplementedError
 
-        Often the input value is a string value usually obtained from the URL
-        query parameters into the correct type based on the JSON Schema's type.
-        You can also safely pass the correct type idempotently.
 
-        Only string, integer, number, and boolean schema types are supported.
-        """
-        schema_type = self.schema.get("type")
-        if schema_type is None:
-            return v
+@dataclass(kw_only=True)
+class StringParameterSchema(PageParameterSchema):
+    """A string-type parameter schema."""
 
+    def cast_value(self, v: Any) -> str:
+        """Cast a value to its Python type."""
         try:
-            if schema_type == "string":
+            return str(v)
+        except Exception as e:
+            raise PageParameterValueCastingError.for_value(v, "string") from e
+
+
+class IntegerParameterSchema(PageParameterSchema):
+    """An integer-type parameter schema."""
+
+    def cast_value(self, v: Any) -> int:
+        """Cast a value to its Python type."""
+        try:
+            return int(v)
+        except Exception as e:
+            raise PageParameterValueCastingError.for_value(v, "integer") from e
+
+
+class NumberParameterSchema(PageParameterSchema):
+    """A number-type parameter schema."""
+
+    def cast_value(self, v: Any) -> float | int:
+        """Cast a value to its Python type."""
+        try:
+            if isinstance(v, str):
+                if "." in v:
+                    return float(v)
+                else:
+                    return int(v)
+            elif isinstance(v, int | float):
                 return v
-            elif schema_type == "integer":
-                return int(v)
-            elif schema_type == "number":
-                if isinstance(v, str):
-                    if "." in v:
-                        return float(v)
-                    else:
-                        return int(v)
+            return float(v)
+        except Exception as e:
+            raise PageParameterValueCastingError.for_value(v, "number") from e
+
+
+class BooleanParameterSchema(PageParameterSchema):
+    """A boolean-type parameter schema."""
+
+    def cast_value(self, v: Any) -> bool:
+        """Cast a value to its Python type."""
+        try:
+            if isinstance(v, str):
+                if v.lower() == "true":
+                    return True
+                elif v.lower() == "false":
+                    return False
                 else:
-                    return v
-            elif schema_type == "boolean":
-                if isinstance(v, str):
-                    if v.lower() == "true":
-                        return True
-                    elif v.lower() == "false":
-                        return False
-                    else:
-                        raise PageParameterValueCastingError.for_value(
-                            v, schema_type
-                        )
-                else:
-                    return v
-            else:
-                raise PageParameterValueCastingError.for_value(v, schema_type)
-        except ValueError as e:
-            raise PageParameterValueCastingError.for_value(
-                v, schema_type
-            ) from e
+                    raise PageParameterValueCastingError.for_value(
+                        v, "boolean"
+                    )
+            return bool(v)
+        except Exception as e:
+            raise PageParameterValueCastingError.for_value(v, "boolean") from e
