@@ -18,3 +18,11 @@ parameters:
     type: number
     description: Y-axis offset
     default: 0
+  title:
+    type: string
+    description: Plot title
+    default: 'Demo'
+  boolflag:
+    type: boolean
+    description: A boolean flag
+    default: true
