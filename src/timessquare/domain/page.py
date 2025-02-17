@@ -388,7 +388,11 @@ class PageModel:
                 if processed_first_cell is False:
                     # Handle first code cell specially by replacing it with a
                     # cell that sets Python variables to their values
-                    cell.source = self.parameters.create_code_template(values)
+                    cell.source = (
+                        self.parameters.create_parameter_assignment_cell(
+                            values
+                        )
+                    )
                     processed_first_cell = True
                 else:
                     # Only process the first code cell

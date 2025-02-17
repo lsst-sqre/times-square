@@ -150,14 +150,27 @@ class PageParameters(Mapping):
         # Using repr ensures strings are quoted. But is this the best approach?
         return {name: repr(value) for name, value in values.items()}
 
-    def create_code_template(self, values: Mapping[str, Any]) -> str:
-        """Create a Jinja-templated source cell value that sets Python
-        variables for each parameter to their values.
+    def create_parameter_assignment_cell(
+        self, values: Mapping[str, Any]
+    ) -> str:
+        """Create the Python code cell in the notebook instance that assigns
+        parameter values to variables.
+
+        Parameters
+        ----------
+        values
+            A dictionary of parameter names to their values. These values are
+            cast to the correct types and validated.
+
+        Returns
+        -------
+        str
+            The Python code cell as a string.
         """
         sorted_variables = sorted(values.keys())
         code_lines = [
-            f"{variable_name} = {{{{ params.{variable_name} }}}}"
-            for variable_name in sorted_variables
+            self[name].create_python_assignment(name, values[name])
+            for name in sorted_variables
         ]
         code_lines.insert(0, "# Parameters")
         return "\n".join(code_lines)
@@ -236,6 +249,24 @@ class PageParameterSchema(abc.ABC):
         """Cast a value to its Python type."""
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def create_python_assignment(self, name: str, value: Any) -> str:
+        """Create a Python assignment statement for a parameter.
+
+        Parameters
+        ----------
+        name
+            The parameter name, which is also the Python variable name.
+        value
+            The parameter value. This value is cast to the Python type.
+
+        Return
+        ------
+        str
+            The Python assignment statement. For example, `name = value`.
+        """
+        raise NotImplementedError
+
 
 @dataclass(kw_only=True)
 class StringParameterSchema(PageParameterSchema):
@@ -248,6 +279,10 @@ class StringParameterSchema(PageParameterSchema):
         except Exception as e:
             raise PageParameterValueCastingError.for_value(v, "string") from e
 
+    def create_python_assignment(self, name: str, value: Any) -> str:
+        cast_value = self.cast_value(value)
+        return f'{name} = "{cast_value}"'
+
 
 class IntegerParameterSchema(PageParameterSchema):
     """An integer-type parameter schema."""
@@ -258,6 +293,10 @@ class IntegerParameterSchema(PageParameterSchema):
             return int(v)
         except Exception as e:
             raise PageParameterValueCastingError.for_value(v, "integer") from e
+
+    def create_python_assignment(self, name: str, value: Any) -> str:
+        cast_value = self.cast_value(value)
+        return f"{name} = {cast_value}"
 
 
 class NumberParameterSchema(PageParameterSchema):
@@ -276,6 +315,10 @@ class NumberParameterSchema(PageParameterSchema):
             return float(v)
         except Exception as e:
             raise PageParameterValueCastingError.for_value(v, "number") from e
+
+    def create_python_assignment(self, name: str, value: Any) -> str:
+        cast_value = self.cast_value(value)
+        return f"{name} = {cast_value}"
 
 
 class BooleanParameterSchema(PageParameterSchema):
@@ -296,3 +339,7 @@ class BooleanParameterSchema(PageParameterSchema):
             return bool(v)
         except Exception as e:
             raise PageParameterValueCastingError.for_value(v, "boolean") from e
+
+    def create_python_assignment(self, name: str, value: Any) -> str:
+        cast_value = self.cast_value(value)
+        return f"{name} = {cast_value}"

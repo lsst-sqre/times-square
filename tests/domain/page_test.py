@@ -48,7 +48,7 @@ def test_render_parameters() -> None:
         "A = 2\n"
         "boolflag = True\n"
         "lambd = 0.5\n"
-        "title = 'Demo'\n"
+        'title = "Demo"\n'
         "y0 = 1.0"
     )
 
