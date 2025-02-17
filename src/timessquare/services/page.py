@@ -439,7 +439,9 @@ class PageService:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
-        ipynb = page_instance.page.render_parameters(page_instance.values)
+        ipynb = await self._render_page_template(
+            page_instance.page, page_instance.values
+        )
         r = await self.noteburst_api.submit_job(
             ipynb=ipynb,
             enable_retry=enable_retry,
