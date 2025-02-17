@@ -267,6 +267,25 @@ class PageParameterSchema(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def create_json_value(self, value: Any) -> Any:
+        """Convert the value to a JSON-compatible value.
+
+        This is used to create the JSON representation of the parameter value
+        in the notebook's metadata (``metadata.times-square.values``).
+
+        Parameters
+        ----------
+        value
+            The parameter value.
+
+        Return
+        ------
+        Any
+            The JSON-compatible value
+        """
+        raise NotImplementedError
+
 
 @dataclass(kw_only=True)
 class StringParameterSchema(PageParameterSchema):
@@ -283,6 +302,9 @@ class StringParameterSchema(PageParameterSchema):
         cast_value = self.cast_value(value)
         return f'{name} = "{cast_value}"'
 
+    def create_json_value(self, value: Any) -> Any:
+        return self.cast_value(value)
+
 
 class IntegerParameterSchema(PageParameterSchema):
     """An integer-type parameter schema."""
@@ -297,6 +319,9 @@ class IntegerParameterSchema(PageParameterSchema):
     def create_python_assignment(self, name: str, value: Any) -> str:
         cast_value = self.cast_value(value)
         return f"{name} = {cast_value}"
+
+    def create_json_value(self, value: Any) -> Any:
+        return self.cast_value(value)
 
 
 class NumberParameterSchema(PageParameterSchema):
@@ -319,6 +344,9 @@ class NumberParameterSchema(PageParameterSchema):
     def create_python_assignment(self, name: str, value: Any) -> str:
         cast_value = self.cast_value(value)
         return f"{name} = {cast_value}"
+
+    def create_json_value(self, value: Any) -> Any:
+        return self.cast_value(value)
 
 
 class BooleanParameterSchema(PageParameterSchema):
@@ -343,3 +371,6 @@ class BooleanParameterSchema(PageParameterSchema):
     def create_python_assignment(self, name: str, value: Any) -> str:
         cast_value = self.cast_value(value)
         return f"{name} = {cast_value}"
+
+    def create_json_value(self, value: Any) -> Any:
+        return self.cast_value(value)

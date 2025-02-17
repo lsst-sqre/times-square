@@ -408,8 +408,10 @@ class PageModel:
         # Modify notebook metadata to include values
         if "times-square" not in notebook.metadata:
             notebook.metadata["times-square"] = {}
-        notebook.metadata["times-square"]["values"] = values
-
+        notebook.metadata["times-square"]["values"] = {
+            name: self.parameters[name].create_json_value(value)
+            for name, value in values.items()
+        }
         # Render notebook back to a string and return
         return PageModel.write_ipynb(notebook)
 
