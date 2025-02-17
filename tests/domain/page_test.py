@@ -38,7 +38,7 @@ def test_render_parameters() -> None:
         "- Amplitude: A = 2\n"
         "- Y offset: y0 = 1.0\n"
         "- Wavelength: lambd = 0.5\n"
-        "- Title: 'Demo'\n"
+        "- Title: Demo\n"
         "- Flag: True"
     )
 

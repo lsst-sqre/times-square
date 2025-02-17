@@ -145,11 +145,6 @@ class PageParameters(Mapping):
 
         return cast_values
 
-    def stringify_values(self, values: Mapping[str, Any]) -> dict[str, str]:
-        """Stringify parameter values for insertion into notebook code."""
-        # Using repr ensures strings are quoted. But is this the best approach?
-        return {name: repr(value) for name, value in values.items()}
-
     def create_parameter_assignment_cell(
         self, values: Mapping[str, Any]
     ) -> str:

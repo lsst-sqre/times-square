@@ -125,7 +125,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "- Amplitude: A = 4\n"
         "- Y offset: y0 = 0\n"
         "- Wavelength: lambd = 2\n"
-        "- Title: 'hello world'\n"
+        "- Title: hello world\n"
         "- Flag: True"
     )
     assert notebook.metadata["times-square"]["values"] == {
@@ -148,7 +148,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "- Amplitude: A = 2\n"
         "- Y offset: y0 = 0\n"
         "- Wavelength: lambd = 2\n"
-        "- Title: 'hello world'\n"
+        "- Title: hello world\n"
         "- Flag: False"
     )
     assert notebook.metadata["times-square"]["values"] == {

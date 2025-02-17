@@ -199,7 +199,7 @@ async def test_github(client: AsyncClient) -> None:
         "- Amplitude: A = 4\n"
         "- Y offset: y0 = 0\n"
         "- Wavelength: lambd = 2\n"
-        "- Title: 'Demo'\n"
+        "- Title: Demo\n"
         "- Flag: True"
     )
     assert notebook.metadata["times-square"]["values"] == {
@@ -222,7 +222,7 @@ async def test_github(client: AsyncClient) -> None:
         "- Amplitude: A = 2\n"
         "- Y offset: y0 = 0\n"
         "- Wavelength: lambd = 2\n"
-        "- Title: 'Demo'\n"
+        "- Title: Demo\n"
         "- Flag: False"
     )
     assert notebook.metadata["times-square"]["values"] == {

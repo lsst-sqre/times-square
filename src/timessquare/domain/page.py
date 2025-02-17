@@ -356,9 +356,6 @@ class PageModel:
         """Render the Jinja template in the source notebook cells with
         specified parameter values.
 
-        **Note**: parameter values are not validated. Use
-        resolve_and_validate_values first.
-
         Parameters
         ----------
         values : `dict`
@@ -374,11 +371,11 @@ class PageModel:
         PageJinjaError
             Raised if there is an error rendering the Jinja template.
         """
-        # Build Jinja render context
+        # Build Jinja render context with parameter values
         # Turn off autoescaping to avoid escaping the parameter values
         jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
-        value_code_strings = self.parameters.stringify_values(values)
-        jinja_env.globals.update({"params": value_code_strings})
+        jinja_context_values = self.parameters.resolve_values(values)
+        jinja_env.globals.update({"params": jinja_context_values})
 
         # Read notebook and render cell-by-cell
         notebook = PageModel.read_ipynb(self.ipynb)
