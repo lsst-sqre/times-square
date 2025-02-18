@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from base64 import b64encode
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Annotated, Any, Self
@@ -135,6 +133,15 @@ class NbHtmlKey(PageInstanceIdModel):
 
     @property
     def cache_key(self) -> str:
+        """The Redis cache key for this HTML rendering.
+
+        The key is composed of the page name, parameter values, and display
+        settings. The format is:
+        ``{page_name}/{parameter_values}/{display_settings}``
+        where ``page_name`` is the page's name (slug), ``parameter_values`` is
+        the URL query string of parameter values, and ``display_settings`` is
+        the URL query string of display settings.
+        """
         key_prefix = super().cache_key
         return f"{key_prefix}/{self.display_settings.cache_key}"
 
@@ -166,11 +173,8 @@ class NbDisplaySettings:
 
     @property
     def cache_key(self) -> str:
-        return b64encode(
-            json.dumps(dict(asdict(self).items()), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).decode("utf-8")
+        """The Redis cache key component for these display settings."""
+        return self.url_query_string
 
     @property
     def url_params(self) -> dict[str, str]:
