@@ -297,11 +297,7 @@ class PageService:
             well as display settings.
         """
         # Get display settings from parameters
-        try:
-            hide_code = bool(int(query_params.get("ts_hide_code", "1")))
-        except Exception as e:
-            raise ValueError("hide_code query parameter must be 1 or 0") from e
-        display_settings = NbDisplaySettings(hide_code=hide_code)
+        display_settings = NbDisplaySettings.from_url_params(query_params)
         self._logger.debug(
             "Resolved display settings",
             display_settings=asdict(display_settings),
@@ -533,11 +529,7 @@ class PageService:
             page=page, values=query_params
         )
         # also get the Display settings query params
-        try:
-            hide_code = bool(int(query_params.get("ts_hide_code", "1")))
-        except Exception as e:
-            raise ValueError("hide_code query parameter must be 1 or 0") from e
-        display_settings = NbDisplaySettings(hide_code=hide_code)
+        display_settings = NbDisplaySettings.from_url_params(query_params)
         html_key = NbHtmlKey(
             name=page.name,
             parameter_values=page_instance.id.parameter_values,
