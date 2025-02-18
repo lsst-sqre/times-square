@@ -231,10 +231,7 @@ class PageService:
         This is useful for the `add_page` and `update_page` methods to start
         notebook execution as soon as possible.
         """
-        resolved_values = page.parameters.resolve_values({})
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
-        )
+        page_instance = PageInstanceModel.create(page=page, values={})
         return await self.request_noteburst_execution(
             page_instance, enable_retry=enable_retry
         )
@@ -315,12 +312,14 @@ class PageService:
         )
 
         page = await self.get_page(name)
-        resolved_values = page.parameters.resolve_values(query_params)
+        page_instance = PageInstanceModel.create(
+            page=page, values=query_params
+        )
 
         # First try to get HTML from redis cache
         page_key = NbHtmlKey(
-            name=page.name,
-            values=resolved_values,
+            name=page_instance.name,
+            values=page_instance.values,
             display_settings=display_settings,
         )
         nbhtml = await self._html_store.get_instance(page_key)
@@ -331,9 +330,6 @@ class PageService:
         # Second, look if there's an existing job request. If the job is
         # done this renders it into HTML; otherwise it triggers a noteburst
         # request, but does not return any HTML for this request.
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
-        )
         return await self._get_html_from_noteburst_job(
             page_instance=page_instance,
             display_settings=display_settings,
@@ -419,15 +415,14 @@ class PageService:
     ) -> PageInstanceModel:
         """Soft delete the HTML for a page given the query parameters."""
         page = await self.get_page(name)
-        resolved_values = page.parameters.resolve_values(query_params)
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
+        page_instance = PageInstanceModel.create(
+            page=page, values=query_params
         )
         exec_info = await self.request_noteburst_execution(page_instance)
         await self._arq_queue.enqueue(  # provides an arq job metadata
             "replace_nbhtml",
             page_name=page.name,
-            parameter_values=resolved_values,
+            parameter_values=page_instance.values,
             noteburst_job=exec_info.noteburst_job,
         )
         # Format the job for a response
@@ -535,11 +530,10 @@ class PageService:
         for a page instance.
         """
         page = await self.get_page(name)
-        resolved_values = page.parameters.resolve_values(query_params)
-        # also get the Display settings query params
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
+        page_instance = PageInstanceModel.create(
+            page=page, values=query_params
         )
+        # also get the Display settings query params
         try:
             hide_code = bool(int(query_params.get("ts_hide_code", "1")))
         except Exception as e:
@@ -547,7 +541,7 @@ class PageService:
         display_settings = NbDisplaySettings(hide_code=hide_code)
         page_key = NbHtmlKey(
             name=page.name,
-            values=resolved_values,
+            values=page_instance.values,
             display_settings=display_settings,
         )
 

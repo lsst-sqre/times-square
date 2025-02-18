@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Self
 from uuid import uuid4
 
 import jinja2
@@ -510,6 +510,16 @@ class PageInstanceModel(PageInstanceIdModel):
 
     page: PageModel
     """The page domain object."""
+
+    @classmethod
+    def create(cls, page: PageModel, values: Mapping[str, Any]) -> Self:
+        """Create a page instance given a page and parameter values.
+
+        The parameter values are treated as user-inputs (like from the web API
+        query string) and are resolved and validated by this constructor.
+        """
+        resolved_values = page.parameters.resolve_values(values)
+        return cls(name=page.name, page=page, values=resolved_values)
 
 
 @dataclass(kw_only=True)

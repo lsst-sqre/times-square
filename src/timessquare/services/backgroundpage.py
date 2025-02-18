@@ -40,9 +40,8 @@ class BackgroundPageService(PageService):
             The parameter values to use when recomputing the page instance.
         """
         page = await self.get_page(page_name)
-        resolved_values = page.parameters.resolve_values(parameter_values)
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
+        page_instance = PageInstanceModel.create(
+            page=page, values=parameter_values
         )
         # Create HTML for each display setting and store it in the cache
         await self.render_nbhtml_matrix_from_noteburst_response(
