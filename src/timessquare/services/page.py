@@ -315,7 +315,7 @@ class PageService:
         # First try to get HTML from redis cache
         page_key = NbHtmlKey(
             name=page_instance.page_name,
-            values=page_instance.values,
+            parameter_values=page_instance.id.parameter_values,
             display_settings=display_settings,
         )
         nbhtml = await self._html_store.get_instance(page_key)
@@ -493,7 +493,14 @@ class PageService:
                 display_settings=matrix_key,
             )
             html_matrix[matrix_key] = nbhtml
-            await self._html_store.store_nbhtml(nbhtml=nbhtml, lifetime=None)
+            html_key = NbHtmlKey(
+                name=page_instance.page_name,
+                parameter_values=page_instance.id.parameter_values,
+                display_settings=matrix_key,
+            )
+            await self._html_store.store_nbhtml(
+                key=html_key, nbhtml=nbhtml, lifetime=None
+            )
             self._logger.debug(
                 "Stored new HTML", display_settings=asdict(matrix_key)
             )
@@ -531,9 +538,9 @@ class PageService:
         except Exception as e:
             raise ValueError("hide_code query parameter must be 1 or 0") from e
         display_settings = NbDisplaySettings(hide_code=hide_code)
-        page_key = NbHtmlKey(
+        html_key = NbHtmlKey(
             name=page.name,
-            values=page_instance.values,
+            parameter_values=page_instance.id.parameter_values,
             display_settings=display_settings,
         )
 
@@ -554,9 +561,10 @@ class PageService:
                         if noteburst_response.data:
                             noteburst_data = noteburst_response.data
 
-                    nbhtml = await self._html_store.get_instance(page_key)
+                    nbhtml = await self._html_store.get_instance(html_key)
 
                     payload = HtmlEventsModel.create(
+                        page_instance=page_instance,
                         noteburst_job=noteburst_data,
                         nbhtml=nbhtml,
                         request_query_params=query_params,

@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Annotated, Any, Self
+from urllib.parse import urlencode
 
 from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel, Field
@@ -120,27 +121,6 @@ class NbHtmlModel(BaseModel):
             hide_code=display_settings.hide_code,
         )
 
-    def create_key(self) -> NbHtmlKey:
-        """Create a storage key."""
-        return NbHtmlKey(
-            name=self.page_name,
-            values=dict(self.values),
-            display_settings=self.display_settings,
-        )
-
-    @property
-    def url_params(self) -> dict[str, str]:
-        """The URL query parameters for this HTML rendering,
-        including both notebook variables and display settings.
-        """
-        # TODO(jonathansick): Do we need to worry about encoding these values
-        # back to strings. For example, a bool value should go back to a 1 or 0
-        # Perhaps this code should be coordinated with parameter casting in
-        # `timessquare.domain.page.PageParameterSchema.cast_value`.
-        params = {key: str(value) for key, value in self.values.items()}
-        params.update(self.display_settings.url_params)
-        return params
-
     @property
     def display_settings(self) -> NbDisplaySettings:
         """The display settings for this HTML rendering."""
@@ -157,6 +137,15 @@ class NbHtmlKey(PageInstanceIdModel):
     def cache_key(self) -> str:
         key_prefix = super().cache_key
         return f"{key_prefix}/{self.display_settings.cache_key}"
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string corresponding to this key, including both
+        notebook parameter and display settings.
+        """
+        params_query_string = super().url_query_string
+        display_settings_query_string = self.display_settings.url_query_string
+        return f"{params_query_string}&{display_settings_query_string}"
 
 
 @dataclass(frozen=True)
@@ -182,3 +171,8 @@ class NbDisplaySettings:
     def url_params(self) -> dict[str, str]:
         """Get the URL query parameters for these display settings."""
         return {"ts_hide_code": str(int(self.hide_code))}
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string for these display settings."""
+        return urlencode(self.url_params)

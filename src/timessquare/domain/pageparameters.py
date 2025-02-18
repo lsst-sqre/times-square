@@ -256,6 +256,26 @@ class PageParameterSchema(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def create_qs_value(self, value: Any) -> str:
+        """Convert the value to a query string-compatible string.
+
+        This representation can be used to generate the URL query string that
+        would have signaled the parameter value. It is also used to generate
+        the cache key for the page instance.
+
+        Parameters
+        ----------
+        value
+            The parameter value.
+
+        Return
+        ------
+        str
+            The query string-compatible value
+        """
+        raise NotImplementedError
+
 
 @dataclass(kw_only=True)
 class StringParameterSchema(PageParameterSchema):
@@ -275,6 +295,9 @@ class StringParameterSchema(PageParameterSchema):
     def create_json_value(self, value: Any) -> Any:
         return self.cast_value(value)
 
+    def create_qs_value(self, value: Any) -> str:
+        return self.cast_value(value)
+
 
 class IntegerParameterSchema(PageParameterSchema):
     """An integer-type parameter schema."""
@@ -292,6 +315,9 @@ class IntegerParameterSchema(PageParameterSchema):
 
     def create_json_value(self, value: Any) -> Any:
         return self.cast_value(value)
+
+    def create_qs_value(self, value: Any) -> str:
+        return str(self.cast_value(value))
 
 
 class NumberParameterSchema(PageParameterSchema):
@@ -317,6 +343,9 @@ class NumberParameterSchema(PageParameterSchema):
 
     def create_json_value(self, value: Any) -> Any:
         return self.cast_value(value)
+
+    def create_qs_value(self, value: Any) -> str:
+        return str(self.cast_value(value))
 
 
 class BooleanParameterSchema(PageParameterSchema):
@@ -344,3 +373,7 @@ class BooleanParameterSchema(PageParameterSchema):
 
     def create_json_value(self, value: Any) -> Any:
         return self.cast_value(value)
+
+    def create_qs_value(self, value: Any) -> str:
+        # The query string follows the JSON format, so lowercase true/false.
+        return str(self.cast_value(value)).lower()

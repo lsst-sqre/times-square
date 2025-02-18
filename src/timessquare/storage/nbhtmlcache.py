@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from redis.asyncio import Redis
 
-from timessquare.domain.nbhtml import NbHtmlModel
+from timessquare.domain.nbhtml import NbHtmlKey, NbHtmlModel
 from timessquare.domain.page import PageIdModel
 
 from .redisbase import RedisPageInstanceStore
@@ -24,19 +24,20 @@ class NbHtmlCacheStore(RedisPageInstanceStore[NbHtmlModel]):
         )
 
     async def store_nbhtml(
-        self, nbhtml: NbHtmlModel, lifetime: int | None = None
+        self, key: NbHtmlKey, nbhtml: NbHtmlModel, lifetime: int | None = None
     ) -> None:
         """Store an HTML page.
 
         Parameters
         ----------
+        key
+            The key for the HTML page.
         nbhtml
             The HTML page domain model.
         lifetime
             The lifetime for the record in seconds. `None` to cache the record
             indefinitely.
         """
-        key = nbhtml.create_key()
         await super().store_instance(key, nbhtml, lifetime=lifetime)
 
     async def delete_objects_for_page(self, page_name: str) -> None:

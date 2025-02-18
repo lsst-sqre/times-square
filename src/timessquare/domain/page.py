@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
-from base64 import b64encode
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any, Self
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import jinja2
@@ -421,21 +420,29 @@ class PageInstanceIdModel(PageIdModel):
     a Redis key.
     """
 
-    values: dict[str, Any]
-    """The values of a page instance's parameters.
-
-    Keys are parameter names, and values are the parameter values.
-    The values are cast as Python types (`PageParameterSchema.cast_value`).
+    parameter_values: dict[str, str]
+    """The values of a page instance's parameters as strings suitable for
+    URL query parameters.
     """
 
     @property
     def cache_key(self) -> str:
-        encoded_values_key = b64encode(
-            json.dumps(dict(self.values.items()), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).decode("utf-8")
-        return f"{super().cache_key_prefix}{encoded_values_key}"
+        """Create the cache key for a page instance.
+
+        This key is used as a Redis cache key for storing noteburst jobs
+        (`NoteburstJobStore`), and the root key for storing rendered HTML
+        pages (`NbHtmlCacheStore`).
+        """
+        return f"{super().cache_key_prefix}/{self.url_query_string}"
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string for this page instance."""
+        sorted_values = {
+            k: self.parameter_values[k]
+            for k in sorted(self.parameter_values.keys())
+        }
+        return urlencode(sorted_values)
 
 
 @dataclass(kw_only=True)
@@ -473,7 +480,13 @@ class PageInstanceModel:
     @property
     def id(self) -> PageInstanceIdModel:
         """The identifier of the page instance."""
-        return PageInstanceIdModel(name=self.page_name, values=self.values)
+        parameter_values = {
+            name: self.page.parameters[name].create_qs_value(value)
+            for name, value in self.values.items()
+        }
+        return PageInstanceIdModel(
+            name=self.page_name, parameter_values=parameter_values
+        )
 
     def render_ipynb(self) -> str:
         """Render the ipynb notebook.
