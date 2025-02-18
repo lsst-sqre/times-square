@@ -145,31 +145,6 @@ class PageParameters(Mapping):
 
         return cast_values
 
-    def create_parameter_assignment_cell(
-        self, values: Mapping[str, Any]
-    ) -> str:
-        """Create the Python code cell in the notebook instance that assigns
-        parameter values to variables.
-
-        Parameters
-        ----------
-        values
-            A dictionary of parameter names to their values. These values are
-            cast to the correct types and validated.
-
-        Returns
-        -------
-        str
-            The Python code cell as a string.
-        """
-        sorted_variables = sorted(values.keys())
-        code_lines = [
-            self[name].create_python_assignment(name, values[name])
-            for name in sorted_variables
-        ]
-        code_lines.insert(0, "# Parameters")
-        return "\n".join(code_lines)
-
 
 @dataclass(kw_only=True)
 class PageParameterSchema(abc.ABC):

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from timessquare.domain.page import PageModel
+from timessquare.domain.page import PageInstanceModel, PageModel
 
 
 def test_render_parameters() -> None:
-    """Test PageModel.render_parameters()."""
+    """Test PageInstanceModel.render_parameters()."""
     ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
     ipynb = ipynb_path.read_text()
     nb = PageModel.read_ipynb(ipynb)
@@ -18,15 +18,14 @@ def test_render_parameters() -> None:
         uploader_username="testuser",
     )
     print(list(page.parameters.keys()))
-    values = page.parameters.resolve_values(
-        {
-            "A": 2,
-            "y0": 1.0,
-            "lambd": 0.5,
-            "title": "Demo",
-        }
-    )
-    rendered = page.render_parameters(values=values)
+    values = {
+        "A": 2,
+        "y0": 1.0,
+        "lambd": 0.5,
+        "title": "Demo",
+    }
+    page_instance = PageInstanceModel.create(page=page, values=values)
+    rendered = page_instance.render_ipynb()
     rendered_nb = PageModel.read_ipynb(rendered)
 
     # Check that the markdown got rendered

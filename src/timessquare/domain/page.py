@@ -349,69 +349,6 @@ class PageModel:
         """
         return nbformat.writes(notebook, version=NB_VERSION)
 
-    def render_parameters(
-        self,
-        values: Mapping[str, Any],
-    ) -> str:
-        """Render the Jinja template in the source notebook cells with
-        specified parameter values.
-
-        Parameters
-        ----------
-        values : `dict`
-            Parameter values.
-
-        Returns
-        -------
-        ipynb : str
-            JSON-encoded notebook source.
-
-        Raises
-        ------
-        PageJinjaError
-            Raised if there is an error rendering the Jinja template.
-        """
-        # Build Jinja render context with parameter values
-        # Turn off autoescaping to avoid escaping the parameter values
-        jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
-        jinja_context_values = self.parameters.resolve_values(values)
-        jinja_env.globals.update({"params": jinja_context_values})
-
-        # Read notebook and render cell-by-cell
-        notebook = PageModel.read_ipynb(self.ipynb)
-        processed_first_cell = False
-        for cell_index, cell in enumerate(notebook.cells):
-            if cell.cell_type == "code":
-                if processed_first_cell is False:
-                    # Handle first code cell specially by replacing it with a
-                    # cell that sets Python variables to their values
-                    cell.source = (
-                        self.parameters.create_parameter_assignment_cell(
-                            values
-                        )
-                    )
-                    processed_first_cell = True
-                else:
-                    # Only process the first code cell
-                    continue
-
-            # Render the templated cell
-            try:
-                template = jinja_env.from_string(cell.source)
-                cell.source = template.render()
-            except Exception as e:
-                raise PageJinjaError(str(e), cell_index) from e
-
-        # Modify notebook metadata to include values
-        if "times-square" not in notebook.metadata:
-            notebook.metadata["times-square"] = {}
-        notebook.metadata["times-square"]["values"] = {
-            name: self.parameters[name].create_json_value(value)
-            for name, value in values.items()
-        }
-        # Render notebook back to a string and return
-        return PageModel.write_ipynb(notebook)
-
 
 @dataclass
 class PersonModel:
@@ -520,6 +457,78 @@ class PageInstanceModel(PageInstanceIdModel):
         """
         resolved_values = page.parameters.resolve_values(values)
         return cls(name=page.name, page=page, values=resolved_values)
+
+    def render_ipynb(self) -> str:
+        """Render the ipynb notebook.
+
+        This method replaces the first code cell with parameter assignments,
+        renders Jinja templating in all Markdown cells, and updates the
+        notebook's metadata with the parameter values.
+
+        Returns
+        -------
+        str
+            JSON-encoded notebook source.
+
+        Raises
+        ------
+        PageJinjaError
+            Raised if there is an error rendering the Jinja template.
+        """
+        # Build Jinja render context with parameter values
+        # Turn off autoescaping to avoid escaping the parameter values
+        jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
+        jinja_env.globals.update({"params": self.values})
+
+        # Read notebook and render cell-by-cell
+        notebook = self.page.read_ipynb(self.page.ipynb)
+        processed_first_cell = False
+        for cell_index, cell in enumerate(notebook.cells):
+            if cell.cell_type == "code":
+                if processed_first_cell is False:
+                    # Handle first code cell specially by replacing it with a
+                    # cell that sets Python variables to their values
+                    cell.source = self._create_parameter_assignment_cell()
+                    processed_first_cell = True
+                else:
+                    # Only process the first code cell
+                    continue
+
+            # Render the templated cell
+            try:
+                template = jinja_env.from_string(cell.source)
+                cell.source = template.render()
+            except Exception as e:
+                raise PageJinjaError(str(e), cell_index) from e
+
+        # Modify notebook metadata to include values
+        if "times-square" not in notebook.metadata:
+            notebook.metadata["times-square"] = {}
+        notebook.metadata["times-square"]["values"] = {
+            name: self.page.parameters[name].create_json_value(value)
+            for name, value in self.values.items()
+        }
+        # Render notebook back to a string and return
+        return PageModel.write_ipynb(notebook)
+
+    def _create_parameter_assignment_cell(self) -> str:
+        """Create the Python code cell in the notebook instance that assigns
+        parameter values to variables.
+
+        Returns
+        -------
+        str
+            The Python code cell as a string.
+        """
+        sorted_variables = sorted(self.values.keys())
+        code_lines = [
+            self.page.parameters[name].create_python_assignment(
+                name, self.values[name]
+            )
+            for name in sorted_variables
+        ]
+        code_lines.insert(0, "# Parameters")
+        return "\n".join(code_lines)
 
 
 @dataclass(kw_only=True)

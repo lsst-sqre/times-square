@@ -260,7 +260,8 @@ class PageService:
             missing, the default value is used instead.
         """
         page = await self.get_page(name)
-        return await self._render_page_template(page, values)
+        page_instance = PageInstanceModel.create(page=page, values=values)
+        return page_instance.render_ipynb()
 
     async def render_page_template_by_display_path(
         self, display_path: str, values: Mapping[str, Any]
@@ -277,13 +278,8 @@ class PageService:
             missing, the default value is used instead.
         """
         page = await self.get_github_backed_page(display_path)
-        return await self._render_page_template(page, values)
-
-    async def _render_page_template(
-        self, page: PageModel, values: Mapping[str, Any]
-    ) -> str:
-        resolved_values = page.parameters.resolve_values(values)
-        return page.render_parameters(resolved_values)
+        page_instance = PageInstanceModel.create(page=page, values=values)
+        return page_instance.render_ipynb()
 
     async def get_html(
         self, *, name: str, query_params: Mapping[str, Any]
@@ -434,9 +430,7 @@ class PageService:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
-        ipynb = await self._render_page_template(
-            page_instance.page, page_instance.values
-        )
+        ipynb = page_instance.render_ipynb()
         r = await self.noteburst_api.submit_job(
             ipynb=ipynb,
             enable_retry=enable_retry,
