@@ -438,8 +438,8 @@ class PageInstanceIdModel(PageIdModel):
         return f"{super().cache_key_prefix}{encoded_values_key}"
 
 
-@dataclass
-class PageInstanceModel(PageInstanceIdModel):
+@dataclass(kw_only=True)
+class PageInstanceModel:
     """A domain model for a page instance, which combines the page model with
     information identifying the values a specific page instance is rendered
     with.
@@ -447,6 +447,13 @@ class PageInstanceModel(PageInstanceIdModel):
 
     page: PageModel
     """The page domain object."""
+
+    values: dict[str, Any]
+    """The values of a page instance's parameters.
+
+    Keys are parameter names, and values are the parameter values.
+    The values are cast as Python types (`PageParameterSchema.cast_value`).
+    """
 
     @classmethod
     def create(cls, page: PageModel, values: Mapping[str, Any]) -> Self:
@@ -456,7 +463,17 @@ class PageInstanceModel(PageInstanceIdModel):
         query string) and are resolved and validated by this constructor.
         """
         resolved_values = page.parameters.resolve_values(values)
-        return cls(name=page.name, page=page, values=resolved_values)
+        return cls(page=page, values=resolved_values)
+
+    @property
+    def page_name(self) -> str:
+        """The name of the page, which is used as a URL path slug."""
+        return self.page.name
+
+    @property
+    def id(self) -> PageInstanceIdModel:
+        """The identifier of the page instance."""
+        return PageInstanceIdModel(name=self.page_name, values=self.values)
 
     def render_ipynb(self) -> str:
         """Render the ipynb notebook.

@@ -249,10 +249,10 @@ async def post_page(
             e.location = ErrorLocation.body
             e.field_path = ["ipynb"]
             raise
-        page = await page_service.get_page(page_exec.name)
+        page = await page_service.get_page(page_exec.page_name)
 
     context.response.headers["location"] = str(
-        context.request.url_for("get_page", page=page_exec.name)
+        context.request.url_for("get_page", page=page_exec.page_name)
     )
     return Page.from_domain(page=page, request=context.request)
 

@@ -110,7 +110,7 @@ class NbHtmlModel(BaseModel):
         html_hash.update(html.encode())
 
         return cls(
-            page_name=page_instance.name,
+            page_name=page_instance.page_name,
             html=html,
             html_hash=html_hash.hexdigest(),
             values=page_instance.values,

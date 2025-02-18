@@ -314,7 +314,7 @@ class PageService:
 
         # First try to get HTML from redis cache
         page_key = NbHtmlKey(
-            name=page_instance.name,
+            name=page_instance.page_name,
             values=page_instance.values,
             display_settings=display_settings,
         )
@@ -357,7 +357,7 @@ class PageService:
             not presently available.
         """
         # Is there an existing job in the noteburst job store?
-        job = await self._job_store.get_instance(page_instance)
+        job = await self._job_store.get_instance(page_instance.id)
         if not job:
             self._logger.debug("No existing noteburst job available")
             # A record of a noteburst job is not available. Send a request
@@ -372,7 +372,7 @@ class PageService:
             self._logger.warning(
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
-            await self._job_store.delete_instance(page_instance)
+            await self._job_store.delete_instance(page_instance.id)
             await self.request_noteburst_execution(page_instance)
             return None
 
@@ -444,7 +444,6 @@ class PageService:
             )
 
             return PageExecutionInfo(
-                name=page_instance.name,
                 values=page_instance.values,
                 page=page_instance.page,
                 noteburst_job=None,
@@ -453,18 +452,17 @@ class PageService:
             )
 
         await self._job_store.store_job(
-            job=r.data.to_job_model(), page_id=page_instance
+            job=r.data.to_job_model(), page_id=page_instance.id
         )
         self._logger.info(
             "Requested noteburst notebook execution",
-            page_name=page_instance.name,
+            page_name=page_instance.page_name,
             parameters=page_instance.values,
             job_url=r.data.self_url,
         )
         if r.data is None:
             raise RuntimeError("Noteburst job has no data")
         return PageExecutionInfo(
-            name=page_instance.name,
             values=page_instance.values,
             page=page_instance.page,
             noteburst_job=r.data.to_job_model(),
@@ -500,7 +498,7 @@ class PageService:
                 "Stored new HTML", display_settings=asdict(matrix_key)
             )
 
-        deleted_job = await self._job_store.delete_instance(page_instance)
+        deleted_job = await self._job_store.delete_instance(page_instance.id)
         if deleted_job:
             self._logger.debug("Deleted old job record")
 
@@ -542,7 +540,7 @@ class PageService:
         async def iterator() -> AsyncIterator[bytes]:
             try:
                 while True:
-                    job = await self._job_store.get_instance(page_instance)
+                    job = await self._job_store.get_instance(page_instance.id)
                     noteburst_data: NoteburstJobResponseModel | None = None
                     # model for html status
                     if job:

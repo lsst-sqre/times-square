@@ -22,7 +22,7 @@ from safir.metadata import Metadata as SafirMetadata
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlModel
 from timessquare.domain.page import (
-    PageInstanceIdModel,
+    PageInstanceModel,
     PageModel,
     PageSummaryModel,
     PersonModel,
@@ -453,14 +453,16 @@ class DeleteHtmlResponse(BaseModel):
 
     @classmethod
     def from_page_instance(
-        cls, *, page_instance: PageInstanceIdModel, request: Request
+        cls, *, page_instance: PageInstanceModel, request: Request
     ) -> Self:
         """Create a DeleteHtmlResponse from the deleted page instance."""
         base_html_url = str(
-            request.url_for("get_page_html", page=page_instance.name)
+            request.url_for("get_page_html", page=page_instance.page_name)
         )
         base_html_events_url = str(
-            request.url_for("get_page_html_events", page=page_instance.name)
+            request.url_for(
+                "get_page_html_events", page=page_instance.page_name
+            )
         )
         display_settings = NbDisplaySettings.from_url_params(
             request.query_params
