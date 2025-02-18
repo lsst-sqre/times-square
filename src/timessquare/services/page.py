@@ -481,7 +481,7 @@ class PageService:
         html_matrix: dict[NbDisplaySettings, NbHtmlModel] = {}
         if noteburst_response.ipynb is None:
             raise RuntimeError("Noteburst job is complete but has no ipynb")
-        for matrix_key in self.html_display_settings_matrix:
+        for matrix_key in NbDisplaySettings.create_settings_matrix():
             nbhtml = NbHtmlModel.create_from_noteburst_result(
                 page_instance=page_instance,
                 ipynb=noteburst_response.ipynb,
@@ -506,14 +506,6 @@ class PageService:
             self._logger.debug("Deleted old job record")
 
         return html_matrix
-
-    @property
-    def html_display_settings_matrix(self) -> list[NbDisplaySettings]:
-        """The matrix of all display settings for HTML rendering."""
-        return [
-            NbDisplaySettings(hide_code=True),
-            NbDisplaySettings(hide_code=False),
-        ]
 
     async def get_html_events_iter(
         self,

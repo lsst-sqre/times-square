@@ -159,6 +159,11 @@ class NbDisplaySettings:
         """Create an instance from URL query parameters."""
         return cls(hide_code=bool(int(params.get("ts_hide_code", 1))))
 
+    @classmethod
+    def create_settings_matrix(cls) -> list[Self]:
+        """Create a matrix of all possible display settings."""
+        return [cls(hide_code=hide_code) for hide_code in [True, False]]
+
     @property
     def cache_key(self) -> str:
         return b64encode(
