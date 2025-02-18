@@ -20,7 +20,7 @@ from safir.github.models import (
 from safir.metadata import Metadata as SafirMetadata
 
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
-from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlModel
+from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
 from timessquare.domain.page import (
     PageInstanceModel,
     PageModel,
@@ -467,13 +467,14 @@ class DeleteHtmlResponse(BaseModel):
         display_settings = NbDisplaySettings.from_url_params(
             request.query_params
         )
-        values = dict(page_instance.values)
-        values.update(display_settings.url_params)
-        qs = urlencode(values)
-        html_url = f"{base_html_url}?{qs}" if qs else base_html_url
-        html_events_url = (
-            f"{base_html_events_url}?{qs}" if qs else base_html_events_url
+        html_key = NbHtmlKey(
+            name=page_instance.page_name,
+            parameter_values=page_instance.id.parameter_values,
+            display_settings=display_settings,
         )
+        qs = html_key.url_query_string
+        html_url = f"{base_html_url}?{qs}"
+        html_events_url = f"{base_html_events_url}?{qs}"
 
         return cls(
             html_url=AnyHttpUrl(html_url),
