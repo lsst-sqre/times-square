@@ -353,19 +353,16 @@ class BooleanParameterSchema(PageParameterSchema):
 
     def cast_value(self, v: Any) -> bool:
         """Cast a value to its Python type."""
-        try:
-            if isinstance(v, str):
-                if v.lower() == "true":
-                    return True
-                elif v.lower() == "false":
-                    return False
-                else:
-                    raise PageParameterValueCastingError.for_value(
-                        v, "boolean"
-                    )
-            return bool(v)
-        except Exception as e:
-            raise PageParameterValueCastingError.for_value(v, "boolean") from e
+        if isinstance(v, str):
+            if v.lower() == "true":
+                return True
+            elif v.lower() == "false":
+                return False
+            else:
+                raise PageParameterValueCastingError.for_value(v, "boolean")
+        elif isinstance(v, bool):
+            return v
+        raise PageParameterValueCastingError.for_value(v, "boolean")
 
     def create_python_assignment(self, name: str, value: Any) -> str:
         cast_value = self.cast_value(value)
