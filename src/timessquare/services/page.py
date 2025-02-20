@@ -13,7 +13,12 @@ from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 from ..domain.githubtree import GitHubNode
-from ..domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
+from ..domain.nbhtml import (
+    NbDisplaySettings,
+    NbHtmlKey,
+    NbHtmlModel,
+    NbHtmlStatusModel,
+)
 from ..domain.page import (
     PageExecutionInfo,
     PageInstanceModel,
@@ -281,20 +286,29 @@ class PageService:
         page_instance = PageInstanceModel.create(page=page, values=values)
         return page_instance.render_ipynb()
 
-    async def get_html(
+    async def get_html_and_status(
         self, *, name: str, query_params: Mapping[str, Any]
-    ) -> NbHtmlModel | None:
-        """Get the HTML for a page given the query parameters, first
-        from a cache or triggering a rendering if not available.
+    ) -> NbHtmlStatusModel:
+        """Get the status of the HTML rendering for a page, and the HTML itself
+        if available.
+
+        This method will get the HTML from the Redis cache, or alternatively
+        check if there a noteburst job for this page instance and get the
+        HTML from the job if it's available.
+
+        Parameters
+        ----------
+        name
+            The name of the page (slug in the pages API).
+        query_params
+            The URL query parameters for the page instance, comprising both
+            parameter values and display settings.
 
         Returns
         -------
-        nbhtml : `NbHtmlModel` or `None`
-            The NbHtmlModel if available, or `None` if the executed notebook is
-            not presently available.
-        query_params
-            The request query parameters, which contain parameter values as
-            well as display settings.
+        nbhtml_status
+            The status of the HTML rendering for the page and the HTML itself
+            if available.
         """
         # Get display settings from parameters
         display_settings = NbDisplaySettings.from_url_params(query_params)
@@ -308,24 +322,55 @@ class PageService:
             page=page, values=query_params
         )
 
-        # First try to get HTML from redis cache
-        page_key = NbHtmlKey(
+        # Get HTML from redis cache
+        html_key = NbHtmlKey(
             name=page_instance.page_name,
             parameter_values=page_instance.id.parameter_values,
             display_settings=display_settings,
         )
-        nbhtml = await self._html_store.get_instance(page_key)
-        if nbhtml is not None:
-            self._logger.debug("Got HTML from cache")
-            return nbhtml
+        nbhtml = await self._html_store.get_instance(html_key)
 
-        # Second, look if there's an existing job request. If the job is
+        # Alternatively, look if there's an existing job request. If the job is
         # done this renders it into HTML; otherwise it triggers a noteburst
         # request, but does not return any HTML for this request.
-        return await self._get_html_from_noteburst_job(
-            page_instance=page_instance,
-            display_settings=display_settings,
+        #
+        # The fact that the UI periodically calls this service is what triggers
+        # the rendering of the HTML after an execution by retrieving the
+        # noteburst job.
+        if nbhtml is None:
+            nbhtml = await self._get_html_from_noteburst_job(
+                page_instance=page_instance,
+                display_settings=html_key.display_settings,
+            )
+
+        return NbHtmlStatusModel.create(
+            nbhtml=nbhtml, nb_html_key=html_key, page_instance=page_instance
         )
+
+    async def get_html(
+        self, *, name: str, query_params: Mapping[str, Any]
+    ) -> NbHtmlModel | None:
+        """Get the HTML for a page given the query parameters, first
+        from a cache or triggering a rendering if not available.
+
+        Parameters
+        ----------
+        name
+            The name of the page (slug in the pages API).
+        query_params
+            The URL query parameters for the page instance, comprising both
+            parameter values and display settings.
+
+        Returns
+        -------
+        nbhtml | None
+            The NbHtmlModel if available, or `None` if the executed notebook is
+            not presently available.
+        """
+        html_status = await self.get_html_and_status(
+            name=name, query_params=query_params
+        )
+        return html_status.nb_html
 
     async def _get_html_from_noteburst_job(
         self,

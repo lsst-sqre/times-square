@@ -20,7 +20,11 @@ from safir.github.models import (
 from safir.metadata import Metadata as SafirMetadata
 
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
-from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
+from timessquare.domain.nbhtml import (
+    NbDisplaySettings,
+    NbHtmlKey,
+    NbHtmlStatusModel,
+)
 from timessquare.domain.page import (
     PageInstanceModel,
     PageModel,
@@ -410,14 +414,23 @@ class HtmlStatus(BaseModel):
     )
 
     @classmethod
-    def from_html(
-        cls, *, html: NbHtmlModel | None, request: Request
+    def from_html_status(
+        cls, *, html_status: NbHtmlStatusModel, request: Request
     ) -> HtmlStatus:
         base_html_url = str(
             request.url_for("get_page_html", page=request.path_params["page"])
         )
 
-        if html is None:
+        if html_status.nb_html is not None:
+            qs = html_status.nb_html_key.url_query_string
+            html_url = f"{base_html_url}?{qs}"
+            return cls(
+                available=html_status.available,
+                html_url=AnyHttpUrl(html_url),
+                html_hash=html_status.nb_html.html_hash,
+            )
+
+        else:
             # resolved parameters aren't available, so use the request URL
             qs = urlencode(request.query_params)
             html_url = f"{base_html_url}?{qs}" if qs else base_html_url
@@ -426,21 +439,6 @@ class HtmlStatus(BaseModel):
                 available=False,
                 html_url=AnyHttpUrl(html_url),
                 html_hash=None,
-            )
-        else:
-            query_params: dict[str, Any] = {}
-            query_params.update(html.values)
-            # Add display settings
-            if html.hide_code:
-                query_params["ts_hide_code"] = "1"
-            else:
-                query_params["ts_hide_code"] = "0"
-            qs = urlencode(query_params)
-            html_url = f"{base_html_url}?{qs}" if qs else base_html_url
-            return cls(
-                available=True,
-                html_hash=html.html_hash,
-                html_url=AnyHttpUrl(html_url),
             )
 
 

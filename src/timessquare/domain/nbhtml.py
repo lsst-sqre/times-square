@@ -16,6 +16,13 @@ from traitlets.config import Config
 from ..storage.noteburst import NoteburstJobResponseModel
 from .page import PageInstanceIdModel, PageInstanceModel
 
+__all__ = [
+    "NbDisplaySettings",
+    "NbHtmlKey",
+    "NbHtmlModel",
+    "NbHtmlStatusModel",
+]
+
 
 class NbHtmlModel(BaseModel):
     """The domain model for an HTML-rendered notebook for a page.
@@ -123,6 +130,33 @@ class NbHtmlModel(BaseModel):
     def display_settings(self) -> NbDisplaySettings:
         """The display settings for this HTML rendering."""
         return NbDisplaySettings(hide_code=self.hide_code)
+
+
+@dataclass(kw_only=True)
+class NbHtmlStatusModel:
+    """A model for a summary of the status of an HTML rendering."""
+
+    available: bool
+    nb_html_key: NbHtmlKey
+    nb_html: NbHtmlModel | None
+    page_instance: PageInstanceModel
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        nbhtml: NbHtmlModel | None,
+        nb_html_key: NbHtmlKey,
+        page_instance: PageInstanceModel,
+    ) -> Self:
+        """Create an instance from an NbHtmlModel."""
+        available = nbhtml is not None
+        return cls(
+            available=available,
+            nb_html_key=nb_html_key,
+            nb_html=nbhtml,
+            page_instance=page_instance,
+        )
 
 
 @dataclass
