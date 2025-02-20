@@ -79,7 +79,7 @@ class PageParameters(Mapping):
 
         return cls(parameters)
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> PageParameterSchema:
         """Retrieve a parameter schema by its name."""
         return self._parameter_schemas[key]
 

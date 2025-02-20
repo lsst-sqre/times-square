@@ -22,6 +22,61 @@ from timessquare.exceptions import (
 )
 
 
+def test_resolve_values() -> None:
+    parameters = PageParameters(
+        {
+            "myvar": NumberParameterSchema.create_and_validate(
+                "myvar", {"type": "number", "default": 1.0}
+            ),
+            "myvar2": StringParameterSchema.create_and_validate(
+                "myvar2", {"type": "string", "default": "hello"}
+            ),
+        }
+    )
+    assert parameters.resolve_values({"myvar": 2.0, "myvar2": "world"}) == {
+        "myvar": 2.0,
+        "myvar2": "world",
+    }
+    # Should be able to cast from all-string values (e.g. from query string)
+    assert parameters.resolve_values({"myvar": "2.0", "myvar2": "world"}) == {
+        "myvar": 2.0,
+        "myvar2": "world",
+    }
+    # Should use provided values combined with default values
+    assert parameters.resolve_values({"myvar": 2.0}) == {
+        "myvar": 2.0,
+        "myvar2": "hello",
+    }
+    # Should use default values
+    assert parameters.resolve_values({}) == {"myvar": 1.0, "myvar2": "hello"}
+    # Should ignore extra parameters
+    assert parameters.resolve_values({"myvar": 2.0, "myvar3": "world"}) == {
+        "myvar": 2.0,
+        "myvar2": "hello",
+    }
+
+
+def test_parameter_schema_access() -> None:
+    parameters = PageParameters(
+        {
+            "myvar": NumberParameterSchema.create_and_validate(
+                "myvar", {"type": "number", "default": 1.0}
+            ),
+            "myvar2": StringParameterSchema.create_and_validate(
+                "myvar2", {"type": "string", "default": "hello"}
+            ),
+        }
+    )
+    assert parameters["myvar"].schema["type"] == "number"
+    assert parameters["myvar2"].schema["type"] == "string"
+
+    with pytest.raises(KeyError):
+        parameters["myvar3"]
+
+    assert len(parameters) == 2
+    assert set(list(parameters.keys())) == {"myvar", "myvar2"}
+
+
 def test_parameter_name_validation() -> None:
     PageParameters.validate_parameter_name("myvar")
     PageParameters.validate_parameter_name("my_var")
