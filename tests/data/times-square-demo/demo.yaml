@@ -26,3 +26,8 @@ parameters:
     type: boolean
     description: A boolean flag
     default: true
+  mydate:
+    type: string
+    format: date
+    description: A date
+    default: '2025-02-21'

@@ -66,6 +66,12 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             "description": "Wavelength",
             "default": 2,
         },
+        "mydate": {
+            "type": "string",
+            "description": "A date value",
+            "format": "date",
+            "default": "2025-02-21",
+        },
         "title": {
             "default": "hello world",
             "description": "A string value",
@@ -132,12 +138,16 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "A": 4,
         "y0": 0,
         "lambd": 2,
+        "mydate": "2025-02-21",
         "title": "hello world",
         "boolflag": True,
     }
 
     # Render the page template with some parameters set
-    r = await client.get(rendered_url, params={"A": 2, "boolflag": False})
+    r = await client.get(
+        rendered_url,
+        params={"A": 2, "boolflag": False, "mydate": "2025-05-01"},
+    )
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
     assert notebook.cells[0].source == (
@@ -155,6 +165,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "A": 2,
         "y0": 0,
         "lambd": 2,
+        "mydate": "2025-05-01",
         "title": "hello world",
         "boolflag": False,
     }

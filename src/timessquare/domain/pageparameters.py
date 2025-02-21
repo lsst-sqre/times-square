@@ -8,6 +8,7 @@ import keyword
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Self
 
 import jsonschema.exceptions
@@ -25,6 +26,7 @@ from timessquare.exceptions import (
 
 __all__ = [
     "BooleanParameterSchema",
+    "DateParameterSchema",
     "IntegerParameterSchema",
     "NumberParameterSchema",
     "PageParameterSchema",
@@ -165,7 +167,8 @@ class PageParameterSchema(abc.ABC):
         """
         validator = Draft202012Validator(json_schema)
         schema_type = validator.schema.get("type", "string")
-        if schema_type == "string":
+        schema_format = validator.schema.get("format", None)
+        if schema_type == "string" and schema_format is None:
             return StringParameterSchema(validator=validator)
         elif schema_type == "integer":
             return IntegerParameterSchema(validator=validator)
@@ -173,6 +176,8 @@ class PageParameterSchema(abc.ABC):
             return NumberParameterSchema(validator=validator)
         elif schema_type == "boolean":
             return BooleanParameterSchema(validator=validator)
+        elif schema_type == "string" and schema_format == "date":
+            return DateParameterSchema(validator=validator)
 
         raise ValueError(f"Unsupported schema type: {schema_type}")
 
@@ -204,20 +209,28 @@ class PageParameterSchema(abc.ABC):
 
     @property
     def default(self) -> Any:
-        """Get the schema's default value."""
-        return self.schema["default"]
+        """Get the schema's default value as the native Python type."""
+        return self.cast_value(self.schema["default"])
 
     def __str__(self) -> str:
         return json.dumps(self.schema, sort_keys=True, indent=2)
 
     def validate(self, v: Any) -> bool:
         """Validate a parameter value."""
-        return self.validator.is_valid(v)
+        # The JSON schema validator requires a JSON-compatible value.
+        # For example, a date parameter would be a string in ISO 8601 format
+        # rather than a Python `date` object.
+        json_value = self.create_json_value(v)
+        return self.validator.is_valid(json_value)
 
     @abc.abstractmethod
     def cast_value(self, v: Any) -> Any:
         """Cast a value to its Python type."""
         raise NotImplementedError
+
+    def create_python_imports(self) -> list[str]:
+        """Create Python import statements needed for the python assignment."""
+        return []
 
     @abc.abstractmethod
     def create_python_assignment(self, name: str, value: Any) -> str:
@@ -374,3 +387,34 @@ class BooleanParameterSchema(PageParameterSchema):
     def create_qs_value(self, value: Any) -> str:
         # The query string follows the JSON format, so lowercase true/false.
         return str(self.cast_value(value)).lower()
+
+
+class DateParameterSchema(PageParameterSchema):
+    """A date-type parameter schema."""
+
+    def cast_value(self, v: Any) -> date:
+        """Cast a value to its Python type."""
+        try:
+            # Parse an ISO 8601 date string
+            if isinstance(v, str):
+                return date.fromisoformat(v)
+            elif isinstance(v, date):
+                return v
+        except Exception as e:
+            raise PageParameterValueCastingError.for_value(v, "date") from e
+
+        raise PageParameterValueCastingError.for_value(v, "date")
+
+    def create_python_imports(self) -> list[str]:
+        return ["import datetime"]
+
+    def create_python_assignment(self, name: str, value: Any) -> str:
+        date_value = self.cast_value(value)
+        str_value = date_value.isoformat()
+        return f'{name} = datetime.date.fromisoformat("{str_value}")'
+
+    def create_json_value(self, value: Any) -> Any:
+        return self.cast_value(value).isoformat()
+
+    def create_qs_value(self, value: Any) -> str:
+        return self.cast_value(value).isoformat()

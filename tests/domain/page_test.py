@@ -27,6 +27,7 @@ def test_render_parameters() -> None:
         "y0": 1.0,
         "lambd": 0.5,
         "title": "Demo",
+        "mydate": "2021-01-01",
     }
     page_instance = PageInstanceModel.create(page=page, values=values)
     rendered = page_instance.render_ipynb()
@@ -48,9 +49,11 @@ def test_render_parameters() -> None:
     # Check that the first code cell got replaced
     assert rendered_nb["cells"][1]["source"] == (
         "# Parameters\n"
+        "import datetime\n"
         "A = 2\n"
         "boolflag = True\n"
         "lambd = 0.5\n"
+        'mydate = datetime.date.fromisoformat("2021-01-01")\n'
         'title = "Demo"\n'
         "y0 = 1.0"
     )

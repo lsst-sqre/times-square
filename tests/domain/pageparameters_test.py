@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import pytest
 
 from timessquare.domain.pageparameters import (
     BooleanParameterSchema,
+    DateParameterSchema,
     IntegerParameterSchema,
     NumberParameterSchema,
     PageParameters,
@@ -195,3 +197,23 @@ def test_boolean_parameter_schema() -> None:
         schema.cast_value(1)
     with pytest.raises(PageParameterValueCastingError):
         schema.cast_value(0)
+
+
+def test_date_parameter_schema() -> None:
+    schema = PageParameterSchema.create_and_validate(
+        "myvar", {"default": "2025-02-01", "type": "string", "format": "date"}
+    )
+    assert isinstance(schema, DateParameterSchema)
+    assert schema.default == date.fromisoformat("2025-02-01")
+    assert schema.cast_value("2025-02-21") == date(year=2025, month=2, day=21)
+    assert schema.create_python_assignment("myvar", date(2025, 2, 21)) == (
+        'myvar = datetime.date.fromisoformat("2025-02-21")'
+    )
+    assert schema.create_python_imports() == ["import datetime"]
+    assert schema.create_json_value(date(2025, 2, 21)) == "2025-02-21"
+    assert schema.create_json_value("2025-02-21") == "2025-02-21"
+    assert schema.create_qs_value(date(2025, 2, 21)) == "2025-02-21"
+    assert schema.create_qs_value("2025-02-21") == "2025-02-21"
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("hello")

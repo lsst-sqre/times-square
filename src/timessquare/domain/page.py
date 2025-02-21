@@ -583,14 +583,28 @@ class PageInstanceModel:
         str
             The Python code cell as a string.
         """
-        sorted_variables = sorted(self.values.keys())
-        code_lines = [
-            self.page.parameters[name].create_python_assignment(
-                name, self.values[name]
+        code_lines = ["# Parameters"]
+
+        # Add import statements
+        import_statements: set[str] = set()
+        for parameter_schema in self.page.parameters.values():
+            import_statements.update(
+                set(parameter_schema.create_python_imports())
             )
-            for name in sorted_variables
-        ]
-        code_lines.insert(0, "# Parameters")
+        if len(import_statements) > 0:
+            sorted_imports = sorted(list(import_statements))
+            code_lines.extend(sorted_imports)
+
+        # Add parameter assignments
+        sorted_variables = sorted(self.values.keys())
+        code_lines.extend(
+            [
+                self.page.parameters[name].create_python_assignment(
+                    name, self.values[name]
+                )
+                for name in sorted_variables
+            ]
+        )
         return "\n".join(code_lines)
 
 
