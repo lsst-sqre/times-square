@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterable
-from typing import TypeVar
 
 from pydantic import BaseModel
 from safir.redis import PydanticRedisStorage
@@ -13,10 +12,7 @@ from timessquare.domain.page import PageInstanceIdProtocol
 __all__ = ["RedisPageInstanceStore"]
 
 
-S = TypeVar("S", bound="BaseModel")
-
-
-class RedisPageInstanceStore(PydanticRedisStorage[S]):
+class RedisPageInstanceStore[S: BaseModel](PydanticRedisStorage[S]):
     """A base class for Redis-based storage of page-instance-related Pydantic
     models as JSON.
 
