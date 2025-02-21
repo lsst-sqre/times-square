@@ -138,9 +138,8 @@ class HtmlEventsModel(BaseModel):
 
         if nbhtml:
             nb_html_key = NbHtmlKey(
-                name=page_instance.page_name,
-                parameter_values=page_instance.id.parameter_values,
                 display_settings=nbhtml.display_settings,
+                page_instance_id=page_instance.id,
             )
             qs = nb_html_key.url_query_string
             html_url = AnyHttpUrl(f"{html_base_url}?{qs}")

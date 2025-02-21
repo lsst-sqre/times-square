@@ -160,10 +160,19 @@ class NbHtmlStatusModel:
 
 
 @dataclass
-class NbHtmlKey(PageInstanceIdModel):
-    """A domain model for the redis key for an NbHtmlModel instance."""
+class NbHtmlKey:
+    """A domain model for the redis key for an NbHtmlModel instance.
+
+    This model can be used as a key for the NbHtmlCacheStore and generates
+    URL query strings that fully specify an HTML rendering, including
+    both notebook parameter values and display settings.
+
+    Conforms to the `PageInstanceIdProtocol`.
+    """
 
     display_settings: NbDisplaySettings
+
+    page_instance_id: PageInstanceIdModel
 
     @property
     def cache_key(self) -> str:
@@ -176,7 +185,7 @@ class NbHtmlKey(PageInstanceIdModel):
         the URL query string of parameter values, and ``display_settings`` is
         the URL query string of display settings.
         """
-        key_prefix = super().cache_key
+        key_prefix = self.page_instance_id.cache_key
         return f"{key_prefix}/{self.display_settings.cache_key}"
 
     @property
@@ -184,7 +193,7 @@ class NbHtmlKey(PageInstanceIdModel):
         """The URL query string corresponding to this key, including both
         notebook parameter and display settings.
         """
-        params_query_string = super().url_query_string
+        params_query_string = self.page_instance_id.url_query_string
         display_settings_query_string = self.display_settings.url_query_string
         return f"{params_query_string}&{display_settings_query_string}"
 

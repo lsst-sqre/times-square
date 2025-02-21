@@ -466,9 +466,8 @@ class DeleteHtmlResponse(BaseModel):
             request.query_params
         )
         html_key = NbHtmlKey(
-            name=page_instance.page_name,
-            parameter_values=page_instance.id.parameter_values,
             display_settings=display_settings,
+            page_instance_id=page_instance.id,
         )
         qs = html_key.url_query_string
         html_url = f"{base_html_url}?{qs}"

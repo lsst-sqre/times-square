@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import Any, Self
+from typing import Any, Protocol, Self
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -18,6 +18,17 @@ from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
 from .pageparameters import PageParameters
+
+__all__ = [
+    "PageExecutionInfo",
+    "PageIdModel",
+    "PageInstanceIdModel",
+    "PageInstanceIdProtocol",
+    "PageInstanceModel",
+    "PageModel",
+    "PageSummaryModel",
+    "PersonModel",
+]
 
 NB_VERSION = 4
 """The notebook format version used for reading and writing notebooks.
@@ -411,6 +422,26 @@ class PageIdModel:
         return f"{self.name}/"
 
 
+class PageInstanceIdProtocol(Protocol):
+    """A protocol for page instance identifiers.
+
+    These identifiers can be as keys for the `RedisPageInstanceStore` and
+    generate URL query strings for page instances.
+    """
+
+    @property
+    def cache_key(self) -> str:
+        """The cache key for this page instance, used by
+        `RedisPageInstanceStore`.
+        """
+        ...
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string for this page instance."""
+        ...
+
+
 @dataclass
 class PageInstanceIdModel(PageIdModel):
     """The domain model that identifies an instance of a page through the
@@ -418,6 +449,8 @@ class PageInstanceIdModel(PageIdModel):
 
     The `cache_key` property produces a reproducible key string, useful as
     a Redis key.
+
+    Conforms to the `PageInstanceIdProtocol`.
     """
 
     parameter_values: dict[str, str]
@@ -433,7 +466,7 @@ class PageInstanceIdModel(PageIdModel):
         (`NoteburstJobStore`), and the root key for storing rendered HTML
         pages (`NbHtmlCacheStore`).
         """
-        return f"{super().cache_key_prefix}/{self.url_query_string}"
+        return f"{super().cache_key_prefix}{self.url_query_string}"
 
     @property
     def url_query_string(self) -> str:

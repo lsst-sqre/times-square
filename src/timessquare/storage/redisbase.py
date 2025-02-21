@@ -8,7 +8,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 from safir.redis import PydanticRedisStorage
 
-from timessquare.domain.page import PageInstanceIdModel
+from timessquare.domain.page import PageInstanceIdProtocol
 
 __all__ = ["RedisPageInstanceStore"]
 
@@ -30,7 +30,7 @@ class RedisPageInstanceStore(PydanticRedisStorage[S]):
         The prefix for any data stored in Redis.
     """
 
-    def calculate_redis_key(self, page_id: PageInstanceIdModel) -> str:
+    def calculate_redis_key(self, page_id: PageInstanceIdProtocol) -> str:
         """Create the redis key for given the page's name and
         parameter values.
 
@@ -50,7 +50,7 @@ class RedisPageInstanceStore(PydanticRedisStorage[S]):
 
     async def store_instance(
         self,
-        page_id: PageInstanceIdModel,
+        page_id: PageInstanceIdProtocol,
         data: S,
         lifetime: int | None = None,
     ) -> None:
@@ -73,7 +73,7 @@ class RedisPageInstanceStore(PydanticRedisStorage[S]):
         key = self.calculate_redis_key(page_id)
         await super().store(key, data, lifetime=lifetime)
 
-    async def get_instance(self, page_id: PageInstanceIdModel) -> S | None:
+    async def get_instance(self, page_id: PageInstanceIdProtocol) -> S | None:
         """Get the data stored for a page instance, deserializing it into the
         Pydantic model type.
 
@@ -110,7 +110,7 @@ class RedisPageInstanceStore(PydanticRedisStorage[S]):
         async for key in super().scan(pattern):
             yield key
 
-    async def delete_instance(self, page_id: PageInstanceIdModel) -> bool:
+    async def delete_instance(self, page_id: PageInstanceIdProtocol) -> bool:
         """Delete a dataset for a specific page instance.
 
         Parameters

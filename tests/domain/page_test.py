@@ -1,10 +1,14 @@
-"""Tests for the Page service."""
+"""Tests for the Page domain."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from timessquare.domain.page import PageInstanceModel, PageModel
+from timessquare.domain.page import (
+    PageInstanceIdModel,
+    PageInstanceModel,
+    PageModel,
+)
 
 
 def test_render_parameters() -> None:
@@ -53,3 +57,12 @@ def test_render_parameters() -> None:
 
     # Check that the second code cell was unchanged
     assert rendered_nb["cells"][2]["source"] == nb["cells"][2]["source"]
+
+
+def test_page_instance_id_model() -> None:
+    page_instance_id = PageInstanceIdModel(
+        name="demo",
+        parameter_values={"A": "2", "y0": "1.0", "lambd": "0.5"},
+    )
+    assert page_instance_id.cache_key == "demo/A=2&lambd=0.5&y0=1.0"
+    assert page_instance_id.url_query_string == "A=2&lambd=0.5&y0=1.0"

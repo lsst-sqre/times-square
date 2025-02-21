@@ -324,9 +324,8 @@ class PageService:
 
         # Get HTML from redis cache
         html_key = NbHtmlKey(
-            name=page_instance.page_name,
-            parameter_values=page_instance.id.parameter_values,
             display_settings=display_settings,
+            page_instance_id=page_instance.id,
         )
         nbhtml = await self._html_store.get_instance(html_key)
 
@@ -535,9 +534,8 @@ class PageService:
             )
             html_matrix[matrix_key] = nbhtml
             html_key = NbHtmlKey(
-                name=page_instance.page_name,
-                parameter_values=page_instance.id.parameter_values,
                 display_settings=matrix_key,
+                page_instance_id=page_instance.id,
             )
             await self._html_store.store_nbhtml(
                 key=html_key, nbhtml=nbhtml, lifetime=None
@@ -568,9 +566,8 @@ class PageService:
         # also get the Display settings query params
         display_settings = NbDisplaySettings.from_url_params(query_params)
         html_key = NbHtmlKey(
-            name=page.name,
-            parameter_values=page_instance.id.parameter_values,
             display_settings=display_settings,
+            page_instance_id=page_instance.id,
         )
 
         async def iterator() -> AsyncIterator[bytes]:
