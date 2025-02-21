@@ -72,6 +72,12 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             "format": "date",
             "default": "2025-02-21",
         },
+        "mydatetime": {
+            "type": "string",
+            "description": "A datetime value",
+            "format": "date-time",
+            "default": "2025-02-22T12:00:00+00:00",
+        },
         "title": {
             "default": "hello world",
             "description": "A string value",
@@ -139,6 +145,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "y0": 0,
         "lambd": 2,
         "mydate": "2025-02-21",
+        "mydatetime": "2025-02-22T12:00:00+00:00",
         "title": "hello world",
         "boolflag": True,
     }
@@ -146,7 +153,12 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     # Render the page template with some parameters set
     r = await client.get(
         rendered_url,
-        params={"A": 2, "boolflag": False, "mydate": "2025-05-01"},
+        params={
+            "A": 2,
+            "boolflag": False,
+            "mydate": "2025-05-01",
+            "mydatetime": "2025-05-01T12:00:00+00:00",
+        },
     )
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
@@ -166,6 +178,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "y0": 0,
         "lambd": 2,
         "mydate": "2025-05-01",
+        "mydatetime": "2025-05-01T12:00:00+00:00",
         "title": "hello world",
         "boolflag": False,
     }

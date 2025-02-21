@@ -207,6 +207,7 @@ async def test_github(client: AsyncClient) -> None:
         "y0": 0,
         "lambd": 2,
         "mydate": "2025-02-21",
+        "mydatetime": "2025-02-22T12:00:00+00:00",
         "title": "Demo",
         "boolflag": True,
     }
@@ -214,7 +215,12 @@ async def test_github(client: AsyncClient) -> None:
     # Render the page template with some parameters set
     r = await client.get(
         rendered_url,
-        params={"A": 2, "boolflag": False, "mydate": "2025-01-01"},
+        params={
+            "A": 2,
+            "boolflag": False,
+            "mydate": "2025-01-01",
+            "mydatetime": "2025-01-01T12:00:00+00:00",
+        },
     )
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
@@ -234,6 +240,7 @@ async def test_github(client: AsyncClient) -> None:
         "y0": 0,
         "lambd": 2,
         "mydate": "2025-01-01",
+        "mydatetime": "2025-01-01T12:00:00+00:00",
         "title": "Demo",
         "boolflag": False,
     }

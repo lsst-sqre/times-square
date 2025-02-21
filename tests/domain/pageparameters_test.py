@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -10,6 +10,7 @@ import pytest
 from timessquare.domain.pageparameters import (
     BooleanParameterSchema,
     DateParameterSchema,
+    DatetimeParameterSchema,
     IntegerParameterSchema,
     NumberParameterSchema,
     PageParameters,
@@ -217,3 +218,37 @@ def test_date_parameter_schema() -> None:
 
     with pytest.raises(PageParameterValueCastingError):
         schema.cast_value("hello")
+
+
+def test_datetime_parameter_schema() -> None:
+    schema = PageParameterSchema.create_and_validate(
+        "myvar",
+        {
+            "default": "2025-02-01T12:00:00+00:00",
+            "type": "string",
+            "format": "date-time",
+        },
+    )
+    assert isinstance(schema, DatetimeParameterSchema)
+    assert schema.default == datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
+    assert schema.cast_value("2025-02-21T12:00:00+00:00") == datetime(
+        2025, 2, 21, 12, 0, 0, tzinfo=UTC
+    )
+    assert schema.cast_value("2025-02-21T12:00:00") == datetime(
+        2025, 2, 21, 12, 0, 0, tzinfo=UTC
+    )
+    assert schema.cast_value(
+        datetime(2025, 2, 21, 12, 0, 0, tzinfo=None)  # noqa: DTZ001
+    ) == datetime(2025, 2, 21, 12, tzinfo=UTC)
+    assert schema.create_python_assignment(
+        "myvar", datetime(2025, 2, 21, 12, 0, 0, tzinfo=UTC)
+    ) == (
+        'myvar = datetime.datetime.fromisoformat("2025-02-21T12:00:00+00:00")'
+    )
+    assert schema.create_python_imports() == ["import datetime"]
+    assert schema.create_json_value(
+        datetime(2025, 2, 21, 12, 0, 0, tzinfo=UTC)
+    ) == ("2025-02-21T12:00:00+00:00")
+    assert schema.create_qs_value(
+        datetime(2025, 2, 21, 12, 0, 0, tzinfo=UTC)
+    ) == ("2025-02-21T12:00:00+00:00")

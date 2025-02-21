@@ -28,6 +28,7 @@ def test_render_parameters() -> None:
         "lambd": 0.5,
         "title": "Demo",
         "mydate": "2021-01-01",
+        "mydatetime": "2021-01-01T12:00:00+00:00",
     }
     page_instance = PageInstanceModel.create(page=page, values=values)
     rendered = page_instance.render_ipynb()
@@ -54,6 +55,8 @@ def test_render_parameters() -> None:
         "boolflag = True\n"
         "lambd = 0.5\n"
         'mydate = datetime.date.fromisoformat("2021-01-01")\n'
+        "mydatetime = datetime.datetime.fromisoformat"
+        '("2021-01-01T12:00:00+00:00")\n'
         'title = "Demo"\n'
         "y0 = 1.0"
     )
