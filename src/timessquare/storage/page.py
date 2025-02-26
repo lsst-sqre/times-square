@@ -367,3 +367,9 @@ class PageStore:
             repo_node.insert_node(tree_input)
 
         return repo_node.contents
+
+    async def list_page_names(self) -> list[str]:
+        """Get a list of all page names."""
+        statement = select(SqlPage.name)
+        result = await self._session.execute(statement)
+        return [row[0] for row in result.all()]

@@ -44,3 +44,14 @@ class NbHtmlCacheStore(RedisPageInstanceStore[NbHtmlModel]):
         """Delete all cached renders for a page."""
         prefix = PageIdModel(name=page_name).cache_key_prefix
         await self.delete_all(f"{prefix}*")
+
+    async def list_keys_for_page(self, page_name: str) -> list[str]:
+        """List all keys for a page."""
+        prefix = PageIdModel(name=page_name).cache_key_prefix
+        return [key async for key in self.scan(f"{prefix}*")]
+
+    async def rename_key(self, old_key: str, new_key: str) -> None:
+        """Rename a key in the cache."""
+        full_old_key = self._prefix_key(old_key)
+        full_new_key = self._prefix_key(new_key)
+        await self._redis.renamenx(full_old_key, full_new_key)
