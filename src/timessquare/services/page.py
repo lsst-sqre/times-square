@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from base64 import b64decode
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -605,3 +607,97 @@ class PageService:
                 raise
 
         return iterator()
+
+    async def migrate_html_cache_keys(
+        self, *, dry_run: bool = True, for_page_id: str | None = None
+    ) -> None:
+        """Migrate Redis keys to the new format.
+
+        Parameters
+        ----------
+        dry_run
+            If `True`, don't actually migrate the keys, but log what would be
+            done.
+        for_page_id
+            If set, only migrate keys for the given page ID.
+        """
+        if for_page_id:
+            await self._migrate_html_cache_keys_for_page(
+                dry_run=dry_run, page_id=for_page_id
+            )
+            return
+
+        for page_id in await self._page_store.list_page_names():
+            await self._migrate_html_cache_keys_for_page(
+                dry_run=dry_run, page_id=page_id
+            )
+
+    async def _migrate_html_cache_keys_for_page(
+        self, *, dry_run: bool = True, page_id: str
+    ) -> None:
+        """Migrate the HTML cache keys for a specific page."""
+        page = await self.get_page(page_id)
+        existing_keys = await self._html_store.list_keys_for_page(page.name)
+        for existing_key in existing_keys:
+            key_components = existing_key.split("/")
+            if len(key_components) != 3:
+                self._logger.warning(
+                    "Skipping key with unexpected format",
+                    key=existing_key,
+                )
+                continue
+            if key_components[0] != page_id:
+                self._logger.warning(
+                    "Skipping key with unexpected page ID",
+                    key=existing_key,
+                    expected_page_id=page_id,
+                )
+                continue
+            try:
+                page_instance_values = json.loads(
+                    b64decode(key_components[1]).decode("utf-8")
+                )
+            except Exception as e:
+                self._logger.warning(
+                    "Skipping key with invalid parameter values",
+                    key=existing_key,
+                    error=str(e),
+                )
+                continue
+            try:
+                display_settings_values = json.loads(
+                    b64decode(key_components[2]).decode("utf-8")
+                )
+            except Exception as e:
+                self._logger.warning(
+                    "Skipping key with invalid display settings",
+                    key=existing_key,
+                    error=str(e),
+                )
+                continue
+
+            page_instance = PageInstanceModel(
+                page=page, values=page_instance_values
+            )
+            page_instance_id = page_instance.id
+            display_settings = NbDisplaySettings(
+                hide_code=(display_settings_values.get("ts_hide_code", 1) == 1)
+            )
+            nb_html_key = NbHtmlKey(
+                display_settings=display_settings,
+                page_instance_id=page_instance_id,
+            )
+            new_cache_key = nb_html_key.cache_key
+            if dry_run:
+                self._logger.info(
+                    "Would rename key",
+                    old_key=existing_key,
+                    new_key=new_cache_key,
+                )
+            else:
+                await self._html_store.rename_key(existing_key, new_cache_key)
+                self._logger.info(
+                    "Renamed html cache key",
+                    old_key=existing_key,
+                    new_key=new_cache_key,
+                )
