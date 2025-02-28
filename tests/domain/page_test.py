@@ -57,7 +57,7 @@ def test_render_parameters() -> None:
         'mydate = datetime.date.fromisoformat("2021-01-01")\n'
         "mydatetime = datetime.datetime.fromisoformat"
         '("2021-01-01T12:00:00+00:00")\n'
-        'title = "Demo"\n'
+        "title = 'Demo'\n"
         "y0 = 1.0"
     )
 

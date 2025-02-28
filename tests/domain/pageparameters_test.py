@@ -132,7 +132,7 @@ def test_string_parameter_schema() -> None:
     assert schema.default == "default"
     assert schema.cast_value("hello") == "hello"
     assert (
-        schema.create_python_assignment("myvar", "hello") == 'myvar = "hello"'
+        schema.create_python_assignment("myvar", "hello") == "myvar = 'hello'"
     )
     assert schema.create_json_value("hello") == "hello"
     assert schema.create_qs_value("hello") == "hello"

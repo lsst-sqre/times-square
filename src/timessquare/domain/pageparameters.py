@@ -300,7 +300,9 @@ class StringParameterSchema(PageParameterSchema):
 
     def create_python_assignment(self, name: str, value: Any) -> str:
         cast_value = self.cast_value(value)
-        return f'{name} = "{cast_value}"'
+        # Use repr to escape special characters and ensure that the string
+        # is quoted.
+        return f"{name} = {cast_value!r}"
 
     def create_json_value(self, value: Any) -> Any:
         return self.cast_value(value)
