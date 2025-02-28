@@ -536,8 +536,7 @@ class PageInstanceModel:
         PageJinjaError
             Raised if there is an error rendering the Jinja template.
         """
-        # Build Jinja render context with parameter values
-        # Turn off autoescaping to avoid escaping the parameter values
+        # Build Jinja render context with parameter values (as native types)
         jinja_env = jinja2.Environment(autoescape=True)
         jinja_env.globals.update({"params": self.values})
 
@@ -551,9 +550,9 @@ class PageInstanceModel:
                     # cell that sets Python variables to their values
                     cell.source = self._create_parameter_assignment_cell()
                     processed_first_cell = True
-                else:
-                    # Only process the first code cell
-                    continue
+
+                # Avoid Jinja templating in code cells
+                continue
 
             # Render the templated cell
             try:
