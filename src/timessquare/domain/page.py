@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import Any, Protocol, Self
+from typing import Any, Protocol
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -493,17 +492,16 @@ class PageInstanceModel:
 
     Keys are parameter names, and values are the parameter values.
     The values are cast as Python types (`PageParameterSchema.cast_value`).
+
+    The user-supplied values, which can be strings from the URL query string
+    are resolved and validated on instantiation (post init hook). Default
+    parameters values are supplied fro missing parameters.
     """
 
-    @classmethod
-    def create(cls, page: PageModel, values: Mapping[str, Any]) -> Self:
-        """Create a page instance given a page and parameter values.
-
-        The parameter values are treated as user-inputs (like from the web API
-        query string) and are resolved and validated by this constructor.
-        """
-        resolved_values = page.parameters.resolve_values(values)
-        return cls(page=page, values=resolved_values)
+    def __post_init__(self) -> None:
+        # Resolve and validate parameter values to their Python types. Add
+        # default values for missing parameters and remove unknown parameters.
+        self.values = self.page.parameters.resolve_values(self.values)
 
     @property
     def page_name(self) -> str:

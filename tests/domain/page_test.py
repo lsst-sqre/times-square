@@ -30,7 +30,7 @@ def test_render_parameters() -> None:
         "mydate": "2021-01-01",
         "mydatetime": "2021-01-01T12:00:00+00:00",
     }
-    page_instance = PageInstanceModel.create(page=page, values=values)
+    page_instance = PageInstanceModel(page=page, values=values)
     rendered = page_instance.render_ipynb()
     rendered_nb = PageModel.read_ipynb(rendered)
 

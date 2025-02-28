@@ -236,7 +236,7 @@ class PageService:
         This is useful for the `add_page` and `update_page` methods to start
         notebook execution as soon as possible.
         """
-        page_instance = PageInstanceModel.create(page=page, values={})
+        page_instance = PageInstanceModel(page=page, values={})
         return await self.request_noteburst_execution(
             page_instance, enable_retry=enable_retry
         )
@@ -258,14 +258,14 @@ class PageService:
 
         Parameters
         ----------
-        name : `str`
+        name
             Name (URL slug) of the page.
-        values : `dict`
+        values
             Parameter values, keyed by parameter names. If values are
             missing, the default value is used instead.
         """
         page = await self.get_page(name)
-        page_instance = PageInstanceModel.create(page=page, values=values)
+        page_instance = PageInstanceModel(page=page, values=dict(values))
         return page_instance.render_ipynb()
 
     async def render_page_template_by_display_path(
@@ -283,7 +283,7 @@ class PageService:
             missing, the default value is used instead.
         """
         page = await self.get_github_backed_page(display_path)
-        page_instance = PageInstanceModel.create(page=page, values=values)
+        page_instance = PageInstanceModel(page=page, values=dict(values))
         return page_instance.render_ipynb()
 
     async def get_html_and_status(
@@ -318,9 +318,7 @@ class PageService:
         )
 
         page = await self.get_page(name)
-        page_instance = PageInstanceModel.create(
-            page=page, values=query_params
-        )
+        page_instance = PageInstanceModel(page=page, values=dict(query_params))
 
         # Get HTML from redis cache
         html_key = NbHtmlKey(
@@ -451,9 +449,7 @@ class PageService:
     ) -> PageInstanceModel:
         """Soft delete the HTML for a page given the query parameters."""
         page = await self.get_page(name)
-        page_instance = PageInstanceModel.create(
-            page=page, values=query_params
-        )
+        page_instance = PageInstanceModel(page=page, values=dict(query_params))
         exec_info = await self.request_noteburst_execution(page_instance)
         await self._arq_queue.enqueue(  # provides an arq job metadata
             "replace_nbhtml",
@@ -560,9 +556,7 @@ class PageService:
         for a page instance.
         """
         page = await self.get_page(name)
-        page_instance = PageInstanceModel.create(
-            page=page, values=query_params
-        )
+        page_instance = PageInstanceModel(page=page, values=dict(query_params))
         # also get the Display settings query params
         display_settings = NbDisplaySettings.from_url_params(query_params)
         html_key = NbHtmlKey(
