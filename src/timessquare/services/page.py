@@ -342,8 +342,8 @@ class PageService:
                 display_settings=html_key.display_settings,
             )
 
-        return NbHtmlStatusModel.create(
-            nbhtml=nbhtml, nb_html_key=html_key, page_instance=page_instance
+        return NbHtmlStatusModel(
+            nb_html=nbhtml, nb_html_key=html_key, page_instance=page_instance
         )
 
     async def get_html(

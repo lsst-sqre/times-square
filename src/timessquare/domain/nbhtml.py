@@ -136,27 +136,13 @@ class NbHtmlModel(BaseModel):
 class NbHtmlStatusModel:
     """A model for a summary of the status of an HTML rendering."""
 
-    available: bool
     nb_html_key: NbHtmlKey
     nb_html: NbHtmlModel | None
     page_instance: PageInstanceModel
 
-    @classmethod
-    def create(
-        cls,
-        *,
-        nbhtml: NbHtmlModel | None,
-        nb_html_key: NbHtmlKey,
-        page_instance: PageInstanceModel,
-    ) -> Self:
-        """Create an instance from an NbHtmlModel."""
-        available = nbhtml is not None
-        return cls(
-            available=available,
-            nb_html_key=nb_html_key,
-            nb_html=nbhtml,
-            page_instance=page_instance,
-        )
+    @property
+    def available(self) -> bool:
+        return self.nb_html is not None
 
 
 @dataclass
