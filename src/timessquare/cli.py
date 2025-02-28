@@ -170,6 +170,11 @@ async def migrate_html_cache(
             logger=structlog.get_logger("timessquare"),
             db_session=db_session,
         )
-        await page_service.migrate_html_cache_keys(
+        key_count = await page_service.migrate_html_cache_keys(
             dry_run=dry_run, for_page_id=page
+        )
+        logger.info(
+            "Finished migrating HTML cache keys",
+            key_count=key_count,
+            dry_run=dry_run,
         )
