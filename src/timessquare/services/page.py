@@ -646,7 +646,13 @@ class PageService:
     ) -> int:
         """Migrate the HTML cache keys for a specific page."""
         key_count = 0
-        page = await self.get_page(page_id)
+        try:
+            page = await self.get_page(page_id)
+        except Exception as e:
+            self._logger.warning(
+                "Skipping page with error", page_id=page_id, error=str(e)
+            )
+            return key_count
         existing_keys = await self._html_store.list_keys_for_page(page.name)
         for existing_key in existing_keys:
             key_components = existing_key.split("/")
@@ -686,17 +692,35 @@ class PageService:
                 )
                 continue
 
-            page_instance = PageInstanceModel(
-                page=page, values=page_instance_values
-            )
-            page_instance_id = page_instance.id
-            display_settings = NbDisplaySettings(
-                hide_code=(display_settings_values.get("ts_hide_code", 1) == 1)
-            )
-            nb_html_key = NbHtmlKey(
-                display_settings=display_settings,
-                page_instance_id=page_instance_id,
-            )
+            try:
+                page_instance = PageInstanceModel(
+                    page=page, values=page_instance_values
+                )
+                page_instance_id = page_instance.id
+            except Exception as e:
+                self._logger.warning(
+                    "Skipping key with invalid page instance values",
+                    key=existing_key,
+                    error=str(e),
+                )
+                continue
+            try:
+                display_settings = NbDisplaySettings(
+                    hide_code=(
+                        display_settings_values.get("ts_hide_code", 1) == 1
+                    )
+                )
+                nb_html_key = NbHtmlKey(
+                    display_settings=display_settings,
+                    page_instance_id=page_instance_id,
+                )
+            except Exception as e:
+                self._logger.warning(
+                    "Skipping key with invalid display settings",
+                    key=existing_key,
+                    error=str(e),
+                )
+                continue
             new_cache_key = nb_html_key.cache_key
             if dry_run:
                 self._logger.info(
