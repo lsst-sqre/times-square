@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import click
+import httpx
 import structlog
 import uvicorn
 from redis.asyncio import Redis
@@ -16,10 +17,14 @@ from safir.database import (
     is_database_current,
     stamp_database,
 )
+from safir.dependencies.db_session import db_session_dependency
+
+from timessquare.dependencies.redis import redis_dependency
 
 from .config import config
 from .database import init_database
 from .storage.nbhtmlcache import NbHtmlCacheStore
+from .worker.servicefactory import create_page_service
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -129,3 +134,47 @@ async def reset_html() -> None:
     finally:
         await redis.close()
         await redis.connection_pool.disconnect()
+
+
+@main.command("migrate-html-cache")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Perform a dry run without modifying the cache.",
+)
+@click.option(
+    "--page",
+    help="Migrate only the cache keys for the specified page.",
+)
+@run_with_asyncio
+async def migrate_html_cache(
+    *, dry_run: bool = True, page: str | None = None
+) -> None:
+    """Migrate the redis cache to the new format."""
+    # Create a database session
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    logger = structlog.get_logger("timessquare")
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+    await engine.dispose()
+    await db_session_dependency.initialize(
+        str(config.database_url), config.database_password.get_secret_value()
+    )
+    await redis_dependency.initialize(str(config.redis_url))
+
+    async for db_session in db_session_dependency():
+        page_service = await create_page_service(
+            http_client=httpx.AsyncClient(),
+            logger=structlog.get_logger("timessquare"),
+            db_session=db_session,
+        )
+        key_count = await page_service.migrate_html_cache_keys(
+            dry_run=dry_run, for_page_id=page
+        )
+        logger.info(
+            "Finished migrating HTML cache keys",
+            key_count=key_count,
+            dry_run=dry_run,
+        )

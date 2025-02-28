@@ -8,7 +8,37 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.18.0'></a>
+
+## 0.18.0 (2025-02-28)
+
+### Backwards-incompatible changes
+
+- Redis cache keys for page instance HTML models and noteburst job records use a new format based on the URL query string of page instances and display settings. Existing cached data will be ignored, but the new `times-square migrate-html-cache` command is available to migrate cached HTML pages in the old key format to the new one based on URL query strings.
+
+- The Jinja context for rendering templated Markdown cells now uses the native Python types rather than the string representation. This provides more flexibility for template authors to use these values in their templates. For example, a date parameter is a `datetime.date` object rather than a string. A boolean parameter is a `bool` rather than a string.
+
+### New features
+
+- Parameters can now have `date` and `date-time` JSON schema formats. In a notebook, these parameters are rendered as `datetime.date` and `datetime.datetime` objects, respectively.
+
+- Improved reliability of constructing URL query strings in the API by using the new `PageParameterSchema` classes in conjunction with the `PageInstanceId` class and `NbHtmlKey` classes.
+
+- A new `times-square migrate-html-cache` command is available to migrate cached HTML pages in the old key format to the new one based on URL query strings.
+
+### Bug fixes
+
+- Fix getting `date_deleted` from the pages database table.
+
+### Other changes
+
+- Update to Python 3.13
+- Adopt uv in the Docker image
+- New internal API for page parameters. Each parameter type is now backed by a subclass of `PageParameterSchema`. These types implement methods for casting to Python types, creating JSON-compatible values, query-string compatible values, and listing any Python imports needed to instantiate the native Python type.
+- Refactored interface models to the "storage" layer where possible, including the models for settings files in GitHub repositories and models for the GitHub API. This helps clarify the internal domain from external interfaces.
+
 <a id='changelog-0.17.0'></a>
+
 ## 0.17.0 (2025-02-05)
 
 ### New features
@@ -18,6 +48,7 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
   We need to deploy Times Square to environments where some users should not have permissions to execute notebooks, but they should have permissions to render notebook templates for certain GitHub-based notebooks. This will let us configure that access via methods that apply permissions based on URL paths.
 
 <a id='changelog-0.16.0'></a>
+
 ## 0.16.0 (2025-01-22)
 
 ### New features
