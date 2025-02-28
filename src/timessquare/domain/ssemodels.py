@@ -15,8 +15,10 @@ from urllib.parse import urlencode
 from pydantic import AnyHttpUrl, BaseModel, Field, field_serializer
 from sse_starlette import ServerSentEvent
 
+from timessquare.domain.page import PageInstanceModel
+
 from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
-from .nbhtml import NbHtmlModel
+from .nbhtml import NbHtmlKey, NbHtmlModel
 
 
 class HtmlEventsModel(BaseModel):
@@ -91,6 +93,7 @@ class HtmlEventsModel(BaseModel):
     def create(
         cls,
         *,
+        page_instance: PageInstanceModel,
         noteburst_job: NoteburstJobResponseModel | None,
         nbhtml: NbHtmlModel | None,
         html_base_url: str,
@@ -134,7 +137,11 @@ class HtmlEventsModel(BaseModel):
             execution_duration = nbhtml.execution_duration
 
         if nbhtml:
-            qs = urlencode(nbhtml.url_params)
+            nb_html_key = NbHtmlKey(
+                display_settings=nbhtml.display_settings,
+                page_instance_id=page_instance.id,
+            )
+            qs = nb_html_key.url_query_string
             html_url = AnyHttpUrl(f"{html_base_url}?{qs}")
             html_hash = nbhtml.html_hash
         elif noteburst_job:

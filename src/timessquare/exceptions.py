@@ -9,7 +9,7 @@ from safir.fastapi import ClientRequestError
 from safir.models import ErrorLocation
 
 if TYPE_CHECKING:
-    from .domain.page import PageParameterSchema
+    from .domain.pageparameters import PageParameterSchema
 
 
 class TimesSquareClientError(ClientRequestError):

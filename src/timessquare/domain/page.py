@@ -2,35 +2,32 @@
 
 from __future__ import annotations
 
-import json
-import keyword
-import re
-from base64 import b64encode
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Protocol
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import jinja2
-import jsonschema.exceptions
 import nbformat
-from jsonschema import Draft202012Validator
 
-from timessquare.exceptions import (
-    PageJinjaError,
-    PageNotebookFormatError,
-    PageParameterError,
-    PageParameterValueCastingError,
-    ParameterDefaultInvalidError,
-    ParameterDefaultMissingError,
-    ParameterNameValidationError,
-    ParameterSchemaError,
-)
+from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
+from .pageparameters import PageParameters
+
+__all__ = [
+    "PageExecutionInfo",
+    "PageIdModel",
+    "PageInstanceIdModel",
+    "PageInstanceIdProtocol",
+    "PageInstanceModel",
+    "PageModel",
+    "PageSummaryModel",
+    "PersonModel",
+]
 
 NB_VERSION = 4
 """The notebook format version used for reading and writing notebooks.
@@ -38,14 +35,6 @@ NB_VERSION = 4
 Generally this version should be upgraded as needed to support more modern
 notebook formats, while also being compatible with this app.
 """
-
-parameter_name_pattern = re.compile(
-    r"^"
-    r"[a-zA-Z]"  # initial characters are letters only
-    r"[_a-zA-Z0-9]*$"  # following characters are letters and numbers
-    r"$"
-)
-"""Regular expression that matches a valid parameter name."""
 
 
 @dataclass
@@ -62,7 +51,7 @@ class PageModel:
     ipynb: str
     """The Jinja-parameterized notebook (a JSON-formatted string)."""
 
-    parameters: dict[str, PageParameterSchema]
+    parameters: PageParameters
     """The notebook's parameter schemas, keyed by their names."""
 
     title: str
@@ -161,7 +150,7 @@ class PageModel:
         description of that paramter.
         """
         notebook = cls.read_ipynb(ipynb)
-        parameters = cls._extract_parameters(notebook)
+        parameters = PageParameters.create_from_notebook(notebook)
 
         name = uuid4().hex  # random slug for API uploads
         date_added = datetime.now(UTC)
@@ -190,7 +179,7 @@ class PageModel:
         *,
         ipynb: str,
         title: str,
-        parameters: dict[str, PageParameterSchema],
+        parameters: PageParameters,
         github_owner: str,
         github_repo: str,
         repository_path_prefix: str,
@@ -369,169 +358,6 @@ class PageModel:
         """
         return nbformat.writes(notebook, version=NB_VERSION)
 
-    @staticmethod
-    def _extract_parameters(
-        notebook: nbformat.NotebookNode,
-    ) -> dict[str, PageParameterSchema]:
-        """Get the page parmeters from the notebook.
-
-        Parameters are located in the Jupyter Notebook's metadata under
-        the ``times-square.parameters`` path. Each key is a parameter name,
-        and each value is a JSON Schema description of that paramter.
-        """
-        try:
-            parameters_metadata = notebook.metadata["times-square"].parameters
-        except AttributeError:
-            return {}
-
-        return {
-            name: PageModel.create_and_validate_page_parameter(name, schema)
-            for name, schema in parameters_metadata.items()
-        }
-
-    @staticmethod
-    def create_and_validate_page_parameter(
-        name: str, schema: dict[str, Any]
-    ) -> PageParameterSchema:
-        """Validate a parameter's name and schema.
-
-        Raises
-        ------
-        ParameterValidationError
-            Raised if the parameter is invalid (a specific subclass is raised
-            for each type of validation check).
-        """
-        PageModel.validate_parameter_name(name)
-        return PageParameterSchema.create_and_validate(
-            name=name, json_schema=schema
-        )
-
-    @staticmethod
-    def validate_parameter_name(name: str) -> None:
-        """Validate a parameter's name.
-
-        Parameters must be valid Python variable names, which means they must
-        start with a letter and contain only letters, numbers and underscores.
-        They also cannot be Python keywords.
-        """
-        if parameter_name_pattern.match(name) is None:
-            raise ParameterNameValidationError.for_param(name)
-        if keyword.iskeyword(name):
-            raise ParameterNameValidationError.for_param(name)
-
-    def resolve_and_validate_values(
-        self, requested_values: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        """Resolve and validate parameter values for a notebook based on
-        a possibly incomplete user request.
-
-        Parameters
-        ----------
-        requested_parameters : dict
-            User-specified values for parameters. If parameters are not set by
-            the user, the parameter's defaults are used intead.
-        """
-        # Collect the values for each parameter; either from the request or
-        # the default. Avoid extraneous parameters from the request for
-        # security.
-        resolved_values = {
-            name: requested_values.get(name, schema.default)
-            for name, schema in self.parameters.items()
-        }
-
-        # Cast to the correct types
-        cast_values: dict[str, Any] = {}
-        for name, value in resolved_values.items():
-            try:
-                cast_values[name] = self.parameters[name].cast_value(value)
-            except PageParameterValueCastingError as e:
-                raise PageParameterError.for_param(
-                    name, value, self.parameters[name]
-                ) from e
-
-        # Ensure each parameter's value is valid
-        for name, value in cast_values.items():
-            if not self.parameters[name].validate(value):
-                raise PageParameterError.for_param(
-                    name, value, self.parameters[name]
-                )
-
-        return cast_values
-
-    def render_parameters(
-        self,
-        values: Mapping[str, Any],
-    ) -> str:
-        """Render the Jinja template in the source notebook cells with
-        specified parameter values.
-
-        **Note**: parameter values are not validated. Use
-        resolve_and_validate_values first.
-
-        Parameters
-        ----------
-        values : `dict`
-            Parameter values.
-
-        Returns
-        -------
-        ipynb : str
-            JSON-encoded notebook source.
-
-        Raises
-        ------
-        PageJinjaError
-            Raised if there is an error rendering the Jinja template.
-        """
-        # Build Jinja render context
-        # Turn off autoescaping to avoid escaping the parameter values
-        jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
-        value_code_strings = {
-            name: repr(value) for name, value in values.items()
-        }
-        jinja_env.globals.update({"params": value_code_strings})
-
-        # Read notebook and render cell-by-cell
-        notebook = PageModel.read_ipynb(self.ipynb)
-        processed_first_cell = False
-        for cell_index, cell in enumerate(notebook.cells):
-            if cell.cell_type == "code":
-                if processed_first_cell is False:
-                    # Handle first code cell specially by replacing it with a
-                    # cell that sets Python variables to their values
-                    cell.source = self._create_parameters_template(values)
-                    processed_first_cell = True
-                else:
-                    # Only process the first code cell
-                    continue
-
-            # Render the templated cell
-            try:
-                template = jinja_env.from_string(cell.source)
-                cell.source = template.render()
-            except Exception as e:
-                raise PageJinjaError(str(e), cell_index) from e
-
-        # Modify notebook metadata to include values
-        if "times-square" not in notebook.metadata:
-            notebook.metadata["times-square"] = {}
-        notebook.metadata["times-square"]["values"] = values
-
-        # Render notebook back to a string and return
-        return PageModel.write_ipynb(notebook)
-
-    def _create_parameters_template(self, values: Mapping[str, Any]) -> str:
-        """Create a Jinja-tempalated source cell value that sets Python
-        variables for each parameter to their values.
-        """
-        sorted_variables = sorted(values.keys())
-        code_lines = [
-            f"{variable_name} = {{{{ params.{variable_name} }}}}"
-            for variable_name in sorted_variables
-        ]
-        code_lines.insert(0, "# Parameters")
-        return "\n".join(code_lines)
-
 
 @dataclass
 class PersonModel:
@@ -569,109 +395,6 @@ class PersonModel:
 
 
 @dataclass
-class PageParameterSchema:
-    """The domain model for a page parameter's JSON schema, which is a template
-    variable in a page's notebook (`PageModel`).
-    """
-
-    validator: Draft202012Validator
-    """Parameter value validator (based on `json_schema`)."""
-
-    @classmethod
-    def create(cls, json_schema: dict[str, Any]) -> PageParameterSchema:
-        """Create a PageParameterSchema given a JSON Schema.
-
-        Note that this method does not validate the schema. If the schema is
-        being instantiated from an external source, run the
-        `create_and_validate` constructor instead.
-        """
-        return cls(validator=Draft202012Validator(json_schema))
-
-    @classmethod
-    def create_and_validate(
-        cls, name: str, json_schema: dict[str, Any]
-    ) -> PageParameterSchema:
-        try:
-            Draft202012Validator.check_schema(json_schema)
-        except jsonschema.exceptions.SchemaError as e:
-            message = f"The schema for the {name} parameter is invalid.\n\n{e}"
-            raise ParameterSchemaError.for_param(name, message) from e
-
-        if "default" not in json_schema:
-            raise ParameterDefaultMissingError.for_param(name)
-
-        instance = cls.create(json_schema)
-        if not instance.validate(json_schema["default"]):
-            raise ParameterDefaultInvalidError.for_param(
-                name, json_schema["default"]
-            )
-
-        return instance
-
-    @property
-    def schema(self) -> dict[str, Any]:
-        """Get the JSON schema."""
-        return self.validator.schema
-
-    @property
-    def default(self) -> Any:
-        """Get the schema's default value."""
-        return self.schema["default"]
-
-    def __str__(self) -> str:
-        return json.dumps(self.schema, sort_keys=True, indent=2)
-
-    def validate(self, v: Any) -> bool:
-        """Validate a parameter value."""
-        return self.validator.is_valid(v)
-
-    def cast_value(self, v: Any) -> Any:  # noqa: C901 PLR0912
-        """Cast a value to the type indicated by the schema.
-
-        Often the input value is a string value usually obtained from the URL
-        query parameters into the correct type based on the JSON Schema's type.
-        You can also safely pass the correct type idempotently.
-
-        Only string, integer, number, and boolean schema types are supported.
-        """
-        schema_type = self.schema.get("type")
-        if schema_type is None:
-            return v
-
-        try:
-            if schema_type == "string":
-                return v
-            elif schema_type == "integer":
-                return int(v)
-            elif schema_type == "number":
-                if isinstance(v, str):
-                    if "." in v:
-                        return float(v)
-                    else:
-                        return int(v)
-                else:
-                    return v
-            elif schema_type == "boolean":
-                if isinstance(v, str):
-                    if v.lower() == "true":
-                        return True
-                    elif v.lower() == "false":
-                        return False
-                    else:
-                        raise PageParameterValueCastingError.for_value(
-                            v, schema_type
-                        )
-                else:
-                    return v
-            else:
-                raise PageParameterValueCastingError.for_value(v, schema_type)
-        except ValueError as e:
-            raise PageParameterValueCastingError.for_value(
-                v, schema_type
-            ) from e
-
-
-@dataclass
 class PageSummaryModel:
     """The domain model for a page summary, which is a subset of information
     about a page that's useful for constructing index UIs.
@@ -698,6 +421,26 @@ class PageIdModel:
         return f"{self.name}/"
 
 
+class PageInstanceIdProtocol(Protocol):
+    """A protocol for page instance identifiers.
+
+    These identifiers can be as keys for the `RedisPageInstanceStore` and
+    generate URL query strings for page instances.
+    """
+
+    @property
+    def cache_key(self) -> str:
+        """The cache key for this page instance, used by
+        `RedisPageInstanceStore`.
+        """
+        ...
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string for this page instance."""
+        ...
+
+
 @dataclass
 class PageInstanceIdModel(PageIdModel):
     """The domain model that identifies an instance of a page through the
@@ -705,27 +448,37 @@ class PageInstanceIdModel(PageIdModel):
 
     The `cache_key` property produces a reproducible key string, useful as
     a Redis key.
+
+    Conforms to the `PageInstanceIdProtocol`.
     """
 
-    values: dict[str, Any]
-    """The values of a page instance's parameters.
-
-    Keys are parameter names, and values are the parameter values.
-    The values are cast as Python types (`PageParameterSchema.cast_value`).
+    parameter_values: dict[str, str]
+    """The values of a page instance's parameters as strings suitable for
+    URL query parameters.
     """
 
     @property
     def cache_key(self) -> str:
-        encoded_values_key = b64encode(
-            json.dumps(dict(self.values.items()), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).decode("utf-8")
-        return f"{super().cache_key_prefix}{encoded_values_key}"
+        """Create the cache key for a page instance.
+
+        This key is used as a Redis cache key for storing noteburst jobs
+        (`NoteburstJobStore`), and the root key for storing rendered HTML
+        pages (`NbHtmlCacheStore`).
+        """
+        return f"{super().cache_key_prefix}{self.url_query_string}"
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string for this page instance."""
+        sorted_values = {
+            k: self.parameter_values[k]
+            for k in sorted(self.parameter_values.keys())
+        }
+        return urlencode(sorted_values)
 
 
-@dataclass
-class PageInstanceModel(PageInstanceIdModel):
+@dataclass(kw_only=True)
+class PageInstanceModel:
     """A domain model for a page instance, which combines the page model with
     information identifying the values a specific page instance is rendered
     with.
@@ -733,6 +486,123 @@ class PageInstanceModel(PageInstanceIdModel):
 
     page: PageModel
     """The page domain object."""
+
+    values: dict[str, Any]
+    """The values of a page instance's parameters.
+
+    Keys are parameter names, and values are the parameter values.
+    The values are cast as Python types (`PageParameterSchema.cast_value`).
+
+    The user-supplied values, which can be strings from the URL query string
+    are resolved and validated on instantiation (post init hook). Default
+    parameters values are supplied fro missing parameters.
+    """
+
+    def __post_init__(self) -> None:
+        # Resolve and validate parameter values to their Python types. Add
+        # default values for missing parameters and remove unknown parameters.
+        self.values = self.page.parameters.resolve_values(self.values)
+
+    @property
+    def page_name(self) -> str:
+        """The name of the page, which is used as a URL path slug."""
+        return self.page.name
+
+    @property
+    def id(self) -> PageInstanceIdModel:
+        """The identifier of the page instance."""
+        parameter_values = {
+            name: self.page.parameters[name].create_qs_value(value)
+            for name, value in self.values.items()
+        }
+        return PageInstanceIdModel(
+            name=self.page_name, parameter_values=parameter_values
+        )
+
+    def render_ipynb(self) -> str:
+        """Render the ipynb notebook.
+
+        This method replaces the first code cell with parameter assignments,
+        renders Jinja templating in all Markdown cells, and updates the
+        notebook's metadata with the parameter values.
+
+        Returns
+        -------
+        str
+            JSON-encoded notebook source.
+
+        Raises
+        ------
+        PageJinjaError
+            Raised if there is an error rendering the Jinja template.
+        """
+        # Build Jinja render context with parameter values (as native types)
+        jinja_env = jinja2.Environment(autoescape=True)
+        jinja_env.globals.update({"params": self.values})
+
+        # Read notebook and render cell-by-cell
+        notebook = self.page.read_ipynb(self.page.ipynb)
+        processed_first_cell = False
+        for cell_index, cell in enumerate(notebook.cells):
+            if cell.cell_type == "code":
+                if processed_first_cell is False:
+                    # Handle first code cell specially by replacing it with a
+                    # cell that sets Python variables to their values
+                    cell.source = self._create_parameter_assignment_cell()
+                    processed_first_cell = True
+
+                # Avoid Jinja templating in code cells
+                continue
+
+            # Render the templated cell
+            try:
+                template = jinja_env.from_string(cell.source)
+                cell.source = template.render()
+            except Exception as e:
+                raise PageJinjaError(str(e), cell_index) from e
+
+        # Modify notebook metadata to include values
+        if "times-square" not in notebook.metadata:
+            notebook.metadata["times-square"] = {}
+        notebook.metadata["times-square"]["values"] = {
+            name: self.page.parameters[name].create_json_value(value)
+            for name, value in self.values.items()
+        }
+        # Render notebook back to a string and return
+        return PageModel.write_ipynb(notebook)
+
+    def _create_parameter_assignment_cell(self) -> str:
+        """Create the Python code cell in the notebook instance that assigns
+        parameter values to variables.
+
+        Returns
+        -------
+        str
+            The Python code cell as a string.
+        """
+        code_lines = ["# Parameters"]
+
+        # Add import statements
+        import_statements: set[str] = set()
+        for parameter_schema in self.page.parameters.values():
+            import_statements.update(
+                set(parameter_schema.create_python_imports())
+            )
+        if len(import_statements) > 0:
+            sorted_imports = sorted(list(import_statements))
+            code_lines.extend(sorted_imports)
+
+        # Add parameter assignments
+        sorted_variables = sorted(self.values.keys())
+        code_lines.extend(
+            [
+                self.page.parameters[name].create_python_assignment(
+                    name, self.values[name]
+                )
+                for name in sorted_variables
+            ]
+        )
+        return "\n".join(code_lines)
 
 
 @dataclass(kw_only=True)

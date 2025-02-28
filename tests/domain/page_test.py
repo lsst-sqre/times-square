@@ -1,91 +1,18 @@
-"""Tests for the Page service."""
+"""Tests for the Page domain."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-import pytest
-
-from timessquare.domain.page import PageModel, PageParameterSchema
-from timessquare.exceptions import (
-    ParameterDefaultInvalidError,
-    ParameterDefaultMissingError,
-    ParameterNameValidationError,
+from timessquare.domain.page import (
+    PageInstanceIdModel,
+    PageInstanceModel,
+    PageModel,
 )
 
 
-def test_parameter_name_validation() -> None:
-    PageModel.validate_parameter_name("myvar")
-    PageModel.validate_parameter_name("my_var")
-    PageModel.validate_parameter_name("myvar1")
-    PageModel.validate_parameter_name("Myvar1")
-    PageModel.validate_parameter_name("M")
-
-    with pytest.raises(ParameterNameValidationError):
-        PageModel.validate_parameter_name(" M")
-    with pytest.raises(ParameterNameValidationError):
-        PageModel.validate_parameter_name("1p")
-    with pytest.raises(ParameterNameValidationError):
-        PageModel.validate_parameter_name("lambda")
-
-
-def test_parameter_default_exists() -> None:
-    name = "myvar"
-    schema: dict[str, Any] = {"type": "number", "description": "Test schema"}
-
-    with pytest.raises(ParameterDefaultMissingError):
-        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
-
-    # should work with default added
-    schema["default"] = 0.0
-    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
-
-
-def test_parameter_default_invalid() -> None:
-    name = "myvar"
-    schema: dict[str, Any] = {
-        "type": "number",
-        "default": -1,
-        "minimum": 0,
-        "description": "Test schema",
-    }
-
-    with pytest.raises(ParameterDefaultInvalidError):
-        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
-
-    # Change default to fulfil minimum
-    schema["default"] = 1.0
-    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
-
-
-def test_parameter_casting() -> None:
-    schema = PageParameterSchema.create(
-        {"default": "default", "type": "string"}
-    )
-    assert schema.cast_value("hello") == "hello"
-
-    schema = PageParameterSchema.create({"default": 1, "type": "integer"})
-    assert schema.cast_value("1") == 1
-    assert schema.cast_value(1) == 1
-
-    schema = PageParameterSchema.create({"default": 1.5, "type": "number"})
-    assert schema.cast_value("2.4") == 2.4
-    assert schema.cast_value(2.4) == 2.4
-
-    schema = PageParameterSchema.create({"default": 1.5, "type": "number"})
-    assert schema.cast_value("2") == 2
-    assert schema.cast_value(2) == 2
-
-    schema = PageParameterSchema.create({"default": True, "type": "boolean"})
-    assert True is schema.cast_value("true")
-    assert False is schema.cast_value("false")
-    assert True is schema.cast_value(True)
-    assert False is schema.cast_value(False)
-
-
 def test_render_parameters() -> None:
-    """Test PageModel.render_parameters()."""
+    """Test PageInstanceModel.render_parameters()."""
     ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
     ipynb = ipynb_path.read_text()
     nb = PageModel.read_ipynb(ipynb)
@@ -94,9 +21,17 @@ def test_render_parameters() -> None:
         title="Demo",
         uploader_username="testuser",
     )
-    rendered = page.render_parameters(
-        values={"A": 2, "y0": 1.0, "lambd": 0.5, "title": "Demo"}
-    )
+    print(list(page.parameters.keys()))
+    values = {
+        "A": 2,
+        "y0": 1.0,
+        "lambd": 0.5,
+        "title": "Demo",
+        "mydate": "2021-01-01",
+        "mydatetime": "2021-01-01T12:00:00+00:00",
+    }
+    page_instance = PageInstanceModel(page=page, values=values)
+    rendered = page_instance.render_ipynb()
     rendered_nb = PageModel.read_ipynb(rendered)
 
     # Check that the markdown got rendered
@@ -107,13 +42,33 @@ def test_render_parameters() -> None:
         "\n"
         "- Amplitude: A = 2\n"
         "- Y offset: y0 = 1.0\n"
-        "- Wavelength: lambd = 0.5"
+        "- Wavelength: lambd = 0.5\n"
+        "- Title: Demo\n"
+        "- Flag: True"
     )
 
     # Check that the first code cell got replaced
     assert rendered_nb["cells"][1]["source"] == (
-        "# Parameters\nA = 2\nlambd = 0.5\ntitle = 'Demo'\ny0 = 1.0"
+        "# Parameters\n"
+        "import datetime\n"
+        "A = 2\n"
+        "boolflag = True\n"
+        "lambd = 0.5\n"
+        'mydate = datetime.date.fromisoformat("2021-01-01")\n'
+        "mydatetime = datetime.datetime.fromisoformat"
+        '("2021-01-01T12:00:00+00:00")\n'
+        "title = 'Demo'\n"
+        "y0 = 1.0"
     )
 
     # Check that the second code cell was unchanged
     assert rendered_nb["cells"][2]["source"] == nb["cells"][2]["source"]
+
+
+def test_page_instance_id_model() -> None:
+    page_instance_id = PageInstanceIdModel(
+        name="demo",
+        parameter_values={"A": "2", "y0": "1.0", "lambd": "0.5"},
+    )
+    assert page_instance_id.cache_key == "demo/A=2&lambd=0.5&y0=1.0"
+    assert page_instance_id.url_query_string == "A=2&lambd=0.5&y0=1.0"
