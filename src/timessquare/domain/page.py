@@ -538,7 +538,7 @@ class PageInstanceModel:
         """
         # Build Jinja render context with parameter values
         # Turn off autoescaping to avoid escaping the parameter values
-        jinja_env = jinja2.Environment(autoescape=False)  # noqa: S701
+        jinja_env = jinja2.Environment(autoescape=True)
         jinja_env.globals.update({"params": self.values})
 
         # Read notebook and render cell-by-cell
