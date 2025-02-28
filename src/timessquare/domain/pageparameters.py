@@ -5,7 +5,6 @@ from __future__ import annotations
 import abc
 import json
 import keyword
-import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -34,14 +33,6 @@ __all__ = [
     "PageParameters",
     "StringParameterSchema",
 ]
-
-PARAMETER_NAME_PATTERN = re.compile(
-    r"^"
-    r"[a-zA-Z]"  # initial characters are letters only
-    r"[_a-zA-Z0-9]*$"  # following characters are letters and numbers
-    r"$"
-)
-"""Regular expression that matches a valid parameter name."""
 
 
 class PageParameters(Mapping):
@@ -102,10 +93,13 @@ class PageParameters(Mapping):
         start with a letter and contain only letters, numbers and underscores.
         They also cannot be Python keywords.
         """
-        if PARAMETER_NAME_PATTERN.match(name) is None:
-            raise ParameterNameValidationError.for_param(name)
-        if keyword.iskeyword(name):
-            raise ParameterNameValidationError.for_param(name)
+        if (
+            str.isidentifier(name)
+            and not keyword.iskeyword(name)
+            and not keyword.issoftkeyword(name)
+        ):
+            return
+        raise ParameterNameValidationError.for_param(name)
 
     def resolve_values(
         self, input_values: Mapping[str, Any]
