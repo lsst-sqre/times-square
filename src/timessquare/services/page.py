@@ -706,9 +706,7 @@ class PageService:
                 continue
             try:
                 display_settings = NbDisplaySettings(
-                    hide_code=(
-                        display_settings_values.get("ts_hide_code", 1) == 1
-                    )
+                    hide_code=(display_settings_values.get("hide_code", True))
                 )
                 nb_html_key = NbHtmlKey(
                     display_settings=display_settings,
