@@ -610,7 +610,7 @@ class PageService:
 
     async def migrate_html_cache_keys(
         self, *, dry_run: bool = True, for_page_id: str | None = None
-    ) -> None:
+    ) -> int:
         """Migrate Redis keys to the new format.
 
         Parameters
@@ -620,22 +620,32 @@ class PageService:
             done.
         for_page_id
             If set, only migrate keys for the given page ID.
+
+        Returns
+        -------
+        key_count
+            The number of keys that were migrated (or would be migrated,
+            if in dry-run).
         """
+        key_count = 0
         if for_page_id:
-            await self._migrate_html_cache_keys_for_page(
+            key_count += await self._migrate_html_cache_keys_for_page(
                 dry_run=dry_run, page_id=for_page_id
             )
-            return
+            return key_count
 
         for page_id in await self._page_store.list_page_names():
-            await self._migrate_html_cache_keys_for_page(
+            key_count += await self._migrate_html_cache_keys_for_page(
                 dry_run=dry_run, page_id=page_id
             )
 
+        return key_count
+
     async def _migrate_html_cache_keys_for_page(
         self, *, dry_run: bool = True, page_id: str
-    ) -> None:
+    ) -> int:
         """Migrate the HTML cache keys for a specific page."""
+        key_count = 0
         page = await self.get_page(page_id)
         existing_keys = await self._html_store.list_keys_for_page(page.name)
         for existing_key in existing_keys:
@@ -701,3 +711,6 @@ class PageService:
                     old_key=existing_key,
                     new_key=new_cache_key,
                 )
+            key_count += 1
+
+        return key_count
