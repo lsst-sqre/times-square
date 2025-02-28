@@ -18,3 +18,21 @@ parameters:
     type: number
     description: Y-axis offset
     default: 0
+  title:
+    type: string
+    description: Plot title
+    default: 'Demo'
+  boolflag:
+    type: boolean
+    description: A boolean flag
+    default: true
+  mydate:
+    type: string
+    format: date
+    description: A date
+    default: '2025-02-21'
+  mydatetime:
+    type: string
+    format: date-time
+    description: A datetime
+    default: '2025-02-22T12:00:00+00:00'

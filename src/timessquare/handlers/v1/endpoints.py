@@ -249,10 +249,10 @@ async def post_page(
             e.location = ErrorLocation.body
             e.field_path = ["ipynb"]
             raise
-        page = await page_service.get_page(page_exec.name)
+        page = await page_service.get_page(page_exec.page_name)
 
     context.response.headers["location"] = str(
-        context.request.url_for("get_page", page=page_exec.name)
+        context.request.url_for("get_page", page=page_exec.page_name)
     )
     return Page.from_domain(page=page, request=context.request)
 
@@ -431,7 +431,7 @@ async def get_page_html_status(
     page_service = context.page_service
     async with context.session.begin():
         try:
-            html = await page_service.get_html(
+            html_status = await page_service.get_html_and_status(
                 name=page, query_params=context.request.query_params
             )
         except PageNotFoundError as e:
@@ -443,7 +443,9 @@ async def get_page_html_status(
             e.field_path = [e.parameter]
             raise
 
-    return HtmlStatus.from_html(html=html, request=context.request)
+    return HtmlStatus.from_html_status(
+        html_status=html_status, request=context.request
+    )
 
 
 @v1_router.get(

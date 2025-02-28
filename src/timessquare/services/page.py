@@ -13,7 +13,12 @@ from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 from ..domain.githubtree import GitHubNode
-from ..domain.nbhtml import NbDisplaySettings, NbHtmlKey, NbHtmlModel
+from ..domain.nbhtml import (
+    NbDisplaySettings,
+    NbHtmlKey,
+    NbHtmlModel,
+    NbHtmlStatusModel,
+)
 from ..domain.page import (
     PageExecutionInfo,
     PageInstanceModel,
@@ -231,10 +236,7 @@ class PageService:
         This is useful for the `add_page` and `update_page` methods to start
         notebook execution as soon as possible.
         """
-        resolved_values = page.resolve_and_validate_values({})
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
-        )
+        page_instance = PageInstanceModel(page=page, values={})
         return await self.request_noteburst_execution(
             page_instance, enable_retry=enable_retry
         )
@@ -256,14 +258,15 @@ class PageService:
 
         Parameters
         ----------
-        name : `str`
+        name
             Name (URL slug) of the page.
-        values : `dict`
+        values
             Parameter values, keyed by parameter names. If values are
             missing, the default value is used instead.
         """
         page = await self.get_page(name)
-        return await self._render_page_template(page, values)
+        page_instance = PageInstanceModel(page=page, values=dict(values))
+        return page_instance.render_ipynb()
 
     async def render_page_template_by_display_path(
         self, display_path: str, values: Mapping[str, Any]
@@ -280,13 +283,66 @@ class PageService:
             missing, the default value is used instead.
         """
         page = await self.get_github_backed_page(display_path)
-        return await self._render_page_template(page, values)
+        page_instance = PageInstanceModel(page=page, values=dict(values))
+        return page_instance.render_ipynb()
 
-    async def _render_page_template(
-        self, page: PageModel, values: Mapping[str, Any]
-    ) -> str:
-        resolved_values = page.resolve_and_validate_values(values)
-        return page.render_parameters(resolved_values)
+    async def get_html_and_status(
+        self, *, name: str, query_params: Mapping[str, Any]
+    ) -> NbHtmlStatusModel:
+        """Get the status of the HTML rendering for a page, and the HTML itself
+        if available.
+
+        This method will get the HTML from the Redis cache, or alternatively
+        check if there a noteburst job for this page instance and get the
+        HTML from the job if it's available.
+
+        Parameters
+        ----------
+        name
+            The name of the page (slug in the pages API).
+        query_params
+            The URL query parameters for the page instance, comprising both
+            parameter values and display settings.
+
+        Returns
+        -------
+        nbhtml_status
+            The status of the HTML rendering for the page and the HTML itself
+            if available.
+        """
+        # Get display settings from parameters
+        display_settings = NbDisplaySettings.from_url_params(query_params)
+        self._logger.debug(
+            "Resolved display settings",
+            display_settings=asdict(display_settings),
+        )
+
+        page = await self.get_page(name)
+        page_instance = PageInstanceModel(page=page, values=dict(query_params))
+
+        # Get HTML from redis cache
+        html_key = NbHtmlKey(
+            display_settings=display_settings,
+            page_instance_id=page_instance.id,
+        )
+        nbhtml = await self._html_store.get_instance(html_key)
+
+        # Alternatively, look if there's an existing job request. If the job is
+        # done this renders it into HTML; otherwise it triggers a noteburst
+        # request, but does not return any HTML for this request.
+        #
+        # The fact that the UI periodically calls this service is what triggers
+        # the rendering of the HTML after an execution by retrieving the
+        # noteburst job.
+        if nbhtml is None:
+            nbhtml = await self._get_html_from_noteburst_job(
+                page_instance=page_instance,
+                display_settings=html_key.display_settings,
+            )
+
+        return NbHtmlStatusModel(
+            nb_html=nbhtml, nb_html_key=html_key, page_instance=page_instance
+        )
 
     async def get_html(
         self, *, name: str, query_params: Mapping[str, Any]
@@ -294,50 +350,24 @@ class PageService:
         """Get the HTML for a page given the query parameters, first
         from a cache or triggering a rendering if not available.
 
+        Parameters
+        ----------
+        name
+            The name of the page (slug in the pages API).
+        query_params
+            The URL query parameters for the page instance, comprising both
+            parameter values and display settings.
+
         Returns
         -------
-        nbhtml : `NbHtmlModel` or `None`
+        nbhtml | None
             The NbHtmlModel if available, or `None` if the executed notebook is
             not presently available.
-        query_params
-            The request query parameters, which contain parameter values as
-            well as display settings.
         """
-        # Get display settings from parameters
-        try:
-            hide_code = bool(int(query_params.get("ts_hide_code", "1")))
-        except Exception as e:
-            raise ValueError("hide_code query parameter must be 1 or 0") from e
-        display_settings = NbDisplaySettings(hide_code=hide_code)
-        self._logger.debug(
-            "Resolved display settings",
-            display_settings=asdict(display_settings),
+        html_status = await self.get_html_and_status(
+            name=name, query_params=query_params
         )
-
-        page = await self.get_page(name)
-        resolved_values = page.resolve_and_validate_values(query_params)
-
-        # First try to get HTML from redis cache
-        page_key = NbHtmlKey(
-            name=page.name,
-            values=resolved_values,
-            display_settings=display_settings,
-        )
-        nbhtml = await self._html_store.get_instance(page_key)
-        if nbhtml is not None:
-            self._logger.debug("Got HTML from cache")
-            return nbhtml
-
-        # Second, look if there's an existing job request. If the job is
-        # done this renders it into HTML; otherwise it triggers a noteburst
-        # request, but does not return any HTML for this request.
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
-        )
-        return await self._get_html_from_noteburst_job(
-            page_instance=page_instance,
-            display_settings=display_settings,
-        )
+        return html_status.nb_html
 
     async def _get_html_from_noteburst_job(
         self,
@@ -365,7 +395,7 @@ class PageService:
             not presently available.
         """
         # Is there an existing job in the noteburst job store?
-        job = await self._job_store.get_instance(page_instance)
+        job = await self._job_store.get_instance(page_instance.id)
         if not job:
             self._logger.debug("No existing noteburst job available")
             # A record of a noteburst job is not available. Send a request
@@ -380,7 +410,7 @@ class PageService:
             self._logger.warning(
                 "Got a 404 from a noteburst job", job_url=job.job_url
             )
-            await self._job_store.delete_instance(page_instance)
+            await self._job_store.delete_instance(page_instance.id)
             await self.request_noteburst_execution(page_instance)
             return None
 
@@ -419,15 +449,12 @@ class PageService:
     ) -> PageInstanceModel:
         """Soft delete the HTML for a page given the query parameters."""
         page = await self.get_page(name)
-        resolved_values = page.resolve_and_validate_values(query_params)
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
-        )
+        page_instance = PageInstanceModel(page=page, values=dict(query_params))
         exec_info = await self.request_noteburst_execution(page_instance)
         await self._arq_queue.enqueue(  # provides an arq job metadata
             "replace_nbhtml",
             page_name=page.name,
-            parameter_values=resolved_values,
+            parameter_values=page_instance.values,
             noteburst_job=exec_info.noteburst_job,
         )
         # Format the job for a response
@@ -439,7 +466,7 @@ class PageService:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
-        ipynb = page_instance.page.render_parameters(page_instance.values)
+        ipynb = page_instance.render_ipynb()
         r = await self.noteburst_api.submit_job(
             ipynb=ipynb,
             enable_retry=enable_retry,
@@ -453,7 +480,6 @@ class PageService:
             )
 
             return PageExecutionInfo(
-                name=page_instance.name,
                 values=page_instance.values,
                 page=page_instance.page,
                 noteburst_job=None,
@@ -462,18 +488,17 @@ class PageService:
             )
 
         await self._job_store.store_job(
-            job=r.data.to_job_model(), page_id=page_instance
+            job=r.data.to_job_model(), page_id=page_instance.id
         )
         self._logger.info(
             "Requested noteburst notebook execution",
-            page_name=page_instance.name,
+            page_name=page_instance.page_name,
             parameters=page_instance.values,
             job_url=r.data.self_url,
         )
         if r.data is None:
             raise RuntimeError("Noteburst job has no data")
         return PageExecutionInfo(
-            name=page_instance.name,
             values=page_instance.values,
             page=page_instance.page,
             noteburst_job=r.data.to_job_model(),
@@ -496,7 +521,7 @@ class PageService:
         html_matrix: dict[NbDisplaySettings, NbHtmlModel] = {}
         if noteburst_response.ipynb is None:
             raise RuntimeError("Noteburst job is complete but has no ipynb")
-        for matrix_key in self.html_display_settings_matrix:
+        for matrix_key in NbDisplaySettings.create_settings_matrix():
             nbhtml = NbHtmlModel.create_from_noteburst_result(
                 page_instance=page_instance,
                 ipynb=noteburst_response.ipynb,
@@ -504,24 +529,22 @@ class PageService:
                 display_settings=matrix_key,
             )
             html_matrix[matrix_key] = nbhtml
-            await self._html_store.store_nbhtml(nbhtml=nbhtml, lifetime=None)
+            html_key = NbHtmlKey(
+                display_settings=matrix_key,
+                page_instance_id=page_instance.id,
+            )
+            await self._html_store.store_nbhtml(
+                key=html_key, nbhtml=nbhtml, lifetime=None
+            )
             self._logger.debug(
                 "Stored new HTML", display_settings=asdict(matrix_key)
             )
 
-        deleted_job = await self._job_store.delete_instance(page_instance)
+        deleted_job = await self._job_store.delete_instance(page_instance.id)
         if deleted_job:
             self._logger.debug("Deleted old job record")
 
         return html_matrix
-
-    @property
-    def html_display_settings_matrix(self) -> list[NbDisplaySettings]:
-        """The matrix of all display settings for HTML rendering."""
-        return [
-            NbDisplaySettings(hide_code=True),
-            NbDisplaySettings(hide_code=False),
-        ]
 
     async def get_html_events_iter(
         self,
@@ -533,26 +556,18 @@ class PageService:
         for a page instance.
         """
         page = await self.get_page(name)
-        resolved_values = page.resolve_and_validate_values(query_params)
+        page_instance = PageInstanceModel(page=page, values=dict(query_params))
         # also get the Display settings query params
-        page_instance = PageInstanceModel(
-            name=page.name, values=resolved_values, page=page
-        )
-        try:
-            hide_code = bool(int(query_params.get("ts_hide_code", "1")))
-        except Exception as e:
-            raise ValueError("hide_code query parameter must be 1 or 0") from e
-        display_settings = NbDisplaySettings(hide_code=hide_code)
-        page_key = NbHtmlKey(
-            name=page.name,
-            values=resolved_values,
+        display_settings = NbDisplaySettings.from_url_params(query_params)
+        html_key = NbHtmlKey(
             display_settings=display_settings,
+            page_instance_id=page_instance.id,
         )
 
         async def iterator() -> AsyncIterator[bytes]:
             try:
                 while True:
-                    job = await self._job_store.get_instance(page_instance)
+                    job = await self._job_store.get_instance(page_instance.id)
                     noteburst_data: NoteburstJobResponseModel | None = None
                     # model for html status
                     if job:
@@ -566,9 +581,10 @@ class PageService:
                         if noteburst_response.data:
                             noteburst_data = noteburst_response.data
 
-                    nbhtml = await self._html_store.get_instance(page_key)
+                    nbhtml = await self._html_store.get_instance(html_key)
 
                     payload = HtmlEventsModel.create(
+                        page_instance=page_instance,
                         noteburst_job=noteburst_data,
                         nbhtml=nbhtml,
                         request_query_params=query_params,

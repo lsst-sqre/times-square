@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
-from base64 import b64encode
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Annotated, Any, Self
+from urllib.parse import urlencode
 
 from nbconvert.exporters.html import HTMLExporter
 from pydantic import BaseModel, Field
@@ -16,6 +15,13 @@ from traitlets.config import Config
 
 from ..storage.noteburst import NoteburstJobResponseModel
 from .page import PageInstanceIdModel, PageInstanceModel
+
+__all__ = [
+    "NbDisplaySettings",
+    "NbHtmlKey",
+    "NbHtmlModel",
+    "NbHtmlStatusModel",
+]
 
 
 class NbHtmlModel(BaseModel):
@@ -110,7 +116,7 @@ class NbHtmlModel(BaseModel):
         html_hash.update(html.encode())
 
         return cls(
-            page_name=page_instance.name,
+            page_name=page_instance.page_name,
             html=html,
             html_hash=html_hash.hexdigest(),
             values=page_instance.values,
@@ -120,43 +126,62 @@ class NbHtmlModel(BaseModel):
             hide_code=display_settings.hide_code,
         )
 
-    def create_key(self) -> NbHtmlKey:
-        """Create a storage key."""
-        return NbHtmlKey(
-            name=self.page_name,
-            values=dict(self.values),
-            display_settings=self.display_settings,
-        )
-
-    @property
-    def url_params(self) -> dict[str, str]:
-        """The URL query parameters for this HTML rendering,
-        including both notebook variables and display settings.
-        """
-        # TODO(jonathansick): Do we need to worry about encoding these values
-        # back to strings. For example, a bool value should go back to a 1 or 0
-        # Perhaps this code should be coordinated with parameter casting in
-        # `timessquare.domain.page.PageParameterSchema.cast_value`.
-        params = {key: str(value) for key, value in self.values.items()}
-        params.update(self.display_settings.url_params)
-        return params
-
     @property
     def display_settings(self) -> NbDisplaySettings:
         """The display settings for this HTML rendering."""
         return NbDisplaySettings(hide_code=self.hide_code)
 
 
+@dataclass(kw_only=True)
+class NbHtmlStatusModel:
+    """A model for a summary of the status of an HTML rendering."""
+
+    nb_html_key: NbHtmlKey
+    nb_html: NbHtmlModel | None
+    page_instance: PageInstanceModel
+
+    @property
+    def available(self) -> bool:
+        return self.nb_html is not None
+
+
 @dataclass
-class NbHtmlKey(PageInstanceIdModel):
-    """A domain model for the redis key for an NbHtmlModel instance."""
+class NbHtmlKey:
+    """A domain model for the redis key for an NbHtmlModel instance.
+
+    This model can be used as a key for the NbHtmlCacheStore and generates
+    URL query strings that fully specify an HTML rendering, including
+    both notebook parameter values and display settings.
+
+    Conforms to the `PageInstanceIdProtocol`.
+    """
 
     display_settings: NbDisplaySettings
 
+    page_instance_id: PageInstanceIdModel
+
     @property
     def cache_key(self) -> str:
-        key_prefix = super().cache_key
+        """The Redis cache key for this HTML rendering.
+
+        The key is composed of the page name, parameter values, and display
+        settings. The format is:
+        ``{page_name}/{parameter_values}/{display_settings}``
+        where ``page_name`` is the page's name (slug), ``parameter_values`` is
+        the URL query string of parameter values, and ``display_settings`` is
+        the URL query string of display settings.
+        """
+        key_prefix = self.page_instance_id.cache_key
         return f"{key_prefix}/{self.display_settings.cache_key}"
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string corresponding to this key, including both
+        notebook parameter and display settings.
+        """
+        params_query_string = self.page_instance_id.url_query_string
+        display_settings_query_string = self.display_settings.url_query_string
+        return f"{params_query_string}&{display_settings_query_string}"
 
 
 @dataclass(frozen=True)
@@ -170,15 +195,22 @@ class NbDisplaySettings:
         """Create an instance from URL query parameters."""
         return cls(hide_code=bool(int(params.get("ts_hide_code", 1))))
 
+    @classmethod
+    def create_settings_matrix(cls) -> list[Self]:
+        """Create a matrix of all possible display settings."""
+        return [cls(hide_code=hide_code) for hide_code in [True, False]]
+
     @property
     def cache_key(self) -> str:
-        return b64encode(
-            json.dumps(dict(asdict(self).items()), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).decode("utf-8")
+        """The Redis cache key component for these display settings."""
+        return self.url_query_string
 
     @property
     def url_params(self) -> dict[str, str]:
         """Get the URL query parameters for these display settings."""
         return {"ts_hide_code": str(int(self.hide_code))}
+
+    @property
+    def url_query_string(self) -> str:
+        """The URL query string for these display settings."""
+        return urlencode(self.url_params)

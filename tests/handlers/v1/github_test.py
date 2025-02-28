@@ -12,9 +12,10 @@ from safir.database import create_async_session, create_database_engine
 from structlog import get_logger
 
 from timessquare.config import config
-from timessquare.domain.githubcheckout import NotebookSidecarFile
 from timessquare.domain.page import PageModel
+from timessquare.domain.pageparameters import PageParameters
 from timessquare.services.page import PageService
+from timessquare.storage.github.settingsfiles import NotebookSidecarFile
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore
@@ -70,7 +71,7 @@ async def test_github(client: AsyncClient) -> None:
         PageModel(
             name="2",
             ipynb=demo_path.read_text(),
-            parameters={},
+            parameters=PageParameters({}),
             title="Gaussian 2D",
             date_added=datetime.now(UTC),
             date_deleted=None,
@@ -89,7 +90,7 @@ async def test_github(client: AsyncClient) -> None:
         PageModel(
             name="3",
             ipynb=demo_path.read_text(),
-            parameters={},
+            parameters=PageParameters({}),
             title="Tutorial A",
             date_added=datetime.now(UTC),
             date_deleted=None,
@@ -197,16 +198,30 @@ async def test_github(client: AsyncClient) -> None:
         "\n"
         "- Amplitude: A = 4\n"
         "- Y offset: y0 = 0\n"
-        "- Wavelength: lambd = 2"
+        "- Wavelength: lambd = 2\n"
+        "- Title: Demo\n"
+        "- Flag: True"
     )
     assert notebook.metadata["times-square"]["values"] == {
         "A": 4,
         "y0": 0,
         "lambd": 2,
+        "mydate": "2025-02-21",
+        "mydatetime": "2025-02-22T12:00:00+00:00",
+        "title": "Demo",
+        "boolflag": True,
     }
 
     # Render the page template with some parameters set
-    r = await client.get(rendered_url, params={"A": 2})
+    r = await client.get(
+        rendered_url,
+        params={
+            "A": 2,
+            "boolflag": False,
+            "mydate": "2025-01-01",
+            "mydatetime": "2025-01-01T12:00:00+00:00",
+        },
+    )
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
     assert notebook.cells[0].source == (
@@ -216,10 +231,16 @@ async def test_github(client: AsyncClient) -> None:
         "\n"
         "- Amplitude: A = 2\n"
         "- Y offset: y0 = 0\n"
-        "- Wavelength: lambd = 2"
+        "- Wavelength: lambd = 2\n"
+        "- Title: Demo\n"
+        "- Flag: False"
     )
     assert notebook.metadata["times-square"]["values"] == {
         "A": 2,
         "y0": 0,
         "lambd": 2,
+        "mydate": "2025-01-01",
+        "mydatetime": "2025-01-01T12:00:00+00:00",
+        "title": "Demo",
+        "boolflag": False,
     }

@@ -20,9 +20,13 @@ from safir.github.models import (
 from safir.metadata import Metadata as SafirMetadata
 
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
-from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlModel
+from timessquare.domain.nbhtml import (
+    NbDisplaySettings,
+    NbHtmlKey,
+    NbHtmlStatusModel,
+)
 from timessquare.domain.page import (
-    PageInstanceIdModel,
+    PageInstanceModel,
     PageModel,
     PageSummaryModel,
     PersonModel,
@@ -410,14 +414,23 @@ class HtmlStatus(BaseModel):
     )
 
     @classmethod
-    def from_html(
-        cls, *, html: NbHtmlModel | None, request: Request
+    def from_html_status(
+        cls, *, html_status: NbHtmlStatusModel, request: Request
     ) -> HtmlStatus:
         base_html_url = str(
             request.url_for("get_page_html", page=request.path_params["page"])
         )
 
-        if html is None:
+        if html_status.nb_html is not None:
+            qs = html_status.nb_html_key.url_query_string
+            html_url = f"{base_html_url}?{qs}"
+            return cls(
+                available=html_status.available,
+                html_url=AnyHttpUrl(html_url),
+                html_hash=html_status.nb_html.html_hash,
+            )
+
+        else:
             # resolved parameters aren't available, so use the request URL
             qs = urlencode(request.query_params)
             html_url = f"{base_html_url}?{qs}" if qs else base_html_url
@@ -426,21 +439,6 @@ class HtmlStatus(BaseModel):
                 available=False,
                 html_url=AnyHttpUrl(html_url),
                 html_hash=None,
-            )
-        else:
-            query_params: dict[str, Any] = {}
-            query_params.update(html.values)
-            # Add display settings
-            if html.hide_code:
-                query_params["ts_hide_code"] = "1"
-            else:
-                query_params["ts_hide_code"] = "0"
-            qs = urlencode(query_params)
-            html_url = f"{base_html_url}?{qs}" if qs else base_html_url
-            return cls(
-                available=True,
-                html_hash=html.html_hash,
-                html_url=AnyHttpUrl(html_url),
             )
 
 
@@ -453,25 +451,27 @@ class DeleteHtmlResponse(BaseModel):
 
     @classmethod
     def from_page_instance(
-        cls, *, page_instance: PageInstanceIdModel, request: Request
+        cls, *, page_instance: PageInstanceModel, request: Request
     ) -> Self:
         """Create a DeleteHtmlResponse from the deleted page instance."""
         base_html_url = str(
-            request.url_for("get_page_html", page=page_instance.name)
+            request.url_for("get_page_html", page=page_instance.page_name)
         )
         base_html_events_url = str(
-            request.url_for("get_page_html_events", page=page_instance.name)
+            request.url_for(
+                "get_page_html_events", page=page_instance.page_name
+            )
         )
         display_settings = NbDisplaySettings.from_url_params(
             request.query_params
         )
-        values = dict(page_instance.values)
-        values.update(display_settings.url_params)
-        qs = urlencode(values)
-        html_url = f"{base_html_url}?{qs}" if qs else base_html_url
-        html_events_url = (
-            f"{base_html_events_url}?{qs}" if qs else base_html_events_url
+        html_key = NbHtmlKey(
+            display_settings=display_settings,
+            page_instance_id=page_instance.id,
         )
+        qs = html_key.url_query_string
+        html_url = f"{base_html_url}?{qs}"
+        html_events_url = f"{base_html_events_url}?{qs}"
 
         return cls(
             html_url=AnyHttpUrl(html_url),

@@ -55,11 +55,28 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             "description": "Amplitude",
             "default": 4,
         },
+        "boolflag": {
+            "type": "boolean",
+            "description": "A boolean flag",
+            "default": True,
+        },
         "lambd": {
             "type": "number",
             "minimum": 0,
             "description": "Wavelength",
             "default": 2,
+        },
+        "mydate": {
+            "type": "string",
+            "description": "A date value",
+            "format": "date",
+            "default": "2025-02-21",
+        },
+        "mydatetime": {
+            "type": "string",
+            "description": "A datetime value",
+            "format": "date-time",
+            "default": "2025-02-22T12:00:00+00:00",
         },
         "title": {
             "default": "hello world",
@@ -119,17 +136,30 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "\n"
         "- Amplitude: A = 4\n"
         "- Y offset: y0 = 0\n"
-        "- Wavelength: lambd = 2"
+        "- Wavelength: lambd = 2\n"
+        "- Title: hello world\n"
+        "- Flag: True"
     )
     assert notebook.metadata["times-square"]["values"] == {
         "A": 4,
         "y0": 0,
         "lambd": 2,
+        "mydate": "2025-02-21",
+        "mydatetime": "2025-02-22T12:00:00+00:00",
         "title": "hello world",
+        "boolflag": True,
     }
 
     # Render the page template with some parameters set
-    r = await client.get(rendered_url, params={"A": 2})
+    r = await client.get(
+        rendered_url,
+        params={
+            "A": 2,
+            "boolflag": False,
+            "mydate": "2025-05-01",
+            "mydatetime": "2025-05-01T12:00:00+00:00",
+        },
+    )
     assert r.status_code == 200
     notebook = nbformat.reads(r.text, as_version=4)
     assert notebook.cells[0].source == (
@@ -139,13 +169,18 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "\n"
         "- Amplitude: A = 2\n"
         "- Y offset: y0 = 0\n"
-        "- Wavelength: lambd = 2"
+        "- Wavelength: lambd = 2\n"
+        "- Title: hello world\n"
+        "- Flag: False"
     )
     assert notebook.metadata["times-square"]["values"] == {
         "A": 2,
         "y0": 0,
         "lambd": 2,
+        "mydate": "2025-05-01",
+        "mydatetime": "2025-05-01T12:00:00+00:00",
         "title": "hello world",
+        "boolflag": False,
     }
 
     # Try to get HTML rendering; should be unavailable right now.

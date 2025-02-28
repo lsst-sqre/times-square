@@ -26,8 +26,8 @@ from timessquare.config import config
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookModel,
-    RepositorySettingsFile,
 )
+from timessquare.storage.github.settingsfiles import RepositorySettingsFile
 
 from ..domain.page import PageModel
 from .page import PageService
