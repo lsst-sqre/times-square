@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 import yaml
 from pydantic import BaseModel, EmailStr, Field, model_validator
@@ -153,6 +153,17 @@ class ParameterSchemaModel(BaseModel):
             ),
         ),
     ]
+
+    format: Annotated[
+        Literal["date", "date-time"] | None,
+        Field(
+            title="The JSON schema format",
+            description=(
+                "For example, the format of a date or time. Only used for "
+                "the string type."
+            ),
+        ),
+    ] = None
 
     default: Annotated[
         int | float | str | bool,
