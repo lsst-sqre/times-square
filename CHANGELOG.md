@@ -8,6 +8,14 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.18.1'></a>
+
+## 0.18.1 (2025-03-06)
+
+### Bug fixes
+
+- Fix date and datetime parameter support by adding the "format" key to the Pydantic model of the sidecar settings file for pages in GitHub.
+
 <a id='changelog-0.18.0'></a>
 
 ## 0.18.0 (2025-02-28)
