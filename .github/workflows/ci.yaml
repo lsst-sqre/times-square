@@ -1,7 +1,10 @@
 name: CI
 
 env:
-  PYTHON_VERSION: "3.13"
+  # Current supported uv version. The uv documentation recommends pinning
+  # this. The version should match the version used in .pre-commit-config.yaml
+  # and frozen in uv.lock.
+  UV_VERSION: "0.7.2"
 
 "on":
   merge_group: {}
@@ -28,13 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: ".python-version"
 
-      - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
+      - name: lint
+        run: uv run --only-group=tox tox run -e lint
 
   test:
     runs-on: ubuntu-latest
@@ -43,12 +51,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run tox
-        uses: lsst-sqre/run-tox@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          tox-envs: "docker,coverage-report,typing"
-          tox-requirements: "requirements/tox.txt"
+          version: ${{ env.UV_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Run tox
+        run: uv run --only-group=tox tox run -e docker,coverage-report,typing
 
   build:
     runs-on: ubuntu-latest
@@ -92,12 +106,13 @@ jobs:
       - name: Install extra packages
         run: sudo apt install -y graphviz
 
-      - name: Run tox
-        uses: lsst-sqre/run-tox@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          tox-envs: "docs,docs-linkcheck"
-          tox-requirements: "requirements/tox.txt"
+          version: ${{ env.UV_VERSION }}
+
+      - name: Run tox
+        run: uv run --only-group=tox tox run -e docs,docs-linkcheck
 
       # Only attempt documentation uploads for long-lived branches, tagged
       # releases, and pull requests from ticket branches.  This avoids version

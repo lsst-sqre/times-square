@@ -1,24 +1,46 @@
 [project]
 name = "times-square"
 description = "Times Square is a service for parameterized Jupyter Notebooks as dynamic webpages."
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 keywords = ["rubin", "lsst"]
 # https://pypi.org/classifiers/
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "Operating System :: POSIX",
+    "Private :: Do Not Upload",
     "Typing :: Typed",
 ]
 requires-python = ">=3.13"
 # Use requirements/main.in for runtime dependencies instead.
-dependencies = []
+dependencies = [
+    "fastapi",
+    "gunicorn",
+    "starlette",
+    "uvicorn[standard]",
+    "safir[db,arq,redis]",
+    "alembic[tz]",
+    "pydantic[email]",
+    "pydantic_settings",
+    "click",
+    "nbformat",
+    "nbconvert",
+    "jsonschema",
+    "jinja2",
+    "gidgethub",
+    "markdown-it-py[linkify,plugins]",
+    "mdformat",
+    "mdformat-gfm",
+    "PyYAML",
+    "sentry-sdk",
+    "sse-starlette",
+]
 dynamic = ["version"]
 
 [project.scripts]
@@ -31,6 +53,40 @@ Source = "https://github.com/lsst-sqre/times-square"
 [build-system]
 requires = ["setuptools>=61", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "asgi-lifespan",
+    "coverage[toml]",
+    "httpx",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-mock",
+    "uvicorn",
+    "respx",
+    "httpx-sse == 0.4.0",
+    "holdup",
+    "scriv",
+]
+docs = [
+    "documenteer[guide]>=1.0",
+]
+lint = [
+    "pre-commit",
+    "pre-commit-uv",
+    "ruff",
+]
+tox = [
+    "tox",
+    "tox-uv",
+    "tox-docker",
+]
+typing = [
+    "mypy",
+    "sqlalchemy[mypy]",
+    "types-PyYAML",
+]
 
 [tool.setuptools_scm]
 
