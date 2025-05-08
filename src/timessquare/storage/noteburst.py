@@ -72,6 +72,14 @@ class NoteburstExecutionError(BaseModel):
         None, description="Additional information about the exception."
     )
 
+    exception_type: str | None = Field(
+        None,
+        description=(
+            "The type of the exception that occurred. This is not always "
+            "available."
+        ),
+    )
+
 
 class NoteburstJobResponseModel(BaseModel):
     """A model for a subset of the noteburst response body for a notebook

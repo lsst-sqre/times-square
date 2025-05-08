@@ -567,11 +567,14 @@ class NotebookExecutionsCheck(GitHubCheck):
                 # The notebook execution failed because of an unknown error
                 title = "Notebook execution error"
                 message = (
-                    "The notebook execution failed because of an unknown "
-                    "error."
+                    "The notebook execution failed because of an unexpected "
+                    "system error."
                 )
                 if job_result.error.message:
-                    message += f" ({job_result.error.message})"
+                    message += (
+                        f" (exception: {job_result.error.exception_type}; "
+                        f"{job_result.error.message})"
+                    )
                 annotation = Annotation(
                     path=notebook_path,
                     start_line=1,
