@@ -59,6 +59,11 @@ class SqlPage(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     """Tags (keywords) assigned to this page."""
 
+    execution_timeout: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    """The execution timeout configured for this page, in seconds."""
+
     uploader_username: Mapped[str | None] = mapped_column(
         UnicodeText, nullable=True
     )
