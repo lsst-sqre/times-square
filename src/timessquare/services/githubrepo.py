@@ -345,6 +345,9 @@ class GitHubRepoService:
             cache_ttl=notebook.sidecar.cache_ttl,
             tags=notebook.sidecar.tags,
             authors=notebook.sidecar.export_authors(),
+            timeout=int(notebook.sidecar.timeout.total_seconds())
+            if notebook.sidecar.timeout
+            else None,
             github_commit=commit_sha,
         )
         await self._page_service.add_page_to_store(page)
@@ -369,6 +372,11 @@ class GitHubRepoService:
         page.title = notebook.title
         page.authors = notebook.sidecar.export_authors()
         page.tags = notebook.sidecar.tags
+        page.timeout = (
+            int(notebook.sidecar.timeout.total_seconds())
+            if notebook.sidecar.timeout
+            else None
+        )
         page.description = notebook.sidecar.description
         page.cache_ttl = notebook.sidecar.cache_ttl
         # The extensions might change, but we resolve them to the same

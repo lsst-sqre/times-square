@@ -66,6 +66,12 @@ class PageModel:
     tags: list[str] = field(default_factory=list)
     """Tags (keywords) assigned to this page."""
 
+    timeout: int | None = None
+    """The timeout for the notebook, in seconds.
+
+    If not set, the default execution timeout is used.
+    """
+
     uploader_username: str | None = None
     """Username of the uploader, if this page is uploaded without GitHub
     backing.
@@ -192,6 +198,7 @@ class PageModel:
         description: str | None = None,
         cache_ttl: int | None = None,
         tags: list[str] | None = None,
+        timeout: int | None = None,
         authors: list[PersonModel] | None = None,
         github_commit: str | None = None,
     ) -> PageModel:
@@ -204,6 +211,7 @@ class PageModel:
             parameters=parameters,
             title=title,
             tags=tags if tags else [],
+            timeout=timeout,
             authors=authors if authors else [],
             date_added=date_added,
             description=description,
@@ -328,11 +336,12 @@ class PageModel:
 
         Note
         ----
-        Currently this timeout defaults to the `default_execution_timeout`
-        configuration value. In the future, this setting may be configurable
-        per-page. At that time, this property will use the per-page setting,
-        falling back to the Times Square default if not set.
+        This timeout is the page's execution timeout, if set. If not, the
+        default execution timeout is used.
         """
+        if self.timeout is not None:
+            return timedelta(seconds=self.timeout)
+
         return timedelta(seconds=config.default_execution_timeout)
 
     @staticmethod
