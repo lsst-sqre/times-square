@@ -7,6 +7,7 @@ from typing import Annotated, Literal, Self
 
 import yaml
 from pydantic import BaseModel, EmailStr, Field, model_validator
+from safir.pydantic import HumanTimedelta
 
 from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import (
@@ -249,6 +250,14 @@ class NotebookSidecarFile(BaseModel):
             default_factory=list,
         ),
     ]
+
+    timeout: Annotated[
+        HumanTimedelta | None,
+        Field(
+            title="Timeout for notebook execution",
+            description="If not set, the default execution timeout is used.",
+        ),
+    ] = None
 
     parameters: Annotated[
         dict[str, ParameterSchemaModel],
