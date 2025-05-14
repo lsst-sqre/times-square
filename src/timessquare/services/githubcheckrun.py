@@ -314,9 +314,21 @@ class GitHubCheckRunService:
     ) -> None:
         """Report timeout errors for all pending pages."""
         for page_execution in pending_pages:
+            # Try to get the current job state including runtime
+            try:
+                if page_execution.noteburst_job is not None:
+                    r = self._page_service.noteburst_api.get_job(
+                        str(page_execution.noteburst_job.job_url)
+                    )
+                    job_result = r.data if r and hasattr(r, "data") else None
+                else:
+                    job_result = None
+            except Exception:
+                job_result = None
+
             check.report_noteburst_timeout(
                 page_execution=page_execution,
-                job_result=None,
+                job_result=job_result,
                 message=(
                     "Pull request timed out waiting for noteburst results "
                     f" (timeout: {config.github_checkrun_timeout}s)"

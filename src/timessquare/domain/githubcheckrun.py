@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABCMeta, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -429,6 +430,20 @@ class GitHubConfigsCheck(GitHubCheck):
         self.tree = tree
 
 
+@dataclass
+class NotebookExecutionInfo:
+    """Information about a notebook execution."""
+
+    path: str
+    """Path to the notebook."""
+
+    is_success: bool
+    """Whether the notebook executed successfully."""
+
+    runtime: timedelta | None = None
+    """Runtime of the notebook execution, if completed."""
+
+
 class NotebookExecutionsCheck(GitHubCheck):
     """A domain model for a notebook execution GitHub check."""
 
@@ -442,7 +457,7 @@ class NotebookExecutionsCheck(GitHubCheck):
     def __init__(
         self, check_run: GitHubCheckRunModel, repo: GitHubRepositoryModel
     ) -> None:
-        self.notebook_paths_checked: list[str] = []
+        self.notebook_executions: list[NotebookExecutionInfo] = []
         super().__init__(check_run=check_run, repo=repo)
 
     def report_jinja_error(
@@ -460,7 +475,9 @@ class NotebookExecutionsCheck(GitHubCheck):
             annotation_level=GitHubCheckRunAnnotationLevel.failure,
         )
         self.annotations.append(annotation)
-        self.notebook_paths_checked.append(path)
+        self.notebook_executions.append(
+            NotebookExecutionInfo(path=path, is_success=False)
+        )
 
     def report_noteburst_failure(
         self, page_execution: PageExecutionInfo
@@ -479,7 +496,9 @@ class NotebookExecutionsCheck(GitHubCheck):
             annotation_level=GitHubCheckRunAnnotationLevel.failure,
         )
         self.annotations.append(annotation)
-        self.notebook_paths_checked.append(path)
+        self.notebook_executions.append(
+            NotebookExecutionInfo(path=path, is_success=False)
+        )
 
     def report_noteburst_completion(  # noqa: C901 PLR0912
         self,
@@ -496,7 +515,15 @@ class NotebookExecutionsCheck(GitHubCheck):
         notebook_path = page_execution.page.repository_source_path
         if notebook_path is None:
             raise RuntimeError("Page execution has no notebook source path")
-        self.notebook_paths_checked.append(notebook_path)
+
+        # Save execution information with runtime
+        execution_info = NotebookExecutionInfo(
+            path=notebook_path,
+            is_success=job_result.success is True
+            and job_result.ipynb_error is None,
+            runtime=job_result.runtime if job_result.runtime else None,
+        )
+        self.notebook_executions.append(execution_info)
 
         if job_result.success and job_result.ipynb_error is None:
             # The notebook executed successfully
@@ -644,11 +671,20 @@ class NotebookExecutionsCheck(GitHubCheck):
             annotation_level=GitHubCheckRunAnnotationLevel.failure,
         )
         self.annotations.append(annotation)
-        self.notebook_paths_checked.append(path)
+
+        # Save execution info with runtime if available
+        runtime = (
+            job_result.runtime
+            if job_result and hasattr(job_result, "runtime")
+            else None
+        )
+        self.notebook_executions.append(
+            NotebookExecutionInfo(path=path, is_success=False, runtime=runtime)
+        )
 
     @property
     def summary(self) -> str:
-        notebooks_count = len(self.notebook_paths_checked)
+        notebooks_count = len(self.notebook_executions)
         if self.conclusion == GitHubCheckRunConclusion.success:
             text = "Notebooks ran without issue ✅"
         else:
@@ -663,19 +699,40 @@ class NotebookExecutionsCheck(GitHubCheck):
 
     @property
     def text(self) -> str:
-        text = "| Notebook | Status |\n | --- | :-: |\n"
+        text = "| Notebook | Status | Execution Time |\n | --- | :-: | :-: |\n"
 
-        notebook_paths = list(set(self.notebook_paths_checked))
-        notebook_paths.sort()
-        for notebook_path in notebook_paths:
-            preview_url = self.get_preview_url(notebook_path)
-            linked_notebook = f"[{notebook_path}]({preview_url})"
-            if self._is_file_ok(notebook_path):
-                text = f"{text}| {linked_notebook} | ✅ |\n"
+        # Sort notebook executions by path
+        notebook_executions = sorted(
+            self.notebook_executions, key=lambda x: x.path
+        )
+
+        for execution in notebook_executions:
+            preview_url = self.get_preview_url(execution.path)
+            linked_notebook = f"[{execution.path}]({preview_url})"
+
+            # Format runtime nicely for display
+            if execution.runtime:
+                runtime_str = self._format_runtime(execution.runtime)
             else:
-                text = f"{text}| {linked_notebook} | ❌ |\n"
+                runtime_str = "N/A"
+
+            if execution.is_success:
+                text = f"{text}| {linked_notebook} | ✅ | {runtime_str} |\n"
+            else:
+                text = f"{text}| {linked_notebook} | ❌ | {runtime_str} |\n"
 
         return text
 
-    def _is_file_ok(self, path: str) -> bool:
-        return all(annotation.path != path for annotation in self.annotations)
+    def _format_runtime(self, runtime: timedelta) -> str:
+        """Format a runtime value for display."""
+        total_seconds = runtime.total_seconds()
+        if total_seconds < 60:
+            return f"{total_seconds:.1f} sec"
+        elif total_seconds < 3600:
+            minutes = total_seconds // 60
+            seconds = total_seconds % 60
+            return f"{int(minutes)} min {int(seconds)} sec"
+        else:
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            return f"{int(hours)} hr {int(minutes)} min"
