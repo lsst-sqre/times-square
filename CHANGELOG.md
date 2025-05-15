@@ -8,6 +8,32 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.19.0'></a>
+
+## 0.19.0 (2025-05-15)
+
+### Backwards-incompatible changes
+
+- This release requires a Alembic database migration (new Alembic revision is `c617718eaf6b`).
+
+### New features
+
+- Improved reporting of notebook execution errors in GitHub check runs.
+
+  - Uncaught exceptions in the notebook now result in a failure of the GitHub check run. The exception message is included in the check run output.
+
+  - For timeouts, we now distinguish between notebook execution timeouts and GitHub check run timeouts.
+
+  - For internal noteburst errors, we now show the full exception class to help with debugging.
+
+- The notebook execution time is now reported in the GitHub check run output. This will help you understand what notebooks may be approaching their timeout limit.
+
+- Notebook execution timeouts are now configurable per notebook. In a notebook's sidecar file, set the timeout under the 'timeout' field. This value can be an integer or float (seconds), or a string with a time interval (e.g., '5m', '1h'). It not set or left to null, the default timeout is used (which is the previous behavior). Use this setting to decrease the timeout for notebooks that are known to run fast, or to attempt to increase the timeout for notebooks that are known to run slow. Notebooks still cannot exceed the timeout in the Noteburst service configuration.
+
+### Other changes
+
+- Adopt uv's dependency-groups and uv.lock for dependency management. This replaces the previous use of pip-tools compile to generate requirement/main.txt and dev.txt files of pinned dependencies.
+
 <a id='changelog-0.18.1'></a>
 
 ## 0.18.1 (2025-03-06)

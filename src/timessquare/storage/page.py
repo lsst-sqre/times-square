@@ -45,6 +45,7 @@ class PageStore:
             date_added=datetime_to_db(page.date_added),
             authors=[p.to_dict() for p in page.authors],
             tags=page.tags,
+            execution_timeout=page.timeout,
             uploader_username=page.uploader_username,
             date_deleted=(
                 datetime_to_db(page.date_deleted)
@@ -89,6 +90,7 @@ class PageStore:
         sql_page.title = page.title
         sql_page.authors = authors_json
         sql_page.tags = page.tags
+        sql_page.execution_timeout = page.timeout
         sql_page.date_deleted = date_deleted
         sql_page.description = page.description
         sql_page.cache_ttl = page.cache_ttl
@@ -209,6 +211,7 @@ class PageStore:
             date_deleted=date_deleted,
             authors=authors,
             tags=sql_page.tags,
+            timeout=sql_page.execution_timeout,
             uploader_username=sql_page.uploader_username,
             description=sql_page.description,
             cache_ttl=sql_page.cache_ttl,
