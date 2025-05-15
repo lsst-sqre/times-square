@@ -10,10 +10,12 @@ Excellent applications for Times Square include:
 
 ## Deployments of Times Square
 
-| Link                                                                  | User guide                                                                    | Purpose                     |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------- |
-| [USDF RSP (dev)](https://usdf-rsp-dev.slac.stanford.edu/times-square) | [Documentation](https://rsp.lsst.io/v/usdfdev/guides/times-square/index.html) | For Rubin Observatory staff |
-| [IDF (dev)](https://data-dev.lsst.cloud/times-square)                 | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)  | For SQuaRE developers       |
+| Link                                                                  | User guide                                                                     | Purpose                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------- |
+| [USDF RSP](https://usdf-rsp.slac.stanford.edu/times-square)           | [Documentation](https://rsp.lsst.io/v/usdfprod/guides/times-square/index.html) | For Rubin Observatory staff |
+| [data.lsst.cloud](https://data.lsst.cloud/times-square)               | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)   | Internal metrics reporting  |
+| [USDF RSP (dev)](https://usdf-rsp-dev.slac.stanford.edu/times-square) | [Documentation](https://rsp.lsst.io/v/usdfdev/guides/times-square/index.html)  | Feature testing             |
+| [IDF (dev)](https://data-dev.lsst.cloud/times-square)                 | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)   | For SQuaRE developers       |
 
 ## Design and development
 
