@@ -10,12 +10,12 @@ Excellent applications for Times Square include:
 
 ## Deployments of Times Square
 
-| Link                                                                  | User guide                                                                     | Purpose                     |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------- |
-| [USDF RSP](https://usdf-rsp.slac.stanford.edu/times-square)           | [Documentation](https://rsp.lsst.io/v/usdfprod/guides/times-square/index.html) | For Rubin Observatory staff |
-| [data.lsst.cloud](https://data.lsst.cloud/times-square)               | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)   | Internal metrics reporting  |
-| [USDF RSP (dev)](https://usdf-rsp-dev.slac.stanford.edu/times-square) | [Documentation](https://rsp.lsst.io/v/usdfdev/guides/times-square/index.html)  | Feature testing             |
-| [IDF (dev)](https://data-dev.lsst.cloud/times-square)                 | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)   | For SQuaRE developers       |
+| Link                                                                  | User guide                                                                     | Monitoring                                                                                                                                                                               | Purpose                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| [USDF RSP](https://usdf-rsp.slac.stanford.edu/times-square)           | [Documentation](https://rsp.lsst.io/v/usdfprod/guides/times-square/index.html) | [Chronograf](https://usdf-rsp.slac.stanford.edu/chronograf/sources/1/dashboards/149?refresh=Paused&lower=now%28%29%20-%2024h)                                                            | For Rubin Observatory staff |
+| [data.lsst.cloud](https://data.lsst.cloud/times-square)               | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)   |                                                                                                                                                                                          | Internal metrics reporting  |
+| [USDF RSP (dev)](https://usdf-rsp-dev.slac.stanford.edu/times-square) | [Documentation](https://rsp.lsst.io/v/usdfdev/guides/times-square/index.html)  |                                                                                                                                                                                          | Feature testing             |
+| [IDF (dev)](https://data-dev.lsst.cloud/times-square)                 | [Documentation](https://rsp.lsst.io/v/idfdev/guides/times-square/index.html)   | [Chronograf](https://data-dev.lsst.cloud/chronograf/sources/1/dashboards/7?refresh=Paused&lower=now%28%29%20-%2024h), [Cloud Logging](https://cloudlogging.app.goo.gl/deJjfzDDM47msiWY6) | For SQuaRE developers       |
 
 ## Design and development
 
