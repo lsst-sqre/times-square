@@ -169,6 +169,12 @@ class GitHubCheckRunService:
             page = await self._create_page(
                 checkout, notebook, check_run.head_sha
             )
+            self._logger.debug(
+                "Created page for notebook check run",
+                path=notebook_ref.notebook_source_path,
+                page_name=page.name,
+                ipynb=page.ipynb,
+            )
             try:
                 page_execution_info = await self._execute_page(page)
             except PageJinjaError as e:

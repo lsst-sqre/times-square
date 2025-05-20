@@ -104,6 +104,12 @@ class PageService:
         -----
         For API uploads, use `create_page_with_notebook_from_upload` instead.
         """
+        self._logger.debug(
+            "Adding page to store",
+            page_name=page.name,
+            title=page.title,
+            ipynb=page.ipynb,
+        )
         self._page_store.add(page)
 
     async def add_page_and_execute(
