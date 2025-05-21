@@ -64,6 +64,11 @@ def test_render_parameters() -> None:
     # Check that the second code cell was unchanged
     assert rendered_nb["cells"][2]["source"] == nb["cells"][2]["source"]
 
+    # Check that the kernelspec was removed
+    assert "kernelspec" not in rendered_nb["metadata"]
+    # But keep the times-square metadata
+    assert "times-square" in rendered_nb["metadata"]
+
 
 def test_page_instance_id_model() -> None:
     page_instance_id = PageInstanceIdModel(

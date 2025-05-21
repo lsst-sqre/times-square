@@ -182,6 +182,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
         "title": "hello world",
         "boolflag": False,
     }
+    assert "kernelspec" not in notebook.metadata
 
     # Try to get HTML rendering; should be unavailable right now.
     respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
