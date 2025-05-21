@@ -222,7 +222,7 @@ class NoteburstApi:
         self,
         *,
         ipynb: str,
-        kernel: str = "LSST",
+        kernel: str = "lsst",
         enable_retry: bool = True,
         timeout: timedelta | None = None,
     ) -> NoteburstApiResult:

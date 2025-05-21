@@ -25,7 +25,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             202,
             json={
                 "job_id": "xyz",
-                "kernel_name": "LSST",
+                "kernel_name": "",
                 "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
@@ -190,7 +190,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             202,
             json={
                 "job_id": "xyz",
-                "kernel_name": "LSST",
+                "kernel_name": "",
                 "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
@@ -208,7 +208,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             200,
             json={
                 "job_id": "xyz",
-                "kernel_name": "LSST",
+                "kernel_name": "",
                 "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
@@ -228,7 +228,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             200,
             json={
                 "job_id": "xyz",
-                "kernel_name": "LSST",
+                "kernel_name": "",
                 "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
                 "self_url": (
@@ -246,7 +246,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
             200,
             json={
                 "job_id": "xyz",
-                "kernel_name": "LSST",
+                "kernel_name": "",
                 "enqueue_time": "2022-03-15T04:12:00Z",
                 "status": "complete",
                 "self_url": (
