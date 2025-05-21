@@ -217,16 +217,31 @@ class PageService:
             owner=owner, repo=repo, commit=commit
         )
 
-    async def update_page_in_store(self, page: PageModel) -> None:
+    async def update_page_in_store(
+        self, page: PageModel, *, drop_html_cache: bool = True
+    ) -> None:
         """Update the page in the database.
 
+        Parameters
+        ----------
+        page
+            The page model to update.
+        drop_html_cache
+            If `True`, delete the HTML cache for this page. This is useful
+            when the page is updated and the HTML cache needs to be
+            invalidated. Set to `False` when updating the page in a way
+            that does not affect the cached HTML results.
+
+        Notes
+        -----
         Algorithm is:
 
         1. Update the page in Postgres
         2. Delete all cached HTML for the page from redis
         """
         await self._page_store.update_page(page)
-        await self._html_store.delete_objects_for_page(page.name)
+        if drop_html_cache is True:
+            await self._html_store.delete_objects_for_page(page.name)
 
     async def update_page_and_execute(
         self, page: PageModel, *, enable_retry: bool = True
