@@ -178,3 +178,53 @@ async def migrate_html_cache(
             key_count=key_count,
             dry_run=dry_run,
         )
+
+
+@main.command("nbstripout")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Perform a dry run without modifying ipynb sources.",
+)
+@click.option(
+    "--page",
+    help="Run nbstripout only for the specified page.",
+)
+@run_with_asyncio
+async def run_nbstripout(
+    *, dry_run: bool = True, page: str | None = None
+) -> None:
+    """Run nbstripout on ipynb sources.
+
+    This is a one-time migration operation to remove outputs and kernelspec
+    metadata from the page ipynb sources. New pages have nbstripout run
+    automatically.
+    """
+    # Create a database session
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    logger = structlog.get_logger("timessquare")
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+    await engine.dispose()
+    await db_session_dependency.initialize(
+        str(config.database_url), config.database_password.get_secret_value()
+    )
+    await redis_dependency.initialize(str(config.redis_url))
+
+    async for db_session in db_session_dependency():
+        page_service = await create_page_service(
+            http_client=httpx.AsyncClient(),
+            logger=structlog.get_logger("timessquare"),
+            db_session=db_session,
+        )
+        count = await page_service.migrate_ipynb_with_nbstripout(
+            dry_run=dry_run, for_page_id=page
+        )
+        logger.info(
+            "Finished running nbstripout",
+            count=count,
+            dry_run=dry_run,
+        )
+        await db_session.commit()

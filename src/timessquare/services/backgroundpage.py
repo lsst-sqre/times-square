@@ -47,3 +47,60 @@ class BackgroundPageService(PageService):
         await self.render_nbhtml_matrix_from_noteburst_response(
             page_instance=page_instance, noteburst_response=noteburst_response
         )
+
+    async def migrate_ipynb_with_nbstripout(
+        self, *, dry_run: bool = True, for_page_id: str | None = None
+    ) -> int:
+        """Migrate the ipynb files with nbstripout to remove outputs
+        and metadata.
+
+        This service method is intended to be run once via the
+        ``times-square nbstripout`` CLI command.
+
+        Returns
+        -------
+        int
+            The number of pages that were migrated (or would be migrated,
+            if in dry-run).
+        """
+        if for_page_id:
+            return await self._run_nbstripout_on_page(
+                dry_run=dry_run, page_id=for_page_id
+            )
+
+        page_count = 0
+        for page_id in await self._page_store.list_page_names():
+            page_count += await self._run_nbstripout_on_page(
+                dry_run=dry_run, page_id=page_id
+            )
+
+        return page_count
+
+    async def _run_nbstripout_on_page(
+        self, *, dry_run: bool = True, page_id: str
+    ) -> int:
+        """Run nbstripout on a page."""
+        try:
+            page = await self.get_page(page_id)
+        except Exception as e:
+            self._logger.warning(
+                "Skipping page with error", page_id=page_id, error=str(e)
+            )
+            return 0
+
+        if not page.ipynb:
+            self._logger.warning(
+                "Skipping page with no ipynb", page_id=page_id
+            )
+            return 0
+
+        # Run nbstripout on the ipynb file
+        ipynb = page.read_ipynb(page.ipynb)
+        if has_kernelspec := "kernelspec" in ipynb.metadata:
+            self._logger.debug(
+                "ipynb has kernelspec metadata", page_id=page_id
+            )
+        if not dry_run:
+            page.strip_ipynb()
+            await self.update_page_in_store(page, drop_html_cache=False)
+        return 1 if has_kernelspec else 0
