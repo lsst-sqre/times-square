@@ -7,6 +7,8 @@ from base64 import b64decode
 from collections.abc import Mapping
 from typing import Any
 
+from sqlalchemy.ext.asyncio import async_scoped_session
+
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
 from timessquare.domain.page import PageInstanceModel
 from timessquare.storage.noteburst import NoteburstJobResponseModel
@@ -52,7 +54,11 @@ class BackgroundPageService(PageService):
         )
 
     async def migrate_ipynb_with_nbstripout(
-        self, *, dry_run: bool = True, for_page_id: str | None = None
+        self,
+        *,
+        dry_run: bool = True,
+        for_page_id: str | None = None,
+        db_session: async_scoped_session,
     ) -> int:
         """Migrate the ipynb files with nbstripout to remove outputs
         and metadata.
@@ -68,19 +74,23 @@ class BackgroundPageService(PageService):
         """
         if for_page_id:
             return await self._run_nbstripout_on_page(
-                dry_run=dry_run, page_id=for_page_id
+                dry_run=dry_run, page_id=for_page_id, db_session=db_session
             )
 
         page_count = 0
         for page_id in await self._page_store.list_page_names():
             page_count += await self._run_nbstripout_on_page(
-                dry_run=dry_run, page_id=page_id
+                dry_run=dry_run, page_id=page_id, db_session=db_session
             )
 
         return page_count
 
     async def _run_nbstripout_on_page(
-        self, *, dry_run: bool = True, page_id: str
+        self,
+        *,
+        dry_run: bool = True,
+        page_id: str,
+        db_session: async_scoped_session,
     ) -> int:
         """Run nbstripout on a page."""
         try:
@@ -106,6 +116,10 @@ class BackgroundPageService(PageService):
         if not dry_run:
             page.strip_ipynb()
             await self.update_page_in_store(page, drop_html_cache=False)
+            # Manually commit the session because this migration can
+            # potentially change a lot of pages, and committing all pages
+            # at once caused problems.
+            await db_session.commit()
         return 1 if has_kernelspec else 0
 
     async def migrate_html_cache_keys(

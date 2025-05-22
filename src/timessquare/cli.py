@@ -220,7 +220,7 @@ async def run_nbstripout(
             db_session=db_session,
         )
         count = await page_service.migrate_ipynb_with_nbstripout(
-            dry_run=dry_run, for_page_id=page
+            dry_run=dry_run, for_page_id=page, db_session=db_session
         )
         logger.info(
             "Finished running nbstripout",
