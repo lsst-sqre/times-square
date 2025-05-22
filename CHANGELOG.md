@@ -8,6 +8,14 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.20.1'></a>
+
+## 0.20.1 (2025-05-22)
+
+### Bug fixes
+
+- In the `times-square nbstripout` command, commit to the database on each page migration. Without this, the migration failed when migrating large numbers of notebooks (~2000+).
+
 <a id='changelog-0.20.0'></a>
 
 ## 0.20.0 (2025-05-22)
