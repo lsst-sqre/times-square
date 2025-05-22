@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from base64 import b64decode
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -104,6 +102,12 @@ class PageService:
         -----
         For API uploads, use `create_page_with_notebook_from_upload` instead.
         """
+        self._logger.debug(
+            "Adding page to store",
+            page_name=page.name,
+            title=page.title,
+            ipynb=page.ipynb,
+        )
         self._page_store.add(page)
 
     async def add_page_and_execute(
@@ -211,16 +215,31 @@ class PageService:
             owner=owner, repo=repo, commit=commit
         )
 
-    async def update_page_in_store(self, page: PageModel) -> None:
+    async def update_page_in_store(
+        self, page: PageModel, *, drop_html_cache: bool = True
+    ) -> None:
         """Update the page in the database.
 
+        Parameters
+        ----------
+        page
+            The page model to update.
+        drop_html_cache
+            If `True`, delete the HTML cache for this page. This is useful
+            when the page is updated and the HTML cache needs to be
+            invalidated. Set to `False` when updating the page in a way
+            that does not affect the cached HTML results.
+
+        Notes
+        -----
         Algorithm is:
 
         1. Update the page in Postgres
         2. Delete all cached HTML for the page from redis
         """
         await self._page_store.update_page(page)
-        await self._html_store.delete_objects_for_page(page.name)
+        if drop_html_cache is True:
+            await self._html_store.delete_objects_for_page(page.name)
 
     async def update_page_and_execute(
         self, page: PageModel, *, enable_retry: bool = True
@@ -607,132 +626,3 @@ class PageService:
                 raise
 
         return iterator()
-
-    async def migrate_html_cache_keys(
-        self, *, dry_run: bool = True, for_page_id: str | None = None
-    ) -> int:
-        """Migrate Redis keys to the new format.
-
-        Parameters
-        ----------
-        dry_run
-            If `True`, don't actually migrate the keys, but log what would be
-            done.
-        for_page_id
-            If set, only migrate keys for the given page ID.
-
-        Returns
-        -------
-        key_count
-            The number of keys that were migrated (or would be migrated,
-            if in dry-run).
-        """
-        key_count = 0
-        if for_page_id:
-            key_count += await self._migrate_html_cache_keys_for_page(
-                dry_run=dry_run, page_id=for_page_id
-            )
-            return key_count
-
-        for page_id in await self._page_store.list_page_names():
-            key_count += await self._migrate_html_cache_keys_for_page(
-                dry_run=dry_run, page_id=page_id
-            )
-
-        return key_count
-
-    async def _migrate_html_cache_keys_for_page(
-        self, *, dry_run: bool = True, page_id: str
-    ) -> int:
-        """Migrate the HTML cache keys for a specific page."""
-        key_count = 0
-        try:
-            page = await self.get_page(page_id)
-        except Exception as e:
-            self._logger.warning(
-                "Skipping page with error", page_id=page_id, error=str(e)
-            )
-            return key_count
-        existing_keys = await self._html_store.list_keys_for_page(page.name)
-        for existing_key in existing_keys:
-            key_components = existing_key.split("/")
-            if len(key_components) != 3:
-                self._logger.warning(
-                    "Skipping key with unexpected format",
-                    key=existing_key,
-                )
-                continue
-            if key_components[0] != page_id:
-                self._logger.warning(
-                    "Skipping key with unexpected page ID",
-                    key=existing_key,
-                    expected_page_id=page_id,
-                )
-                continue
-            try:
-                page_instance_values = json.loads(
-                    b64decode(key_components[1]).decode("utf-8")
-                )
-            except Exception as e:
-                self._logger.warning(
-                    "Skipping key with invalid parameter values",
-                    key=existing_key,
-                    error=str(e),
-                )
-                continue
-            try:
-                display_settings_values = json.loads(
-                    b64decode(key_components[2]).decode("utf-8")
-                )
-            except Exception as e:
-                self._logger.warning(
-                    "Skipping key with invalid display settings",
-                    key=existing_key,
-                    error=str(e),
-                )
-                continue
-
-            try:
-                page_instance = PageInstanceModel(
-                    page=page, values=page_instance_values
-                )
-                page_instance_id = page_instance.id
-            except Exception as e:
-                self._logger.warning(
-                    "Skipping key with invalid page instance values",
-                    key=existing_key,
-                    error=str(e),
-                )
-                continue
-            try:
-                display_settings = NbDisplaySettings(
-                    hide_code=(display_settings_values.get("hide_code", True))
-                )
-                nb_html_key = NbHtmlKey(
-                    display_settings=display_settings,
-                    page_instance_id=page_instance_id,
-                )
-            except Exception as e:
-                self._logger.warning(
-                    "Skipping key with invalid display settings",
-                    key=existing_key,
-                    error=str(e),
-                )
-                continue
-            new_cache_key = nb_html_key.cache_key
-            if dry_run:
-                self._logger.info(
-                    "Would rename key",
-                    old_key=existing_key,
-                    new_key=new_cache_key,
-                )
-            else:
-                await self._html_store.rename_key(existing_key, new_cache_key)
-                self._logger.info(
-                    "Renamed html cache key",
-                    old_key=existing_key,
-                    new_key=new_cache_key,
-                )
-            key_count += 1
-
-        return key_count

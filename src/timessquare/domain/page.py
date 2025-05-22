@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import jinja2
 import nbformat
+from nbstripout import strip_output
 
 from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 
@@ -167,7 +168,7 @@ class PageModel:
                 PersonModel(name=uploader_username, username=uploader_username)
             ]
 
-        return cls(
+        p = cls(
             name=name,
             ipynb=ipynb,
             parameters=parameters,
@@ -178,6 +179,8 @@ class PageModel:
             description=description,
             cache_ttl=cache_ttl,
         )
+        p.strip_ipynb()
+        return p
 
     @classmethod
     def create_from_repo(
@@ -202,10 +205,11 @@ class PageModel:
         authors: list[PersonModel] | None = None,
         github_commit: str | None = None,
     ) -> PageModel:
+        """Create a page model from the GitHub repository."""
         name = uuid4().hex  # random slug for API uploads
         date_added = datetime.now(UTC)
 
-        return cls(
+        p = cls(
             name=name,
             ipynb=ipynb,
             parameters=parameters,
@@ -227,6 +231,8 @@ class PageModel:
             repository_source_sha=repository_source_sha,
             repository_sidecar_sha=repository_sidecar_sha,
         )
+        p.strip_ipynb()
+        return p
 
     @property
     def github_backed(self) -> bool:
@@ -366,6 +372,27 @@ class PageModel:
         constant.
         """
         return nbformat.writes(notebook, version=NB_VERSION)
+
+    def strip_ipynb(self) -> None:
+        """Strip the outputs and transient metadata from the ipynb notebook
+        source.
+
+        Replaces `ipynb` in place.
+
+        Metadata keys that are removed:
+
+        - `metadata.kernelspec` (this should be managed by
+          Noteburst/JupyterLab)
+        """
+        notebook = self.read_ipynb(self.ipynb)
+        notebook = strip_output(
+            nb=notebook,
+            keep_output=False,
+            keep_count=False,
+            keep_id=False,
+            extra_keys=["metadata.kernelspec"],
+        )
+        self.ipynb = self.write_ipynb(notebook)
 
 
 @dataclass

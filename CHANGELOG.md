@@ -8,6 +8,26 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.20.0'></a>
+
+## 0.20.0 (2025-05-22)
+
+### New features
+
+- Times Square now pre-processes notebooks with [nbstripout](https://github.com/kynan/nbstripout). This has two benefits:
+
+  1. Nbstripout removes the `kernelspec` metadata from notebooks, which can cause issues when a notebook is made with a different kernel than the one that Times Square uses for notebook execution in the Rubin Science Platform. All notebooks now run under the `lsst` kernel.
+
+  2. Nbstripout removes outputs from the notebooks, in cases where outputs are committed to their Git repository. This improves the performance for storing and transferring notebooks in the system.
+
+  Although Times Square now uses nbstripout internally, it is still a good idea for authors to run nbstripout as a pre-commit hook in their own repositories to improve their own development processes.
+
+- The `times-square nbstripout` CLI command provides a way to migrate existing notebooks to the the new stripped format by running `nbstripout` on all notebooks in the database.
+
+### Bug fixes
+
+- Fixed the capitalization of the `lsst` kernel name. Previously it was `LSST`, which is the _display name_, but not the _kernel name_. This is relevant now that [Noteburst uses the specified kernel name to run notebooks](https://github.com/lsst-sqre/noteburst/pull/121).
+
 <a id='changelog-0.19.0'></a>
 
 ## 0.19.0 (2025-05-15)
