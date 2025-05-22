@@ -1,4 +1,4 @@
-"""Tests for the PageService."""
+"""Tests for the BackgroundPageService."""
 
 from __future__ import annotations
 
@@ -25,15 +25,15 @@ from timessquare.dbschema import Base
 from timessquare.dependencies.redis import redis_dependency
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
 from timessquare.domain.page import PageInstanceIdModel, PageModel
-from timessquare.services.page import PageService
+from timessquare.services.backgroundpage import BackgroundPageService
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore
 
 
 @pytest_asyncio.fixture
-async def page_service() -> AsyncGenerator[PageService]:
-    """Return a PageService."""
+async def page_service() -> AsyncGenerator[BackgroundPageService]:
+    """Return a BackgroundPageService."""
     logger = structlog.get_logger(config.logger_name)
 
     http_client = httpx.AsyncClient()
@@ -51,7 +51,7 @@ async def page_service() -> AsyncGenerator[PageService]:
 
     async for db_session in db_session_dependency():
         redis = await redis_dependency()
-        yield PageService(
+        yield BackgroundPageService(
             page_store=PageStore(db_session),
             html_cache=NbHtmlCacheStore(redis),
             job_store=NoteburstJobStore(redis),
@@ -63,7 +63,7 @@ async def page_service() -> AsyncGenerator[PageService]:
 
 @pytest.mark.asyncio
 async def test_page_service_migrate_html_cache_keys(
-    page_service: PageService, respx_mock: respx.Router
+    page_service: BackgroundPageService, respx_mock: respx.Router
 ) -> None:
     """Test the migration of HTML cache keys from the 0.17 format to the
     0.18 format.
