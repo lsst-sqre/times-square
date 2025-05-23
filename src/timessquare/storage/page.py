@@ -13,10 +13,7 @@ from timessquare.domain.githubtree import (
     GitHubTreeQueryResult,
 )
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
-from timessquare.domain.pageparameters import (
-    PageParameters,
-    PageParameterSchema,
-)
+from timessquare.domain.pageparameters import PageParameters
 
 
 class PageStore:
@@ -187,12 +184,7 @@ class PageStore:
 
     def _rehydrate_page_from_sql(self, sql_page: SqlPage) -> PageModel:
         """Create a page domain model from the SQL result."""
-        parameters = PageParameters(
-            {
-                name: PageParameterSchema.create(schema)
-                for name, schema in sql_page.parameters.items()
-            }
-        )
+        parameters = PageParameters.create_and_validate(sql_page.parameters)
 
         date_deleted = (
             datetime_from_db(sql_page.date_deleted)
