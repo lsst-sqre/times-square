@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from timessquare.exceptions import PageParameterValueCastingError
@@ -39,3 +39,9 @@ class DateParameterSchema(PageParameterSchema):
 
     def create_qs_value(self, value: Any) -> str:
         return self.cast_value(value).isoformat()
+
+    @property
+    def default(self) -> date:
+        if "X-Dynamic-Default" in self.validator.schema:
+            return datetime.now(tz=UTC).date()
+        return self.cast_value(self.schema["default"])
