@@ -13,6 +13,7 @@ from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import (
     PageParameters,
     PageParameterSchema,
+    create_and_validate_parameter_schema,
 )
 
 __all__ = [
@@ -200,7 +201,7 @@ class ParameterSchemaModel(BaseModel):
 
     def to_parameter_schema(self, name: str) -> PageParameterSchema:
         """Convert to the domain version of this object."""
-        return PageParameterSchema.create_and_validate(
+        return create_and_validate_parameter_schema(
             name=name, json_schema=self.model_dump(exclude_none=True)
         )
 

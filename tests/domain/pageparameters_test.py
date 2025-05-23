@@ -14,8 +14,8 @@ from timessquare.domain.pageparameters import (
     IntegerParameterSchema,
     NumberParameterSchema,
     PageParameters,
-    PageParameterSchema,
     StringParameterSchema,
+    create_and_validate_parameter_schema,
 )
 from timessquare.exceptions import (
     PageParameterValueCastingError,
@@ -28,10 +28,10 @@ from timessquare.exceptions import (
 def test_resolve_values() -> None:
     parameters = PageParameters(
         {
-            "myvar": NumberParameterSchema.create_and_validate(
+            "myvar": create_and_validate_parameter_schema(
                 "myvar", {"type": "number", "default": 1.0}
             ),
-            "myvar2": StringParameterSchema.create_and_validate(
+            "myvar2": create_and_validate_parameter_schema(
                 "myvar2", {"type": "string", "default": "hello"}
             ),
         }
@@ -62,10 +62,10 @@ def test_resolve_values() -> None:
 def test_parameter_schema_access() -> None:
     parameters = PageParameters(
         {
-            "myvar": NumberParameterSchema.create_and_validate(
+            "myvar": create_and_validate_parameter_schema(
                 "myvar", {"type": "number", "default": 1.0}
             ),
-            "myvar2": StringParameterSchema.create_and_validate(
+            "myvar2": create_and_validate_parameter_schema(
                 "myvar2", {"type": "string", "default": "hello"}
             ),
         }
@@ -100,11 +100,11 @@ def test_parameter_default_exists() -> None:
     schema: dict[str, Any] = {"type": "number", "description": "Test schema"}
 
     with pytest.raises(ParameterDefaultMissingError):
-        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+        create_and_validate_parameter_schema(name, schema)
 
     # should work with default added
     schema["default"] = 0.0
-    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+    create_and_validate_parameter_schema(name, schema)
 
 
 def test_parameter_default_invalid() -> None:
@@ -117,15 +117,15 @@ def test_parameter_default_invalid() -> None:
     }
 
     with pytest.raises(ParameterDefaultInvalidError):
-        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+        create_and_validate_parameter_schema(name, schema)
 
     # Change default to fulfil minimum
     schema["default"] = 1.0
-    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+    create_and_validate_parameter_schema(name, schema)
 
 
 def test_string_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": "default", "type": "string"}
     )
     assert isinstance(schema, StringParameterSchema)
@@ -139,7 +139,7 @@ def test_string_parameter_schema() -> None:
 
 
 def test_integer_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": 1, "type": "integer"}
     )
     assert isinstance(schema, IntegerParameterSchema)
@@ -154,7 +154,7 @@ def test_integer_parameter_schema() -> None:
 
 
 def test_number_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": 1.5, "type": "number"}
     )
     assert isinstance(schema, NumberParameterSchema)
@@ -174,7 +174,7 @@ def test_number_parameter_schema() -> None:
 
 
 def test_boolean_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": True, "type": "boolean"}
     )
     assert isinstance(schema, BooleanParameterSchema)
@@ -201,7 +201,7 @@ def test_boolean_parameter_schema() -> None:
 
 
 def test_date_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": "2025-02-01", "type": "string", "format": "date"}
     )
     assert isinstance(schema, DateParameterSchema)
@@ -221,7 +221,7 @@ def test_date_parameter_schema() -> None:
 
 
 def test_datetime_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar",
         {
             "default": "2025-02-01T12:00:00+00:00",
