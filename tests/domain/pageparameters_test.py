@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timezone
 from typing import Any
 
 import pytest
@@ -218,6 +218,36 @@ def test_date_parameter_schema() -> None:
 
     with pytest.raises(PageParameterValueCastingError):
         schema.cast_value("hello")
+
+
+def test_date_parameter_dynamic_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Mock datetime.now to return a fixed date
+    fixed_date = date(2025, 1, 1)
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return datetime(2025, 1, 1, 12, 0, 0, tzinfo=tz)
+
+    # Using monkeypatch as a context manager ensures it's reset after the block
+    with monkeypatch.context() as m:
+        m.setattr(
+            "timessquare.domain.pageparameters._dateparameter.datetime",
+            MockDatetime,
+        )
+
+        schema = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "today",
+            },
+        )
+        assert isinstance(schema, DateParameterSchema)
+        assert schema.default == fixed_date
 
 
 def test_datetime_parameter_schema() -> None:
