@@ -75,12 +75,13 @@ def create_and_validate_parameter_schema(
         raise ParameterDefaultMissingError.for_param(name)
 
     instance = create_page_parameter_schema(json_schema)
-    # Refactor validation of default into the PageParmaterSchema
-    if "default" in json_schema and not instance.validate(
-        json_schema["default"]
-    ):
+
+    if not instance.validate_default():
         raise ParameterDefaultInvalidError.for_param(
-            name, json_schema["default"]
+            name,
+            json_schema["X-Dynamic-Default"]
+            if "X-Dynamic-Default" in json_schema
+            else json_schema["default"],
         )
 
     return instance

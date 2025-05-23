@@ -38,6 +38,16 @@ class PageParameterSchema(abc.ABC):
         json_value = self.create_json_value(v)
         return self.validator.is_valid(json_value)
 
+    def validate_default(self) -> bool:
+        """Validate the default value for the parameter.
+
+        Returns
+        -------
+        bool
+            True if the default is valid, False otherwise.
+        """
+        return self.validate(self.default)
+
     @abc.abstractmethod
     def cast_value(self, v: Any) -> Any:
         """Cast a value to its Python type."""
