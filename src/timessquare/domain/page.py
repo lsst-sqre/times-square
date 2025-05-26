@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import jinja2
 import nbformat
+from dateutil.rrule import rruleset
 from nbstripout import strip_output
 
 from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
@@ -72,6 +73,12 @@ class PageModel:
 
     If not set, the default execution timeout is used.
     """
+
+    schedule_rruleset: rruleset | None = None
+    """The recurrence rule set for scheduling the page's execution."""
+
+    schedule_enabled: bool = False
+    """A flag indicating whether the page's execution schedule is enabled."""
 
     uploader_username: str | None = None
     """Username of the uploader, if this page is uploaded without GitHub
@@ -204,6 +211,8 @@ class PageModel:
         timeout: int | None = None,
         authors: list[PersonModel] | None = None,
         github_commit: str | None = None,
+        schedule_rruleset: rruleset | None = None,
+        schedule_enabled: bool = False,
     ) -> PageModel:
         """Create a page model from the GitHub repository."""
         name = uuid4().hex  # random slug for API uploads
@@ -230,6 +239,8 @@ class PageModel:
             repository_sidecar_extension=repository_sidecar_extension,
             repository_source_sha=repository_source_sha,
             repository_sidecar_sha=repository_sidecar_sha,
+            schedule_rruleset=schedule_rruleset,
+            schedule_enabled=schedule_enabled,
         )
         p.strip_ipynb()
         return p
