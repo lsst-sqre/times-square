@@ -41,6 +41,7 @@ dependencies = [
     "sentry-sdk",
     "sse-starlette",
     "nbstripout>=0.8.1",
+    "python-dateutil>=2.9.0.post0",
 ]
 dynamic = ["version"]
 
@@ -87,6 +88,7 @@ typing = [
     "mypy",
     "sqlalchemy[mypy]",
     "types-PyYAML",
+    "types-python-dateutil"
 ]
 
 [tool.setuptools_scm]
