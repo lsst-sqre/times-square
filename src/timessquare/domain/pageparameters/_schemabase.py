@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +22,21 @@ class PageParameterSchema(abc.ABC):
     def schema(self) -> dict[str, Any]:
         """Get the JSON schema."""
         return self.validator.schema
+
+    @property
+    def strict_schema(self) -> dict[str, Any]:
+        """Get the JSON schema without custom additions.
+
+        The `X-Dynamic-Default` metadata is not included, but instead the
+        default is set.
+        """
+        if "X-Dynamic-Default" in self.schema:
+            schema = deepcopy(self.schema)
+            schema["default"] = self.create_qs_value(self.default)
+            del schema["X-Dynamic-Default"]
+        else:
+            schema = self.schema
+        return schema
 
     @property
     def default(self) -> Any:
