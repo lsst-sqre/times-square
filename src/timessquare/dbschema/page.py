@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, Unicode, UnicodeText
+from sqlalchemy import JSON, Boolean, DateTime, Integer, Unicode, UnicodeText
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -63,6 +63,18 @@ class SqlPage(Base):
         Integer, nullable=True
     )
     """The execution timeout configured for this page, in seconds."""
+
+    schedule_rruleset: Mapped[str | None] = mapped_column(
+        UnicodeText, nullable=True
+    )
+    """The schedule rruleset for this page, if it is scheduled to run
+    periodically.
+    """
+
+    schedule_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    """Whether the page's schedule is enabled."""
 
     uploader_username: Mapped[str | None] = mapped_column(
         UnicodeText, nullable=True
