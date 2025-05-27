@@ -460,6 +460,20 @@ class NotebookExecutionsCheck(GitHubCheck):
         self.notebook_executions: list[NotebookExecutionInfo] = []
         super().__init__(check_run=check_run, repo=repo)
 
+    def report_ipynb_format_error(self, path: str, error: Exception) -> None:
+        """Report an error reading a notebook file."""
+        annotation = Annotation(
+            path=path,
+            start_line=1,
+            message=str(error),
+            title="Error loading notebook",
+            annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        )
+        self.annotations.append(annotation)
+        self.notebook_executions.append(
+            NotebookExecutionInfo(path=path, is_success=False)
+        )
+
     def report_jinja_error(
         self, page: PageModel, error: PageJinjaError
     ) -> None:
