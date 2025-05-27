@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import jinja2
 import nbformat
-from dateutil.rrule import rruleset
 from nbstripout import strip_output
 
 from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
@@ -19,6 +18,7 @@ from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
 from .pageparameters import PageParameters
+from .schedule import ExecutionSchedule
 
 __all__ = [
     "PageExecutionInfo",
@@ -74,8 +74,12 @@ class PageModel:
     If not set, the default execution timeout is used.
     """
 
-    schedule_rruleset: rruleset | None = None
-    """The recurrence rule set for scheduling the page's execution."""
+    schedule_rruleset: str | None = None
+    """The serialized recurrence rule set for scheduling the page's execution.
+
+    Use the `execution_schedule` property to access the operable schedule for
+    this page.
+    """
 
     schedule_enabled: bool = False
     """A flag indicating whether the page's execution schedule is enabled."""
@@ -211,7 +215,7 @@ class PageModel:
         timeout: int | None = None,
         authors: list[PersonModel] | None = None,
         github_commit: str | None = None,
-        schedule_rruleset: rruleset | None = None,
+        schedule_rruleset: str | None = None,
         schedule_enabled: bool = False,
     ) -> PageModel:
         """Create a page model from the GitHub repository."""
@@ -404,6 +408,23 @@ class PageModel:
             extra_keys=["metadata.kernelspec"],
         )
         self.ipynb = self.write_ipynb(notebook)
+
+    @property
+    def execution_schedule(self) -> ExecutionSchedule | None:
+        """The execution schedule for the page, if it is scheduled to run
+        periodically.
+
+        Returns
+        -------
+        ExecutionSchedule | None
+            The recurrence rule set for scheduling the page's execution, or
+            `None` if no schedule is set.
+        """
+        if self.schedule_rruleset is None:
+            return None
+        return ExecutionSchedule.from_json_str(
+            self.schedule_rruleset, enabled=self.schedule_enabled
+        )
 
 
 @dataclass
