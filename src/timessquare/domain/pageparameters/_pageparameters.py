@@ -24,6 +24,7 @@ from ._dateparameter import DateParameterSchema
 from ._datetimeparameter import DatetimeParameterSchema
 from ._integerparameter import IntegerParameterSchema
 from ._numberparameter import NumberParameterSchema
+from ._obsdateparameter import ObsDateParameterSchema
 from ._schemabase import PageParameterSchema
 from ._stringparameter import StringParameterSchema
 
@@ -45,7 +46,11 @@ def create_page_parameter_schema(
     """
     validator = Draft202012Validator(json_schema)
     schema_type = validator.schema.get("type", "string")
-    schema_format = validator.schema.get("format", None)
+    # format can either be the standard "format" key or the
+    # "X-TS-Format" key for format extensions used by Times Square.
+    schema_format = validator.schema.get(
+        "format", None
+    ) or validator.schema.get("X-TS-Format", None)
     if schema_type == "string" and schema_format is None:
         return StringParameterSchema(validator=validator)
     elif schema_type == "integer":
@@ -54,6 +59,8 @@ def create_page_parameter_schema(
         return NumberParameterSchema(validator=validator)
     elif schema_type == "boolean":
         return BooleanParameterSchema(validator=validator)
+    elif schema_type == "string" and schema_format == "dayobs":
+        return ObsDateParameterSchema(validator=validator)
     elif schema_type == "string" and schema_format == "date":
         return DateParameterSchema(validator=validator)
     elif schema_type == "string" and schema_format == "date-time":

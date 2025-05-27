@@ -36,6 +36,10 @@ class PageParameterSchema(abc.ABC):
             del schema["X-Dynamic-Default"]
         else:
             schema = self.schema
+
+        if "X-TS-Format" in schema:
+            # Remove the custom format and use the standard JSON schema format
+            del schema["X-TS-Format"]
         return schema
 
     @property

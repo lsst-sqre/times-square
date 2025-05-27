@@ -12,6 +12,7 @@ from safir.github.models import GitHubBlobModel
 from timessquare.domain.pageparameters import (
     DateParameterSchema,
     DatetimeParameterSchema,
+    ObsDateParameterSchema,
 )
 from timessquare.storage.github.settingsfiles import (
     NotebookSidecarFile,
@@ -156,3 +157,90 @@ def test_default_with_dynamic_default() -> None:
         ValidationError, match="Either default or dynamic_default must be set"
     ):
         ParameterSchemaModel.model_validate(json_schema)
+
+
+def test_dayobs_format_parameter() -> None:
+    """Test that dayobs format creates ObsDateParameterSchema."""
+    json_schema = {
+        "type": "string",
+        "format": "dayobs",
+        "description": "A dayobs date",
+        "default": "20250101",
+    }
+    parameter = ParameterSchemaModel.model_validate(json_schema)
+    parameter_schema = parameter.to_parameter_schema("mydayobs")
+    assert isinstance(parameter_schema, ObsDateParameterSchema)
+
+
+def test_dayobs_format_parameter_with_dynamic_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test dayobs format with dynamic default values."""
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return datetime(2025, 1, 15, 12, 0, 0, tzinfo=tz)
+
+    # Apply the monkeypatch for the entire test
+    monkeypatch.setattr(
+        "timessquare.domain.pageparameters._obsdateparameter.datetime",
+        MockDatetime,
+    )
+
+    json_schema = {
+        "type": "string",
+        "format": "dayobs",
+        "description": "A dynamic dayobs date",
+        "dynamic_default": "today",
+    }
+    parameter = ParameterSchemaModel.model_validate(json_schema)
+    parameter_schema = parameter.to_parameter_schema("mydynamicdayobs")
+    assert isinstance(parameter_schema, ObsDateParameterSchema)
+    assert parameter_schema.default == "20250115"
+
+
+def test_dayobs_format_parameter_validation() -> None:
+    """Test validation for dayobs format parameters."""
+    # Valid dynamic default patterns for dayobs
+    valid_patterns = ["today", "yesterday", "+7d", "month_start"]
+
+    for pattern in valid_patterns:
+        json_schema = {
+            "type": "string",
+            "format": "dayobs",
+            "description": "A dayobs date with dynamic default",
+            "dynamic_default": pattern,
+        }
+        parameter = ParameterSchemaModel.model_validate(json_schema)
+        assert parameter.format == "dayobs"
+        assert parameter.dynamic_default == pattern
+
+    # Invalid dynamic default pattern should raise validation error
+    json_schema = {
+        "type": "string",
+        "format": "dayobs",
+        "description": "A dayobs date with invalid dynamic default",
+        "dynamic_default": "invalid_pattern",
+    }
+    with pytest.raises(
+        ValidationError, match="Invalid dynamic_default format"
+    ):
+        ParameterSchemaModel.model_validate(json_schema)
+
+
+def test_dayobs_format_parameter_json_schema_conversion() -> None:
+    """Test that dayobs format is converted to X-TS-Format in JSON schema."""
+    json_schema = {
+        "type": "string",
+        "format": "dayobs",
+        "description": "A dayobs date",
+        "default": "20250101",
+    }
+    parameter = ParameterSchemaModel.model_validate(json_schema)
+    parameter_schema = parameter.to_parameter_schema("mydayobs")
+
+    # Check that the underlying JSON schema uses X-TS-Format instead of format
+    schema_format = parameter_schema.schema.get("format")
+    assert schema_format != "dayobs" or "format" not in parameter_schema.schema
+    assert parameter_schema.schema.get("X-TS-Format") == "dayobs"

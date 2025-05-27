@@ -158,12 +158,13 @@ class ParameterSchemaModel(BaseModel):
     ]
 
     format: Annotated[
-        Literal["date", "date-time"] | None,
+        Literal["date", "date-time", "dayobs"] | None,
         Field(
             title="The JSON schema format",
             description=(
                 "For example, the format of a date or time. Only used for "
-                "the string type."
+                "the string type. Times Square also supports extensions to "
+                "format: 'dayobs' for Rubin DayObs dates."
             ),
         ),
     ] = None
@@ -224,11 +225,15 @@ class ParameterSchemaModel(BaseModel):
 
     def to_parameter_schema(self, name: str) -> PageParameterSchema:
         """Convert to the domain version of this object."""
+        json_schema = self.model_dump(
+            exclude_none=True, mode="json", by_alias=True
+        )
+        # Move custom formats to X-TS-Format
+        if "format" in json_schema and json_schema["format"] == "dayobs":
+            del json_schema["format"]
+            json_schema["X-TS-Format"] = "dayobs"
         return create_and_validate_parameter_schema(
-            name=name,
-            json_schema=self.model_dump(
-                exclude_none=True, mode="json", by_alias=True
-            ),
+            name=name, json_schema=json_schema
         )
 
     @model_validator(mode="after")
@@ -237,10 +242,13 @@ class ParameterSchemaModel(BaseModel):
         date format.
         """
         if self.dynamic_default is not None:
-            if self.type != JsonSchemaTypeEnum.string or self.format != "date":
+            if self.type != JsonSchemaTypeEnum.string or self.format not in {
+                "date",
+                "dayobs",
+            }:
                 raise ValueError(
                     "dynamic_default can only be set when type is 'string' "
-                    "and format is 'date'"
+                    "and format is 'date' or 'dayobs'. "
                 )
         return self
 
@@ -252,7 +260,7 @@ class ParameterSchemaModel(BaseModel):
         if (
             self.dynamic_default is not None
             and self.type == JsonSchemaTypeEnum.string
-            and self.format == "date"
+            and self.format in {"date", "dayobs"}
         ):
             if not DYNAMIC_DATE_PATTERN.match(self.dynamic_default):
                 raise ValueError(

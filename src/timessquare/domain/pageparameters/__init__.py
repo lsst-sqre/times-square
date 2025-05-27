@@ -8,6 +8,7 @@ from ._dateparameter import DateParameterSchema
 from ._datetimeparameter import DatetimeParameterSchema
 from ._integerparameter import IntegerParameterSchema
 from ._numberparameter import NumberParameterSchema
+from ._obsdateparameter import ObsDateParameterSchema
 from ._pageparameters import (
     PageParameters,
     create_and_validate_parameter_schema,
@@ -24,6 +25,7 @@ __all__ = [
     "DatetimeParameterSchema",
     "IntegerParameterSchema",
     "NumberParameterSchema",
+    "ObsDateParameterSchema",
     "PageParameterSchema",
     "PageParameters",
     "StringParameterSchema",
