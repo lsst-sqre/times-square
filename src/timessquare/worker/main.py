@@ -31,6 +31,7 @@ from .functions import (
     repo_added,
     repo_push,
     repo_removed,
+    scheduled_page_run,
 )
 
 sentry_sdk.init(
@@ -154,6 +155,9 @@ class WorkerSettings:
             timeout=config.github_checkrun_timeout + 30.0,
         ),
         replace_nbhtml,
+        arq.worker.func(  # type: ignore [list-item]
+            scheduled_page_run, timeout=config.default_execution_timeout + 30.0
+        ),
     ]
 
     redis_settings = config.arq_redis_settings
