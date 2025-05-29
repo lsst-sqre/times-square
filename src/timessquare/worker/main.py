@@ -31,6 +31,7 @@ from .functions import (
     repo_added,
     repo_push,
     repo_removed,
+    schedule_runs,
     scheduled_page_run,
 )
 
@@ -157,6 +158,15 @@ class WorkerSettings:
         replace_nbhtml,
         arq.worker.func(  # type: ignore [list-item]
             scheduled_page_run, timeout=config.default_execution_timeout + 30.0
+        ),
+    ]
+
+    cron_jobs: ClassVar = [
+        arq.cron(
+            schedule_runs,
+            minute=set(range(0, 60, 5)),  # every 5 minutes
+            timeout=60.0,
+            unique=True,  # only one worker should run this job at a time
         ),
     ]
 

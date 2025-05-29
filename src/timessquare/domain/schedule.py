@@ -93,3 +93,35 @@ class ExecutionSchedule:
                 ],
             }
         )
+
+    def next(
+        self, after: datetime.datetime | None
+    ) -> datetime.datetime | None:
+        """Get the next scheduled time after a given datetime.
+
+        Parameters
+        ----------
+        after
+            The datetime after which to find the next scheduled time.
+            Defalts to now.
+
+        Returns
+        -------
+        datetime.datetime | None
+            The next scheduled time, or None if no more times are scheduled
+            or the schedule is disabled. Times are scheduled on the minute.
+        """
+        if self.enabled is False:
+            return None
+        if after is None:
+            after_dt = datetime.datetime.now(datetime.UTC)
+        else:
+            after_dt = after.astimezone(datetime.UTC)
+        next_dt = self.rruleset.after(after_dt, inc=False)
+
+        if next_dt is None:
+            return None
+
+        # Ensure that scheduled times aren't more granular than minutes
+        # to avoid issues with scheduling tasks hyper-frequently.
+        return next_dt.replace(second=0, microsecond=0)
