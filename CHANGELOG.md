@@ -8,6 +8,30 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.21.0'></a>
+
+## 0.21.0 (2025-05-29)
+
+### New features
+
+- The new `dayobs` parameter type adds native support for Rubin Observatory's `dayobs` date format. The `dayobs` is a string, `YYYYMMDD`, that corresponds to the date in the UTC-12 timezone. This convention is useful because it is a unique identifier for each observing night on Cerro Pachón, and it is used in the Rubin Observatory's data products. To use `dayobs`, create a parameter of type `string` with a format field set to `dayobs`.
+
+  Note that the `date` format is different from `dayobs` in that it uses the ISO 8601 date format (`YYYY-MM-DD`) and is in the UTC timezone.
+
+- Date and `dayobs` parameters can now take a `dynamic_default` value, which causes the default value of that parameter to be a date relative to the date when the page is viewed. To use a dynamic default in a date parameter in a notebook's sidecar YAML file, replace the `default` field with `dynamic_default`. The dynamic default can be:
+
+  - "today"
+  - "yesterday"
+  - "tomorrow"
+  - A relative number of days earlier (e.g., "-5d" for 5 days ago) or later (e.g., "+3d" for 3 days in the future)
+  - A relative number of weeks (e.g. "-2weeks" for 2 weeks ago), months (e.g. "+1month" for 1 month in the future), or years (e.g. "-1year" for 1 year ago)
+  - The first day of the week/month/year ("week_start", "month_start", "year_start"), or a number of periods into the past or future (e.g., "-1week_start" for the start of previous week, "+2month_start" for the start of next month).
+  - The last day of the week/month/year ("week_end", "month_end", "year_end"), or a number of periods into the past or future (e.g., "-1week_end" for the end of previous week, "+2month_end" for the end of next month).
+
+### Bug fixes
+
+- When an invalid ipynb file is added to a GitHub Check Run, Times Square now catches the error and reports it as a failure in the check run.
+
 <a id='changelog-0.20.1'></a>
 
 ## 0.20.1 (2025-05-22)
