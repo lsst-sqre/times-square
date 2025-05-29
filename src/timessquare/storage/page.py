@@ -374,3 +374,21 @@ class PageStore:
         statement = select(SqlPage.name)
         result = await self._session.execute(statement)
         return [row[0] for row in result.all()]
+
+    async def list_scheduled_pages(
+        self, *, exclude_pr_pages: bool = True
+    ) -> list[PageModel]:
+        """Get a list of all pages with scheduling enabled."""
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.schedule_enabled.is_(True))
+            .where(SqlPage.date_deleted.is_(None))
+            .where(SqlPage.schedule_rruleset.is_not(None))
+        )
+        if exclude_pr_pages:
+            statement = statement.where(SqlPage.github_commit.is_(None))
+        result = await self._session.execute(statement)
+        return [
+            self._rehydrate_page_from_sql(sql_page)
+            for sql_page in result.scalars()
+        ]
