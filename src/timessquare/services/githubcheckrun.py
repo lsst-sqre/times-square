@@ -166,15 +166,22 @@ class GitHubCheckRunService:
                     path=notebook_ref.notebook_source_path,
                 )
                 continue
-            page = await self._create_page(
-                checkout, notebook, check_run.head_sha
-            )
-            self._logger.debug(
-                "Created page for notebook check run",
-                path=notebook_ref.notebook_source_path,
-                page_name=page.name,
-                ipynb=page.ipynb,
-            )
+            try:
+                page = await self._create_page(
+                    checkout, notebook, check_run.head_sha
+                )
+                self._logger.debug(
+                    "Created page for notebook check run",
+                    path=notebook_ref.notebook_source_path,
+                    page_name=page.name,
+                    ipynb=page.ipynb,
+                )
+            except Exception as e:
+                check.report_ipynb_format_error(
+                    notebook_ref.notebook_source_path,
+                    error=e,
+                )
+                continue
             try:
                 page_execution_info = await self._execute_page(page)
             except PageJinjaError as e:

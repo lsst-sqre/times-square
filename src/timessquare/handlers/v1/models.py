@@ -316,7 +316,9 @@ class Page(BaseModel):
     def from_domain(cls, *, page: PageModel, request: Request) -> Page:
         """Create a page resource from the domain model."""
         parameters = {
-            name: parameter.schema
+            # The strict_schema removes the `X-Dynamic-Default` metadata
+            # and sets the default value.
+            name: parameter.strict_schema
             for name, parameter in page.parameters.items()
         }
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import json
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 import nbformat
@@ -267,3 +268,95 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 200
     data = r.json()
     assert data["available"] is True
+
+
+@pytest.mark.asyncio
+async def test_dynamic_default_handling(
+    client: AsyncClient,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that dynamic defaults are resolved when accessing pages."""
+
+    # Mock datetime.now to return a fixed date: May 2, 2025 12:00:00 UTC
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return datetime(2025, 5, 2, 12, 0, 0, tzinfo=tz)
+
+    # Mock the noteburst response
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=Response(
+            202,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "",
+                "enqueue_time": datetime.now(tz=UTC).isoformat(),
+                "status": "queued",
+                "self_url": (
+                    "https://test.example.com/noteburst/v1/notebooks/xyz"
+                ),
+            },
+        )
+    )
+
+    # Create a notebook with a dynamic default parameter
+    notebook_content = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "id": "test-cell",
+                "metadata": {},
+                "source": ["# Test notebook with dynamic date"],
+            }
+        ],
+        "metadata": {
+            "times-square": {
+                "parameters": {
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "A date parameter with dynamic default",
+                        "X-Dynamic-Default": "yesterday",
+                    }
+                }
+            }
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+
+    page_req_data = {
+        "title": "Dynamic Default Test",
+        "ipynb": json.dumps(notebook_content),
+    }
+
+    with monkeypatch.context() as m:
+        m.setattr(
+            "timessquare.domain.pageparameters._datedynamicdefault.datetime",
+            MockDatetime,
+        )
+
+        # Add the page
+        r = await client.post(
+            f"{config.path_prefix}/v1/pages", json=page_req_data
+        )
+        assert r.status_code == 201
+        page_url = r.headers["location"]
+
+        # Access the page resource
+        r = await client.get(page_url)
+        assert r.status_code == 200
+        data = r.json()
+
+        # Check that the date parameter has the resolved default value
+        date_param = data["parameters"]["date"]
+        # yesterday from 2025-05-02
+        assert date_param["default"] == "2025-05-01"
+        assert date_param["type"] == "string"
+        assert date_param["format"] == "date"
+        assert date_param["description"] == (
+            "A date parameter with dynamic default"
+        )
+        # The X-Dynamic-Default field should not be present in the response
+        assert "X-Dynamic-Default" not in date_param

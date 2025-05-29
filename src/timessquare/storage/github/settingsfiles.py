@@ -11,8 +11,10 @@ from safir.pydantic import HumanTimedelta
 
 from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import (
+    DYNAMIC_DATE_PATTERN,
     PageParameters,
     PageParameterSchema,
+    create_and_validate_parameter_schema,
 )
 
 __all__ = [
@@ -156,20 +158,43 @@ class ParameterSchemaModel(BaseModel):
     ]
 
     format: Annotated[
-        Literal["date", "date-time"] | None,
+        Literal["date", "date-time", "dayobs"] | None,
         Field(
             title="The JSON schema format",
             description=(
                 "For example, the format of a date or time. Only used for "
-                "the string type."
+                "the string type. Times Square also supports extensions to "
+                "format: 'dayobs' for Rubin DayObs dates."
             ),
         ),
     ] = None
 
     default: Annotated[
-        int | float | str | bool,
-        Field(title="Default value, when the user does not override a value"),
-    ]
+        int | float | str | bool | None,
+        Field(
+            title="Default value",
+            description=(
+                "The default value is applied when the parameter value is "
+                "not set by the viewer. The default must be a valid value "
+                "for the parameter's type. Instead of a static value, "
+                "you can also use a dynamic default value (see "
+                "`dynamic_default` field)."
+            ),
+        ),
+    ] = None
+
+    dynamic_default: Annotated[
+        str | None,
+        Field(
+            title="Dynamic default value",
+            description=(
+                "A dynamic default value for the parameter. With a date "
+                "format parameter, this can be a string like `today`, "
+                "'yesterday', 'tomorrow', '+7d', '-1month_start'. "
+            ),
+            serialization_alias="X-Dynamic-Default",
+        ),
+    ] = None
 
     description: Annotated[str, Field(title="Short description of a field")]
 
@@ -200,9 +225,60 @@ class ParameterSchemaModel(BaseModel):
 
     def to_parameter_schema(self, name: str) -> PageParameterSchema:
         """Convert to the domain version of this object."""
-        return PageParameterSchema.create_and_validate(
-            name=name, json_schema=self.model_dump(exclude_none=True)
+        json_schema = self.model_dump(
+            exclude_none=True, mode="json", by_alias=True
         )
+        # Move custom formats to X-TS-Format
+        if "format" in json_schema and json_schema["format"] == "dayobs":
+            del json_schema["format"]
+            json_schema["X-TS-Format"] = "dayobs"
+        return create_and_validate_parameter_schema(
+            name=name, json_schema=json_schema
+        )
+
+    @model_validator(mode="after")
+    def check_dynamic_default(self) -> Self:
+        """Ensure dynamic_default is only set for string type with
+        date format.
+        """
+        if self.dynamic_default is not None:
+            if self.type != JsonSchemaTypeEnum.string or self.format not in {
+                "date",
+                "dayobs",
+            }:
+                raise ValueError(
+                    "dynamic_default can only be set when type is 'string' "
+                    "and format is 'date' or 'dayobs'. "
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_dynamic_default_pattern(self) -> Self:
+        """Ensure dynamic_default matches the expected pattern for date
+        types.
+        """
+        if (
+            self.dynamic_default is not None
+            and self.type == JsonSchemaTypeEnum.string
+            and self.format in {"date", "dayobs"}
+        ):
+            if not DYNAMIC_DATE_PATTERN.match(self.dynamic_default):
+                raise ValueError(
+                    f"Invalid dynamic_default format: {self.dynamic_default}. "
+                    "Must match pattern for date dynamic defaults."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_default_and_dynamic_default(self) -> Self:
+        """Ensure default is only None when dynamic_default is set."""
+        if self.default is None and self.dynamic_default is None:
+            raise ValueError("Either default or dynamic_default must be set")
+        if all((self.default is not None, self.dynamic_default is not None)):
+            raise ValueError(
+                "Either default or dynamic_default must be set, but not both"
+            )
+        return self
 
 
 class NotebookSidecarFile(BaseModel):

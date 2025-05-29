@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -13,9 +13,10 @@ from timessquare.domain.pageparameters import (
     DatetimeParameterSchema,
     IntegerParameterSchema,
     NumberParameterSchema,
+    ObsDateParameterSchema,
     PageParameters,
-    PageParameterSchema,
     StringParameterSchema,
+    create_and_validate_parameter_schema,
 )
 from timessquare.exceptions import (
     PageParameterValueCastingError,
@@ -28,10 +29,10 @@ from timessquare.exceptions import (
 def test_resolve_values() -> None:
     parameters = PageParameters(
         {
-            "myvar": NumberParameterSchema.create_and_validate(
+            "myvar": create_and_validate_parameter_schema(
                 "myvar", {"type": "number", "default": 1.0}
             ),
-            "myvar2": StringParameterSchema.create_and_validate(
+            "myvar2": create_and_validate_parameter_schema(
                 "myvar2", {"type": "string", "default": "hello"}
             ),
         }
@@ -62,10 +63,10 @@ def test_resolve_values() -> None:
 def test_parameter_schema_access() -> None:
     parameters = PageParameters(
         {
-            "myvar": NumberParameterSchema.create_and_validate(
+            "myvar": create_and_validate_parameter_schema(
                 "myvar", {"type": "number", "default": 1.0}
             ),
-            "myvar2": StringParameterSchema.create_and_validate(
+            "myvar2": create_and_validate_parameter_schema(
                 "myvar2", {"type": "string", "default": "hello"}
             ),
         }
@@ -100,11 +101,11 @@ def test_parameter_default_exists() -> None:
     schema: dict[str, Any] = {"type": "number", "description": "Test schema"}
 
     with pytest.raises(ParameterDefaultMissingError):
-        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+        create_and_validate_parameter_schema(name, schema)
 
     # should work with default added
     schema["default"] = 0.0
-    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+    create_and_validate_parameter_schema(name, schema)
 
 
 def test_parameter_default_invalid() -> None:
@@ -117,15 +118,15 @@ def test_parameter_default_invalid() -> None:
     }
 
     with pytest.raises(ParameterDefaultInvalidError):
-        PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+        create_and_validate_parameter_schema(name, schema)
 
     # Change default to fulfil minimum
     schema["default"] = 1.0
-    PageParameterSchema.create_and_validate(name=name, json_schema=schema)
+    create_and_validate_parameter_schema(name, schema)
 
 
 def test_string_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": "default", "type": "string"}
     )
     assert isinstance(schema, StringParameterSchema)
@@ -139,7 +140,7 @@ def test_string_parameter_schema() -> None:
 
 
 def test_integer_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": 1, "type": "integer"}
     )
     assert isinstance(schema, IntegerParameterSchema)
@@ -154,7 +155,7 @@ def test_integer_parameter_schema() -> None:
 
 
 def test_number_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": 1.5, "type": "number"}
     )
     assert isinstance(schema, NumberParameterSchema)
@@ -174,7 +175,7 @@ def test_number_parameter_schema() -> None:
 
 
 def test_boolean_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": True, "type": "boolean"}
     )
     assert isinstance(schema, BooleanParameterSchema)
@@ -201,7 +202,7 @@ def test_boolean_parameter_schema() -> None:
 
 
 def test_date_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar", {"default": "2025-02-01", "type": "string", "format": "date"}
     )
     assert isinstance(schema, DateParameterSchema)
@@ -220,8 +221,267 @@ def test_date_parameter_schema() -> None:
         schema.cast_value("hello")
 
 
+def test_date_parameter_dynamic_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Mock datetime.now to return a fixed date: Wednesday, January 1, 2025
+    fixed_date = date(2025, 1, 1)
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return datetime(2025, 1, 1, 12, 0, 0, tzinfo=tz)
+
+    # Using monkeypatch as a context manager ensures it's reset after the block
+    with monkeypatch.context() as m:
+        m.setattr(
+            "timessquare.domain.pageparameters._datedynamicdefault.datetime",
+            MockDatetime,
+        )
+
+        # Test basic dynamic defaults
+        schema_today = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "today",
+            },
+        )
+        assert isinstance(schema_today, DateParameterSchema)
+        assert schema_today.default == fixed_date
+
+        schema_yesterday = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "yesterday",
+            },
+        )
+        assert schema_yesterday.default == date(2024, 12, 31)
+
+        schema_tomorrow = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "tomorrow",
+            },
+        )
+        assert schema_tomorrow.default == date(2025, 1, 2)
+
+        # Test day offset patterns
+        schema_plus_5d = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+5d",
+            },
+        )
+        assert schema_plus_5d.default == date(2025, 1, 6)
+
+        schema_minus_3d = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-3d",
+            },
+        )
+        assert schema_minus_3d.default == date(2024, 12, 29)
+
+        # Test week patterns (January 1, 2025 is a Wednesday)
+        schema_week_start = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "week_start",
+            },
+        )
+        # Monday of the week containing Jan 1, 2025
+        assert schema_week_start.default == date(2024, 12, 30)
+
+        schema_week_end = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "week_end",
+            },
+        )
+        # Sunday of the week containing Jan 1, 2025
+        assert schema_week_end.default == date(2025, 1, 5)
+
+        schema_plus_1_week_start = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+1week_start",
+            },
+        )
+        assert schema_plus_1_week_start.default == date(2025, 1, 6)
+
+        schema_minus_2_week_end = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-2week_end",
+            },
+        )
+        assert schema_minus_2_week_end.default == date(2024, 12, 22)
+
+        # Test month patterns
+        schema_month_start = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "month_start",
+            },
+        )
+        assert schema_month_start.default == date(2025, 1, 1)
+
+        schema_month_end = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "month_end",
+            },
+        )
+        assert schema_month_end.default == date(2025, 1, 31)
+
+        schema_plus_2_month_start = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+2month_start",
+            },
+        )
+        assert schema_plus_2_month_start.default == date(2025, 3, 1)
+
+        schema_minus_1_month_end = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-1month_end",
+            },
+        )
+        assert schema_minus_1_month_end.default == date(2024, 12, 31)
+
+        # Test year patterns
+        schema_year_start = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "year_start",
+            },
+        )
+        assert schema_year_start.default == date(2025, 1, 1)
+
+        schema_year_end = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "year_end",
+            },
+        )
+        assert schema_year_end.default == date(2025, 12, 31)
+
+        schema_plus_1_year_start = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+1year_start",
+            },
+        )
+        assert schema_plus_1_year_start.default == date(2026, 1, 1)
+
+        schema_minus_1_year_end = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-1year_end",
+            },
+        )
+        assert schema_minus_1_year_end.default == date(2024, 12, 31)
+
+
+def test_date_parameter_dynamic_default_validation() -> None:
+    """Test validation of X-Dynamic-Default values."""
+    # Valid patterns should work
+    valid_patterns = [
+        "today",
+        "yesterday",
+        "tomorrow",
+        "+5d",
+        "-10d",
+        "week_start",
+        "week_end",
+        "+2week_start",
+        "-1week_end",
+        "month_start",
+        "month_end",
+        "+3month_start",
+        "-2month_end",
+        "year_start",
+        "year_end",
+        "+1year_start",
+        "-5year_end",
+    ]
+
+    for pattern in valid_patterns:
+        schema = create_and_validate_parameter_schema(
+            "test_param",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": pattern,
+            },
+        )
+        assert isinstance(schema, DateParameterSchema)
+
+    # Invalid patterns should raise errors
+    invalid_patterns = [
+        "invalid",
+        "d",  # missing sign and offset
+        "+d",  # missing offset
+        "5d",  # missing sign
+        "week",  # incomplete
+        "month",  # incomplete
+        "year",  # incomplete
+        "++5d",  # double sign
+        "+week_start",  # missing number
+        "0week_start",  # zero offset needs sign
+    ]
+
+    for pattern in invalid_patterns:
+        with pytest.raises(
+            ParameterDefaultInvalidError
+        ):  # Could be ValueError or validation error
+            create_and_validate_parameter_schema(
+                "test_param",
+                {
+                    "type": "string",
+                    "format": "date",
+                    "X-Dynamic-Default": pattern,
+                },
+            )
+
+
 def test_datetime_parameter_schema() -> None:
-    schema = PageParameterSchema.create_and_validate(
+    schema = create_and_validate_parameter_schema(
         "myvar",
         {
             "default": "2025-02-01T12:00:00+00:00",
@@ -252,3 +512,305 @@ def test_datetime_parameter_schema() -> None:
     assert schema.create_qs_value(
         datetime(2025, 2, 21, 12, 0, 0, tzinfo=UTC)
     ) == ("2025-02-21T12:00:00+00:00")
+
+
+def test_obsdate_parameter_schema() -> None:
+    """Test basic ObsDateParameterSchema functionality."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs",
+            "default": "20250101",
+        },
+    )
+    assert isinstance(schema, ObsDateParameterSchema)
+    assert schema.default == "20250101"
+
+    # Test casting various input types
+    assert schema.cast_value("20250215") == "20250215"
+    assert schema.cast_value(20250215) == "20250215"
+    assert schema.cast_value(date(2025, 2, 15)) == "20250215"
+
+    # Test datetime casting with timezone conversion
+    utc_dt = datetime(2025, 2, 15, 14, 0, 0, tzinfo=UTC)
+    # UTC 14:00 -> UTC-12 02:00 (same day)
+    assert schema.cast_value(utc_dt) == "20250215"
+
+    # Test datetime that crosses date boundary due to timezone conversion
+    # UTC 02:00 -> UTC-12 14:00 previous day
+    utc_dt_early = datetime(2025, 2, 15, 2, 0, 0, tzinfo=UTC)
+    assert schema.cast_value(utc_dt_early) == "20250214"
+
+    # Test another boundary case - late UTC time that stays same day in UTC-12
+    utc_dt_afternoon = datetime(2025, 2, 15, 18, 0, 0, tzinfo=UTC)
+    # UTC 18:00 -> UTC-12 06:00 (same day)
+    assert schema.cast_value(utc_dt_afternoon) == "20250215"
+
+    # Test naive datetime (treated as UTC-12)
+    naive_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=None)  # noqa: DTZ001
+    assert schema.cast_value(naive_dt) == "20250215"
+
+    # Test serialization methods
+    assert (
+        schema.create_python_assignment("myvar", "20250215")
+        == "myvar = '20250215'"
+    )
+    assert schema.create_json_value("20250215") == "20250215"
+    assert schema.create_qs_value("20250215") == "20250215"
+
+    # Test error cases
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("hello")
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025021")  # Too short
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("202502155")  # Too long
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025ab15")  # Invalid characters
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value([])  # Invalid type
+
+
+def test_obsdate_parameter_dynamic_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test ObsDateParameterSchema with X-Dynamic-Default."""
+    # Mock datetime.now to return a fixed datetime in UTC-12 timezone
+    # January 1, 2025 at 14:00 UTC-12
+    utc_minus_12 = timezone(-timedelta(hours=12))
+    fixed_datetime = datetime(2025, 1, 1, 14, 0, 0, tzinfo=utc_minus_12)
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            if tz is not None:
+                return fixed_datetime.astimezone(tz)
+            return fixed_datetime
+
+    with monkeypatch.context() as m:
+        m.setattr(
+            "timessquare.domain.pageparameters._obsdateparameter.datetime",
+            MockDatetime,
+        )
+
+        # Test basic dynamic defaults
+        schema_today = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs",
+                "X-Dynamic-Default": "today",
+            },
+        )
+        assert isinstance(schema_today, ObsDateParameterSchema)
+        assert schema_today.default == "20250101"
+
+        schema_yesterday = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs",
+                "X-Dynamic-Default": "yesterday",
+            },
+        )
+        assert schema_yesterday.default == "20241231"
+
+        schema_tomorrow = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs",
+                "X-Dynamic-Default": "tomorrow",
+            },
+        )
+        assert schema_tomorrow.default == "20250102"
+
+        # Test day offset patterns
+        schema_plus_5d = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs",
+                "X-Dynamic-Default": "+5d",
+            },
+        )
+        assert schema_plus_5d.default == "20250106"
+
+        schema_minus_3d = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs",
+                "X-Dynamic-Default": "-3d",
+            },
+        )
+        assert schema_minus_3d.default == "20241229"
+
+
+def test_obsdate_parameter_dynamic_default_validation() -> None:
+    """Test validation of X-Dynamic-Default values for ObsDateParameter."""
+    # Valid patterns should work
+    valid_patterns = [
+        "today",
+        "yesterday",
+        "tomorrow",
+        "+5d",
+        "-10d",
+        "week_start",
+        "week_end",
+        "+2week_start",
+        "-1week_end",
+        "month_start",
+        "month_end",
+        "+3month_start",
+        "-2month_end",
+        "year_start",
+        "year_end",
+        "+1year_start",
+        "-5year_end",
+    ]
+
+    for pattern in valid_patterns:
+        schema = create_and_validate_parameter_schema(
+            "test_param",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs",
+                "X-Dynamic-Default": pattern,
+            },
+        )
+        assert isinstance(schema, ObsDateParameterSchema)
+
+    # Invalid patterns should raise validation errors
+    invalid_patterns = [
+        "invalid_pattern",
+        "today_invalid",
+        "+5x",  # Invalid unit
+        "week_invalid",
+        "",
+    ]
+
+    for pattern in invalid_patterns:
+        with pytest.raises(ParameterDefaultInvalidError):
+            create_and_validate_parameter_schema(
+                "test_param",
+                {
+                    "type": "string",
+                    "X-TS-Format": "dayobs",
+                    "X-Dynamic-Default": pattern,
+                },
+            )
+
+
+def test_obsdate_parameter_timezone_handling() -> None:
+    """Test ObsDateParameterSchema timezone conversions."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs",
+            "default": "20250101",
+        },
+    )
+
+    # Test various timezone scenarios
+    utc_minus_12 = timezone(-timedelta(hours=12))
+    utc_plus_9 = timezone(timedelta(hours=9))  # JST
+
+    # Same moment in different timezones
+    base_utc = datetime(2025, 2, 15, 12, 0, 0, tzinfo=UTC)
+
+    # UTC 12:00 -> UTC-12 00:00 (same day)
+    assert schema.cast_value(base_utc) == "20250215"
+
+    # UTC-12 12:00 (already in target timezone)
+    utc_minus_12_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=utc_minus_12)
+    assert schema.cast_value(utc_minus_12_dt) == "20250215"
+
+    # JST 09:00 -> UTC 00:00 -> UTC-12 12:00 previous day
+    jst_dt = datetime(2025, 2, 15, 9, 0, 0, tzinfo=utc_plus_9)
+    assert schema.cast_value(jst_dt) == "20250214"
+
+
+def test_obsdate_parameter_edge_cases() -> None:
+    """Test edge cases for ObsDateParameterSchema."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs",
+            "default": "20250101",
+        },
+    )
+
+    # Test leap year dates
+    assert schema.cast_value("20240229") == "20240229"  # Valid leap year
+    assert schema.cast_value(date(2024, 2, 29)) == "20240229"
+
+    # Test month/day boundaries
+    assert schema.cast_value("20250131") == "20250131"  # End of January
+    assert schema.cast_value("20250201") == "20250201"  # Start of February
+    assert schema.cast_value("20251231") == "20251231"  # End of year
+
+    # Test year boundaries
+    assert schema.cast_value("19990101") == "19990101"  # Y2K-1
+    assert schema.cast_value("20000101") == "20000101"  # Y2K
+
+    # Test invalid dates that would pass regex but fail date parsing
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("20250229")  # Feb 29 in non-leap year
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("20251301")  # Month 13
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("20250132")  # Day 32
+
+
+def test_obsdate_parameter_strict_schema() -> None:
+    """Test that strict_schema removes custom format and adds regex pattern."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs",
+            "default": "20250101",
+            "description": "A dayobs parameter",
+        },
+    )
+
+    # Get the strict schema (for notebook metadata)
+    strict_schema = schema.strict_schema
+
+    # Should have the basic type and description
+    assert strict_schema["type"] == "string"
+    assert strict_schema["description"] == "A dayobs parameter"
+    assert strict_schema["default"] == "20250101"
+
+    # Should NOT have the custom X-TS-Format
+    assert "X-TS-Format" not in strict_schema
+    assert "format" not in strict_schema
+
+    # Should have a regex pattern to validate YYYYMMDD format
+    assert "pattern" in strict_schema
+    assert strict_schema["pattern"] == r"^\d{8}$"
+
+    # The pattern should match valid dayobs strings
+    import re
+
+    pattern = re.compile(strict_schema["pattern"])
+    assert pattern.match("20250101") is not None
+    assert pattern.match("19991231") is not None
+    assert pattern.match("20240229") is not None
+
+    # The pattern should reject invalid formats
+    assert pattern.match("2025010") is None  # Too short
+    assert pattern.match("202501011") is None  # Too long
+    assert pattern.match("2025-01-01") is None  # Has dashes
+    assert pattern.match("abcd1234") is None  # Letters
+    assert pattern.match("202501ab") is None  # Mixed
