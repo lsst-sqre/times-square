@@ -85,3 +85,28 @@ class ScheduledRunStore:
         if sql_scheduled_run:
             await self._session.delete(sql_scheduled_run)
             await self._session.flush()
+
+    async def delete_old_runs(self, cutoff_time: datetime) -> int:
+        """Delete scheduled runs that are older than the cutoff time.
+
+        Parameters
+        ----------
+        cutoff_time
+            The time before which scheduled runs should be deleted.
+
+        Returns
+        -------
+        int
+            The number of deleted scheduled runs.
+        """
+        stmt = select(SqlScheduledRun).where(
+            SqlScheduledRun.scheduled_time < cutoff_time
+        )
+        result = await self._session.execute(stmt)
+        old_runs = result.scalars().all()
+
+        for run in old_runs:
+            await self._session.delete(run)
+
+        await self._session.flush()
+        return len(old_runs)

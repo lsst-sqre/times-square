@@ -22,6 +22,7 @@ from timessquare.config import config
 from timessquare.dependencies.redis import redis_dependency
 
 from .functions import (
+    cleanup_scheduled_runs,
     compute_check_run,
     create_check_run,
     create_rerequested_check_run,
@@ -165,6 +166,12 @@ class WorkerSettings:
         arq.cron(
             schedule_runs,
             minute=set(range(0, 60, 5)),  # every 5 minutes
+            timeout=60.0,
+            unique=True,  # only one worker should run this job at a time
+        ),
+        arq.cron(
+            cleanup_scheduled_runs,
+            hour=11,  # every day at 6 AM EST = 11 AM UTC
             timeout=60.0,
             unique=True,  # only one worker should run this job at a time
         ),
