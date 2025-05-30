@@ -8,6 +8,20 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.21.1'></a>
+
+## 0.21.1 (2025-05-30)
+
+### Bug fixes
+
+- The `dynamic_default` date syntax for a relative number of weeks/months/years from the current date didn't work in the 0.21.0 release. We fixed that feature and changed the syntax to use `w`, `m`, and `y` for weeks, months, and years respectively. This syntax is similar to how relative numbers of days are treated (for example, `+5d` for 5 days from now). Some examples:
+
+  - `dynamic_default: 1w` for one week from now
+  - `dynamic_default: -2m` for two months ago
+  - `dynamic_default: 3y` for three years from now
+
+  The promised syntax of `dynamic_default: +1week` from the 0.21.0 release is no longer supported. The `week_end` / `week_start` syntax still uses the full words rather than the first letter abbreviations.
+
 <a id='changelog-0.21.0'></a>
 
 ## 0.21.0 (2025-05-29)
