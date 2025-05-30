@@ -43,6 +43,8 @@ class PageStore:
             authors=[p.to_dict() for p in page.authors],
             tags=page.tags,
             execution_timeout=page.timeout,
+            schedule_rruleset=page.schedule_rruleset,
+            schedule_enabled=page.schedule_enabled,
             uploader_username=page.uploader_username,
             date_deleted=(
                 datetime_to_db(page.date_deleted)
@@ -88,6 +90,8 @@ class PageStore:
         sql_page.authors = authors_json
         sql_page.tags = page.tags
         sql_page.execution_timeout = page.timeout
+        sql_page.schedule_rruleset = page.schedule_rruleset
+        sql_page.schedule_enabled = page.schedule_enabled
         sql_page.date_deleted = date_deleted
         sql_page.description = page.description
         sql_page.cache_ttl = page.cache_ttl
@@ -204,6 +208,8 @@ class PageStore:
             authors=authors,
             tags=sql_page.tags,
             timeout=sql_page.execution_timeout,
+            schedule_rruleset=sql_page.schedule_rruleset,
+            schedule_enabled=sql_page.schedule_enabled,
             uploader_username=sql_page.uploader_username,
             description=sql_page.description,
             cache_ttl=sql_page.cache_ttl,
@@ -368,3 +374,21 @@ class PageStore:
         statement = select(SqlPage.name)
         result = await self._session.execute(statement)
         return [row[0] for row in result.all()]
+
+    async def list_scheduled_pages(
+        self, *, exclude_pr_pages: bool = True
+    ) -> list[PageModel]:
+        """Get a list of all pages with scheduling enabled."""
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.schedule_enabled.is_(True))
+            .where(SqlPage.date_deleted.is_(None))
+            .where(SqlPage.schedule_rruleset.is_not(None))
+        )
+        if exclude_pr_pages:
+            statement = statement.where(SqlPage.github_commit.is_(None))
+        result = await self._session.execute(statement)
+        return [
+            self._rehydrate_page_from_sql(sql_page)
+            for sql_page in result.scalars()
+        ]
