@@ -1,3 +1,4 @@
+from .cleanup_scheduled_runs import cleanup_scheduled_runs
 from .compute_check_run import compute_check_run
 from .create_check_run import create_check_run
 from .create_rerequested_check_run import create_rerequested_check_run
@@ -11,6 +12,7 @@ from .schedule_runs import schedule_runs
 from .scheduled_page_run import scheduled_page_run
 
 __all__ = [
+    "cleanup_scheduled_runs",
     "compute_check_run",
     "create_check_run",
     "create_rerequested_check_run",

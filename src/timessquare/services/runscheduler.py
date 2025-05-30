@@ -142,3 +142,30 @@ class RunSchedulerService:
             return scheduled_run
 
         return None
+
+    async def cleanup_old_runs(self, retention_period: timedelta) -> int:
+        """Clean up old scheduled runs that are beyond the retention period.
+
+        Parameters
+        ----------
+        retention_period
+            The duration for which scheduled runs should be retained.
+
+        Returns
+        -------
+        int
+            The number of old runs deleted.
+        """
+        now = datetime.now(tz=UTC)
+        cutoff_time = now - retention_period
+
+        deleted_count = await self._scheduled_run_store.delete_old_runs(
+            cutoff_time
+        )
+        self._logger.info(
+            "Cleaned up old scheduled runs",
+            deleted_count=deleted_count,
+            retention_period=retention_period,
+            cutoff_time=cutoff_time.isoformat(),
+        )
+        return deleted_count
