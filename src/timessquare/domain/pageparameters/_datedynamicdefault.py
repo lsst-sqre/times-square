@@ -8,7 +8,7 @@ __all__ = ["DYNAMIC_DATE_PATTERN", "DateDynamicDefault"]
 
 
 DYNAMIC_DATE_PATTERN = re.compile(
-    r"^(?:(?P<sign>[+-])(?P<offset>\d+)(?P<base>d|(?:week|month|year)_(?:start|end)))|"
+    r"^(?:(?P<sign>[+-])(?P<offset>\d+)(?P<base>(?:week|month|year)_(?:start|end)|d|w|m|y))|"
     r"(?P<simple>today|yesterday|tomorrow|(?:week|month|year)_(?:start|end))$"
 )
 """Pattern for dynamic date default configurations."""
@@ -22,8 +22,8 @@ class DateDynamicDefault:
     config_value : str
         The dynamic default value in the format defined by
         `DYNAMIC_DATE_PATTERN`. It can be a simple value like "today",
-        "yesterday", "tomorrow", or a more complex expression like "+7d" or
-        "-1month_start".
+        "yesterday", "tomorrow", or a more complex expression like "+7d",
+        "+2w", "+3m", "+1y", or "-1month_start".
     """
 
     def __init__(self, config_value: str) -> None:
@@ -81,7 +81,7 @@ class DateDynamicDefault:
         # Handle complex patterns
         return self._compute_complex_date(current_date)
 
-    def _compute_complex_date(self, current_date: date) -> date:  # noqa: C901
+    def _compute_complex_date(self, current_date: date) -> date:  # noqa: C901,PLR0912
         """Compute dates for complex patterns."""
         match = DYNAMIC_DATE_PATTERN.match(self.config_value)
         if not match:
@@ -105,6 +105,12 @@ class DateDynamicDefault:
         match base:
             case "d":
                 return self._add_days(current_date, offset)
+            case "w":
+                return self._add_days(current_date, offset * 7)
+            case "m":
+                return self._add_months(current_date, offset)
+            case "y":
+                return self._add_years(current_date, offset)
             case "week_start":
                 return self._compute_week_start(current_date, offset)
             case "week_end":
@@ -196,3 +202,12 @@ class DateDynamicDefault:
             return base_date.replace(
                 year=new_year, month=new_month, day=last_day
             )
+
+    @staticmethod
+    def _add_years(base_date: date, years: int) -> date:
+        """Add years to a date."""
+        try:
+            return base_date.replace(year=base_date.year + years)
+        except ValueError:
+            # Handle leap year edge case (Feb 29 + 1 year)
+            return base_date.replace(year=base_date.year + years, day=28)

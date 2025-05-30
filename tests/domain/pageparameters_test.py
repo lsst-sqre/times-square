@@ -417,6 +417,71 @@ def test_date_parameter_dynamic_default(
         )
         assert schema_minus_1_year_end.default == date(2024, 12, 31)
 
+        # Test short-form week patterns
+        schema_plus_2w = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+2w",
+            },
+        )
+        assert schema_plus_2w.default == date(2025, 1, 15)  # 2 weeks = 14 days
+
+        schema_minus_3w = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-3w",
+            },
+        )
+        assert schema_minus_3w.default == date(
+            2024, 12, 11
+        )  # 3 weeks = 21 days ago
+
+        # Test short-form month patterns
+        schema_plus_2m = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+2m",
+            },
+        )
+        assert schema_plus_2m.default == date(2025, 3, 1)  # 2 months later
+
+        schema_minus_1m = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-1m",
+            },
+        )
+        assert schema_minus_1m.default == date(2024, 12, 1)  # 1 month ago
+
+        # Test short-form year patterns
+        schema_plus_1y = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "+1y",
+            },
+        )
+        assert schema_plus_1y.default == date(2026, 1, 1)  # 1 year later
+
+        schema_minus_2y = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "format": "date",
+                "X-Dynamic-Default": "-2y",
+            },
+        )
+        assert schema_minus_2y.default == date(2023, 1, 1)  # 2 years ago
+
 
 def test_date_parameter_dynamic_default_validation() -> None:
     """Test validation of X-Dynamic-Default values."""
@@ -427,6 +492,12 @@ def test_date_parameter_dynamic_default_validation() -> None:
         "tomorrow",
         "+5d",
         "-10d",
+        "+2w",
+        "-3w",
+        "+1m",
+        "-6m",
+        "+1y",
+        "-2y",
         "week_start",
         "week_end",
         "+2week_start",
@@ -458,6 +529,15 @@ def test_date_parameter_dynamic_default_validation() -> None:
         "d",  # missing sign and offset
         "+d",  # missing offset
         "5d",  # missing sign
+        "w",  # missing sign and offset
+        "+w",  # missing offset
+        "5w",  # missing sign
+        "m",  # missing sign and offset
+        "+m",  # missing offset
+        "3m",  # missing sign
+        "y",  # missing sign and offset
+        "+y",  # missing offset
+        "2y",  # missing sign
         "week",  # incomplete
         "month",  # incomplete
         "year",  # incomplete
