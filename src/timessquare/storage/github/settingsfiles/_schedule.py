@@ -179,13 +179,13 @@ class ScheduleRule(BaseModel):
         ),
     ]
     start: Annotated[
-        datetime.datetime | None,
+        datetime.datetime,
         Field(
-            default=None,
             description=(
                 "The date when the repeating rule starts. If not set, the "
                 "rule is assumed to start now"
             ),
+            default_factory=lambda: datetime.datetime.now(datetime.UTC),
         ),
     ]
     end: Annotated[
