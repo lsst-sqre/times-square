@@ -24,9 +24,22 @@ def upgrade() -> None:
     )
     op.add_column(
         "pages",
-        sa.Column(
-            "schedule_enabled", sa.Boolean(), nullable=False, default=False
-        ),
+        sa.Column("schedule_enabled", sa.Boolean(), nullable=True),
+    )
+
+    # Add default value for schedule_enabled
+    op.execute(
+        "UPDATE pages "
+        "SET schedule_enabled = false "
+        "WHERE schedule_enabled IS NULL"
+    )
+
+    # Set NOT NULL constraint on schedule_enabled
+    op.alter_column(
+        "pages",
+        "schedule_enabled",
+        nullable=False,
+        server_default=sa.text("false"),
     )
 
 
