@@ -13,7 +13,7 @@ __all__ = ["RunSchedule"]
 
 
 class RunSchedule:
-    """A domain model for an page's run schedule.
+    """A domain model for a page's run schedule.
 
     Parameters
     ----------
@@ -21,13 +21,6 @@ class RunSchedule:
         A JSON-serialized string representing the rruleset.
     enabled
         Whether the schedule is enabled.
-
-    Notes
-    -----
-    The rruleset serialization is not built into dateutil
-    (https://github.com/dateutil/dateutil/issues/856), but we use a
-    serialization strategy also published as a gist
-    https://gist.github.com/maxfire2008/096fd5f55c9d79a11d41769d58e8bca1.
     """
 
     def __init__(self, rruleset_str: str, *, enabled: bool) -> None:
