@@ -52,7 +52,7 @@ class RunSchedulerService:
         self._logger = logger
 
     async def schedule_due_executions(
-        self, check_window: timedelta | None = None
+        self, check_window: timedelta
     ) -> list[ScheduledRun]:
         """Check for and schedule any due page executions.
 
@@ -60,16 +60,12 @@ class RunSchedulerService:
         ----------
         check_window
             How far into the future to check for due executions.
-            Defaults to 5 minutes.
 
         Returns
         -------
         list
             The list of newly scheduled runs.
         """
-        if check_window is None:
-            check_window = timedelta(minutes=5)
-
         now = datetime.now(tz=UTC)
 
         # Get all pages with scheduling enabled
