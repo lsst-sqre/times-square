@@ -51,7 +51,7 @@ class RunSchedulerService:
         self._arq_queue = arq_queue
         self._logger = logger
 
-    async def schedule_due_executions(
+    async def schedule_due_runs(
         self, check_window: timedelta
     ) -> list[ScheduledRun]:
         """Check for and schedule any due page executions.
@@ -94,32 +94,32 @@ class RunSchedulerService:
         self, *, page: PageModel, now: datetime, check_window: timedelta
     ) -> ScheduledRun | None:
         try:
-            schedule = page.execution_schedule
+            schedule = page.schedule
         except ValidationError:
             self._logger.exception(
-                "Invalid execution schedule for page",
+                "Invalid schedule for page",
                 page_name=page.name,
                 schedule_rruleset=page.schedule_rruleset,
             )
         if schedule is None:
             self._logger.warning(
-                "Page has no execution schedule, despite being expoected to",
+                "Page has no run schedule, despite being expoected to",
                 page_name=page.name,
             )
             return None
 
-        next_execution = schedule.next(after=now)
+        next_run = schedule.next(after=now)
 
-        if next_execution and (next_execution - now) <= check_window:
+        if next_run and (next_run - now) <= check_window:
             # Check if there's an existing scheduled run
             existing_run = await self._scheduled_run_store.check_existing_run(
-                page_name=page.name, scheduled_time=next_execution
+                page_name=page.name, scheduled_time=next_run
             )
             if existing_run:
                 self._logger.debug(
                     "Scheduled run already exists",
                     page_name=page.name,
-                    scheduled_time=next_execution,
+                    scheduled_time=next_run,
                 )
                 return None
 
@@ -127,12 +127,12 @@ class RunSchedulerService:
             job_metadata = await self._arq_queue.enqueue(
                 "scheduled_page_run",
                 page_name=page.name,
-                scheduled_time=next_execution,
-                _defer_until=next_execution,
+                scheduled_time=next_run,
+                _defer_until=next_run,
             )
             scheduled_run = ScheduledRun(
                 page_name=page.name,
-                scheduled_time=next_execution,
+                scheduled_time=next_run,
                 created_at=now,
                 job_id=job_metadata.id,
             )
@@ -141,7 +141,7 @@ class RunSchedulerService:
             self._logger.info(
                 "Scheduled page execution",
                 page_name=page.name,
-                next_execution=next_execution,
+                next_execution=next_run,
             )
             return scheduled_run
 

@@ -10,7 +10,7 @@ from safir.pydantic import HumanTimedelta
 
 from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import PageParameters
-from timessquare.domain.schedule import ExecutionSchedule
+from timessquare.domain.schedule import RunSchedule
 from timessquare.domain.schedulerule import ScheduleRruleset
 
 from ._parameterschema import ParameterSchemaModel
@@ -86,9 +86,9 @@ class NotebookSidecarFile(BaseModel):
             title="Schedule rules for the notebook",
             description=(
                 "A list of schedule rules that determine when the notebook "
-                "should be executed. If empty, the the notebook is only "
-                "executed on-demand. Use a schedule to have a notebook "
-                "executed automatically when data for a report is ready."
+                "should be run. If empty, the the notebook is only "
+                "run on-demand. Use a schedule to have a notebook "
+                "run automatically when data for a report is ready."
             ),
         ),
     ] = None
@@ -98,7 +98,7 @@ class NotebookSidecarFile(BaseModel):
         Field(
             title="Toggle for enabling the schedule",
             description=(
-                "If set to `False`, the notebook is not executed "
+                "If set to `False`, the notebook is not run "
                 "automatically, even if it has a schedule. This is useful "
                 "if you want to temporarily disable the schedule without "
                 "removing the schedule rules."
@@ -123,14 +123,14 @@ class NotebookSidecarFile(BaseModel):
         return [a.to_person_model() for a in self.authors]
 
     @property
-    def execution_schedule(self) -> ExecutionSchedule | None:
-        """Return the execution schedule for this notebook."""
+    def run_schedule(self) -> RunSchedule | None:
+        """Return the run schedule for this notebook."""
         if self.schedule is None or len(self.schedule.root) == 0:
             return None
 
         rruleset_json = self.schedule.serialize_to_rruleset_json()
 
-        return ExecutionSchedule(
+        return RunSchedule(
             rruleset_json,
             enabled=self.schedule_enabled,
         )

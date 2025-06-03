@@ -18,7 +18,7 @@ from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
 from .pageparameters import PageParameters
-from .schedule import ExecutionSchedule
+from .schedule import RunSchedule
 
 __all__ = [
     "PageExecutionInfo",
@@ -410,19 +410,19 @@ class PageModel:
         self.ipynb = self.write_ipynb(notebook)
 
     @property
-    def execution_schedule(self) -> ExecutionSchedule | None:
-        """The execution schedule for the page, if it is scheduled to run
+    def schedule(self) -> RunSchedule | None:
+        """The schedule for the page, if it is scheduled to run
         periodically.
 
         Returns
         -------
-        ExecutionSchedule | None
-            The recurrence rule set for scheduling the page's execution, or
+        RunSchedule | None
+            The recurrence rule set for scheduling the page's runs, or
             `None` if no schedule is set.
         """
         if self.schedule_rruleset is None:
             return None
-        return ExecutionSchedule(
+        return RunSchedule(
             self.schedule_rruleset, enabled=self.schedule_enabled
         )
 

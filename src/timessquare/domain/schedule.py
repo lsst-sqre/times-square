@@ -9,11 +9,11 @@ import dateutil.rrule
 
 from .schedulerule import ScheduleRruleset
 
-__all__ = ["ExecutionSchedule"]
+__all__ = ["RunSchedule"]
 
 
-class ExecutionSchedule:
-    """A domain model for an execution schedule.
+class RunSchedule:
+    """A domain model for an page's run schedule.
 
     Parameters
     ----------
@@ -78,7 +78,7 @@ class ExecutionSchedule:
 
 
 # This function is cached to avoid re-parsing the same JSON string. However
-# it isn't part of the next property for ExecutionSchedule because we want to
+# it isn't part of the next property for RunSchedule because we want to
 # avoid a memory leak when using lru_cache in conjunction with methods.
 @lru_cache
 def _deserialize_rruleset_str(

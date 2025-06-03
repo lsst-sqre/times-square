@@ -32,7 +32,7 @@ async def schedule_runs(
             arq_queue=arq_queue,
             logger=logger,
         )
-        scheduled_runs = await scheduler_service.schedule_due_executions(
+        scheduled_runs = await scheduler_service.schedule_due_runs(
             # coordinate with periodicity of this job in worker
             check_window=timedelta(minutes=10),
         )

@@ -328,7 +328,7 @@ class GitHubRepoService:
         source_ext = source_path.name[n:]
         sidecar_ext = sidecar_path.name[n:]
 
-        if execution_schedule := notebook.sidecar.execution_schedule:
+        if execution_schedule := notebook.sidecar.run_schedule:
             schedule_rruleset = execution_schedule.schedule_rruleset
         else:
             schedule_rruleset = None
@@ -387,7 +387,7 @@ class GitHubRepoService:
         page.description = notebook.sidecar.description
         page.cache_ttl = notebook.sidecar.cache_ttl
         page.schedule_enabled = notebook.sidecar.schedule_enabled
-        if execution_schedule := notebook.sidecar.execution_schedule:
+        if execution_schedule := notebook.sidecar.run_schedule:
             page.schedule_rruleset = execution_schedule.schedule_rruleset
 
         # The extensions might change, but we resolve them to the same
