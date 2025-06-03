@@ -329,7 +329,7 @@ class GitHubRepoService:
         sidecar_ext = sidecar_path.name[n:]
 
         if execution_schedule := notebook.sidecar.execution_schedule:
-            schedule_rruleset = execution_schedule.to_json_str()
+            schedule_rruleset = execution_schedule.schedule_rruleset
         else:
             schedule_rruleset = None
 
@@ -388,7 +388,7 @@ class GitHubRepoService:
         page.cache_ttl = notebook.sidecar.cache_ttl
         page.schedule_enabled = notebook.sidecar.schedule_enabled
         if execution_schedule := notebook.sidecar.execution_schedule:
-            page.schedule_rruleset = execution_schedule.to_json_str()
+            page.schedule_rruleset = execution_schedule.schedule_rruleset
 
         # The extensions might change, but we resolve them to the same
         # display path and thus the same page

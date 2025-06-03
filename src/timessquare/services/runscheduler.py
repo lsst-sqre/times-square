@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from pydantic import ValidationError
 from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
@@ -96,7 +97,14 @@ class RunSchedulerService:
     async def _schedule_due_for_page(
         self, *, page: PageModel, now: datetime, check_window: timedelta
     ) -> ScheduledRun | None:
-        schedule = page.execution_schedule
+        try:
+            schedule = page.execution_schedule
+        except ValidationError:
+            self._logger.exception(
+                "Invalid execution schedule for page",
+                page_name=page.name,
+                schedule_rruleset=page.schedule_rruleset,
+            )
         if schedule is None:
             self._logger.warning(
                 "Page has no execution schedule, despite being expoected to",

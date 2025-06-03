@@ -422,7 +422,7 @@ class PageModel:
         """
         if self.schedule_rruleset is None:
             return None
-        return ExecutionSchedule.from_json_str(
+        return ExecutionSchedule(
             self.schedule_rruleset, enabled=self.schedule_enabled
         )
 

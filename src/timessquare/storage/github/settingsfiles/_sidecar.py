@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import dateutil
 import yaml
 from pydantic import BaseModel, Field
 from safir.pydantic import HumanTimedelta
@@ -12,10 +11,10 @@ from safir.pydantic import HumanTimedelta
 from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.domain.schedule import ExecutionSchedule
+from timessquare.domain.schedulerule import ScheduleRruleset
 
 from ._parameterschema import ParameterSchemaModel
 from ._person import SidecarPersonModel
-from ._schedule import ScheduleRule
 
 __all__ = [
     "NotebookSidecarFile",
@@ -82,7 +81,7 @@ class NotebookSidecarFile(BaseModel):
     ]
 
     schedule: Annotated[
-        list[ScheduleRule],
+        ScheduleRruleset | None,
         Field(
             title="Schedule rules for the notebook",
             description=(
@@ -91,9 +90,8 @@ class NotebookSidecarFile(BaseModel):
                 "executed on-demand. Use a schedule to have a notebook "
                 "executed automatically when data for a report is ready."
             ),
-            default_factory=list,
         ),
-    ]
+    ] = None
 
     schedule_enabled: Annotated[
         bool,
@@ -127,22 +125,12 @@ class NotebookSidecarFile(BaseModel):
     @property
     def execution_schedule(self) -> ExecutionSchedule | None:
         """Return the execution schedule for this notebook."""
-        if len(self.schedule) == 0:
+        if self.schedule is None or len(self.schedule.root) == 0:
             return None
 
-        rset = dateutil.rrule.rruleset(cache=True)
-        for rule in self.schedule:
-            if rule.date is not None:
-                if rule.exclude:
-                    rset.exdate(rule.to_datetime())
-                else:
-                    rset.rdate(rule.to_datetime())
-            elif rule.exclude:
-                rset.exrule(rule.to_rrule())
-            else:
-                rset.rrule(rule.to_rrule())
+        rruleset_json = self.schedule.serialize_to_rruleset_json()
 
         return ExecutionSchedule(
-            rset,
+            rruleset_json,
             enabled=self.schedule_enabled,
         )

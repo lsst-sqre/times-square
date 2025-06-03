@@ -1,3 +1,5 @@
+"""Domain models for schedule rules."""
+
 # This module was originally developed for Semaphore (lsst-sqre/semaphore), and
 # adapted here.
 
@@ -8,9 +10,21 @@ from enum import StrEnum
 from typing import Annotated, Any
 
 import dateutil.rrule
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    RootModel,
+    field_validator,
+    model_validator,
+)
 
-__all__ = ["ByWeekday", "FreqEnum", "ScheduleRule", "WeekdayEnum"]
+__all__ = [
+    "ByWeekday",
+    "FreqEnum",
+    "ScheduleRruleset",
+    "ScheduleRule",
+    "WeekdayEnum",
+]
 
 
 class FreqEnum(StrEnum):
@@ -500,3 +514,15 @@ class ScheduleRule(BaseModel):
         return self.date
 
     model_config = {"arbitrary_types_allowed": True}
+
+
+class ScheduleRruleset(RootModel[list[ScheduleRule]]):
+    """A Pydantic model for a list of schedule rules.
+
+    This is used to validate and serialize/deserialize the rruleset
+    JSON string.
+    """
+
+    def serialize_to_rruleset_json(self) -> str:
+        """Export the ScheduleRruleset to a JSON string."""
+        return self.model_dump_json()

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import datetime
-import json
-from typing import Self
+from functools import lru_cache
 
 import dateutil.rrule
+
+from .schedulerule import ScheduleRruleset
 
 __all__ = ["ExecutionSchedule"]
 
@@ -14,10 +15,10 @@ __all__ = ["ExecutionSchedule"]
 class ExecutionSchedule:
     """A domain model for an execution schedule.
 
-    Attributes
+    Parameters
     ----------
-    rruleset
-        The recurrence rule set for the schedule.
+    rruleset_str
+        A JSON-serialized string representing the rruleset.
     enabled
         Whether the schedule is enabled.
 
@@ -29,70 +30,19 @@ class ExecutionSchedule:
     https://gist.github.com/maxfire2008/096fd5f55c9d79a11d41769d58e8bca1.
     """
 
-    def __init__(
-        self, rruleset: dateutil.rrule.rruleset, *, enabled: bool
-    ) -> None:
-        self.rruleset = rruleset
+    def __init__(self, rruleset_str: str, *, enabled: bool) -> None:
+        self._rruleset_str = rruleset_str
         self.enabled = enabled
 
-    @classmethod
-    def from_json_str(cls, json_str: str, *, enabled: bool) -> Self:
-        """Create an ExecutionSchedule from a JSON string.
+    @property
+    def schedule_rruleset(self) -> str:
+        """The schedule rruleset as a JSON string."""
+        return self._rruleset_str
 
-        Parameters
-        ----------
-        json_str
-            The JSON string representing the schedule.
-        enabled
-            Whether the schedule is enabled.
-
-        Returns
-        -------
-        ExecutionSchedule
-            An instance of ExecutionSchedule created from the JSON string.
-        """
-        data = json.loads(json_str)
-
-        rruleset = dateutil.rrule.rruleset()
-        rruleset._rrule = [
-            dateutil.rrule.rrulestr(rrule) for rrule in data["rrule"]
-        ]
-        rruleset._rdate = [
-            datetime.datetime.fromisoformat(rdate) for rdate in data["rdate"]
-        ]
-        rruleset._exrule = [
-            dateutil.rrule.rrulestr(exrule) for exrule in data["exrule"]
-        ]
-        rruleset._exdate = [
-            datetime.datetime.fromisoformat(exdate)
-            for exdate in data["exdate"]
-        ]
-        return cls(rruleset, enabled=enabled)
-
-    def to_json_str(self) -> str:
-        """Convert the rruleset schedule to a JSON string.
-
-        Returns
-        -------
-        str
-            A JSON string representation of the schedule.
-
-        Notes
-        -----
-        The JSON string contains the recurrence rules, dates, and exceptions
-        in a format that can be parsed back into an ExecutionSchedule using
-        the `from_json_str` method.
-        """
-        return json.dumps(
-            {
-                "rrule": [str(rrule) for rrule in self.rruleset._rrule],
-                "rdate": [rdate.isoformat() for rdate in self.rruleset._rdate],
-                "exrule": [str(exrule) for exrule in self.rruleset._exrule],
-                "exdate": [
-                    exdate.isoformat() for exdate in self.rruleset._exdate
-                ],
-            }
-        )
+    @property
+    def rruleset(self) -> dateutil.rrule.rruleset:
+        """The schedule rruleset as a dateutil rruleset object."""
+        return _deserialize_rruleset_str(self._rruleset_str)
 
     def next(
         self, after: datetime.datetime | None
@@ -125,3 +75,27 @@ class ExecutionSchedule:
         # Ensure that scheduled times aren't more granular than minutes
         # to avoid issues with scheduling tasks hyper-frequently.
         return next_dt.replace(second=0, microsecond=0)
+
+
+# This function is cached to avoid re-parsing the same JSON string. However
+# it isn't part of the next property for ExecutionSchedule because we want to
+# avoid a memory leak when using lru_cache in conjunction with methods.
+@lru_cache
+def _deserialize_rruleset_str(
+    rruleset_str: str,
+) -> dateutil.rrule.rruleset:
+    """Deserialize a JSON string into a list of ScheduleRule objects."""
+    schedule_rules = ScheduleRruleset.model_validate_json(rruleset_str)
+    rset = dateutil.rrule.rruleset(cache=True)
+    for rule in schedule_rules.root:
+        if rule.date is not None:
+            if rule.exclude:
+                rset.exdate(rule.to_datetime())
+            else:
+                rset.rdate(rule.to_datetime())
+        elif rule.exclude:
+            rset.exrule(rule.to_rrule())
+        else:
+            rset.rrule(rule.to_rrule())
+
+    return rset
