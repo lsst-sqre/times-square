@@ -19,9 +19,9 @@ example_schedule = """
 
 def test_execution_schedule() -> None:
     """Test going from rruleset json to an rruleset via RunSchedule."""
-    schedule = RunSchedule(rruleset_str=example_schedule, enabled=True)
+    schedule = RunSchedule(example_schedule, enabled=True)
     assert schedule.enabled is True
-    assert schedule.schedule_rruleset == example_schedule
+    assert schedule.schedule_rruleset_json == example_schedule
 
     rrule_set = schedule.rruleset
     assert isinstance(rrule_set, rruleset)

@@ -17,25 +17,25 @@ class RunSchedule:
 
     Parameters
     ----------
-    rruleset_str
+    rruleset_json
         A JSON-serialized string representing the rruleset.
     enabled
         Whether the schedule is enabled.
     """
 
-    def __init__(self, rruleset_str: str, *, enabled: bool) -> None:
-        self._rruleset_str = rruleset_str
+    def __init__(self, rruleset_json: str, *, enabled: bool) -> None:
+        self._rruleset_json = rruleset_json
         self.enabled = enabled
 
     @property
-    def schedule_rruleset(self) -> str:
+    def schedule_rruleset_json(self) -> str:
         """The schedule rruleset as a JSON string."""
-        return self._rruleset_str
+        return self._rruleset_json
 
     @property
     def rruleset(self) -> dateutil.rrule.rruleset:
         """The schedule rruleset as a dateutil rruleset object."""
-        return _deserialize_rruleset_str(self._rruleset_str)
+        return _deserialize_rruleset_str(self._rruleset_json)
 
     def next(
         self, after: datetime.datetime | None
@@ -75,10 +75,10 @@ class RunSchedule:
 # avoid a memory leak when using lru_cache in conjunction with methods.
 @lru_cache
 def _deserialize_rruleset_str(
-    rruleset_str: str,
+    rruleset_json: str,
 ) -> dateutil.rrule.rruleset:
     """Deserialize a JSON string into a list of ScheduleRule objects."""
-    schedule_rules = ScheduleRruleset.model_validate_json(rruleset_str)
+    schedule_rules = ScheduleRruleset.model_validate_json(rruleset_json)
     rset = dateutil.rrule.rruleset(cache=True)
     for rule in schedule_rules.root:
         if rule.date is not None:
