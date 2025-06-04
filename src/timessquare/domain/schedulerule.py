@@ -8,12 +8,14 @@ from __future__ import annotations
 import datetime
 from enum import StrEnum
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 import dateutil.rrule
 from pydantic import (
     BaseModel,
     Field,
     RootModel,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -104,24 +106,6 @@ class ByWeekday(BaseModel):
         return weekday
 
 
-def _convert_to_tzinfo(v: Any) -> datetime.tzinfo:
-    """Convert a timezone into a tzinfo instance."""
-    if v is None:
-        return datetime.UTC
-    if isinstance(v, datetime.tzinfo):
-        return v
-    if isinstance(v, str):
-        # Try to parse as timezone name
-        import zoneinfo
-
-        try:
-            return zoneinfo.ZoneInfo(v)
-        except Exception:
-            # Fall back to UTC if parsing fails
-            return datetime.UTC
-    return datetime.UTC
-
-
 def _convert_to_datetime(
     v: Any, default_tz: datetime.tzinfo = datetime.UTC
 ) -> datetime.datetime | None:
@@ -160,13 +144,13 @@ class ScheduleRule(BaseModel):
     """
 
     timezone: Annotated[
-        datetime.tzinfo | None,
+        ZoneInfo,
         Field(
-            default=None,
             description=(
                 "Default timezone for any datetime fields that don't contain "
                 "explicit datetimes"
             ),
+            default_factory=lambda: ZoneInfo("UTC"),
         ),
     ]
     date: Annotated[
@@ -334,9 +318,16 @@ class ScheduleRule(BaseModel):
 
     @field_validator("timezone", mode="before")
     @classmethod
-    def preprocess_timezone(cls, v: Any) -> datetime.tzinfo:
-        """Convert a timezone into a tzinfo instance."""
-        return _convert_to_tzinfo(v)
+    def preprocess_timezone(cls, v: Any) -> ZoneInfo:
+        """Convert a timezone into a ZoneInfo instance."""
+        if isinstance(v, str):
+            try:
+                return ZoneInfo(v)
+            except Exception as e:
+                raise ValueError(f"Invalid timezone string: {v}.") from e
+        raise ValueError(
+            "timezone must be a string representing a valid timezone "
+        )
 
     @field_validator("date", "start", "end", mode="before")
     @classmethod
@@ -344,6 +335,7 @@ class ScheduleRule(BaseModel):
         """Convert a datetime into a datetime.datetime, or None."""
         if v is None:
             return v
+        # FIXME get the default timezone from the model
         return _convert_to_datetime(v, default_tz=datetime.UTC)
 
     @field_validator("by_set_position", "by_year_day")
@@ -430,6 +422,15 @@ class ScheduleRule(BaseModel):
             if not (0 <= item <= 59):
                 raise ValueError("value must be in the range [0, 59]")
         return v
+
+    @field_serializer("timezone")
+    def serialize_timezone(self, timezone: ZoneInfo) -> str:
+        """Serialize timezone to string."""
+        # For ZoneInfo objects, get the key
+        if hasattr(timezone, "key"):
+            return timezone.key
+        # For other timezone objects, use the tzname
+        return str(timezone)
 
     @model_validator(mode="after")
     def check_combinations(self) -> ScheduleRule:
@@ -526,4 +527,4 @@ class ScheduleRruleset(RootModel[list[ScheduleRule]]):
 
     def serialize_to_rruleset_json(self) -> str:
         """Export the ScheduleRruleset to a JSON string."""
-        return self.model_dump_json()
+        return self.model_dump_json(exclude_none=False)
