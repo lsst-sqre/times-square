@@ -36,6 +36,7 @@ class FreqEnum(StrEnum):
     yearly = "yearly"
     monthly = "monthly"
     weekly = "weekly"
+    daily = "daily"
     hourly = "hourly"
     minutely = "minutely"
 
