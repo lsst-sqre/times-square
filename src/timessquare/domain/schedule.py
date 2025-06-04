@@ -7,7 +7,7 @@ from functools import lru_cache
 
 import dateutil.rrule
 
-from .schedulerule import ScheduleRruleset
+from .schedulerule import ScheduleDate, ScheduleRruleset, ScheduleRule
 
 __all__ = ["RunSchedule"]
 
@@ -81,14 +81,20 @@ def _deserialize_rruleset_str(
     schedule_rules = ScheduleRruleset.model_validate_json(rruleset_json)
     rset = dateutil.rrule.rruleset(cache=True)
     for rule in schedule_rules.root:
-        if rule.date is not None:
+        if isinstance(rule, ScheduleDate):
             if rule.exclude:
-                rset.exdate(rule.to_datetime())
+                rset.exdate(rule.date)
             else:
-                rset.rdate(rule.to_datetime())
-        elif rule.exclude:
-            rset.exrule(rule.to_rrule())
+                rset.rdate(rule.date)
+        elif isinstance(rule, ScheduleRule):
+            if rule.exclude:
+                rset.exrule(rule.to_rrule())
+            else:
+                rset.rrule(rule.to_rrule())
         else:
-            rset.rrule(rule.to_rrule())
+            raise TypeError(
+                f"Unexpected rule type: {type(rule)}. "
+                "Expected ScheduleDate or ScheduleRrule."
+            )
 
     return rset
