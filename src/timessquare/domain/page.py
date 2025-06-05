@@ -18,6 +18,7 @@ from timessquare.exceptions import PageJinjaError, PageNotebookFormatError
 from ..config import config
 from ..storage.noteburst import NoteburstJobModel
 from .pageparameters import PageParameters
+from .schedule import RunSchedule
 
 __all__ = [
     "PageExecutionInfo",
@@ -72,6 +73,16 @@ class PageModel:
 
     If not set, the default execution timeout is used.
     """
+
+    schedule_rruleset: str | None = None
+    """The serialized recurrence rule set for scheduling the page's execution.
+
+    Use the `execution_schedule` property to access the operable schedule for
+    this page.
+    """
+
+    schedule_enabled: bool = False
+    """A flag indicating whether the page's execution schedule is enabled."""
 
     uploader_username: str | None = None
     """Username of the uploader, if this page is uploaded without GitHub
@@ -204,6 +215,8 @@ class PageModel:
         timeout: int | None = None,
         authors: list[PersonModel] | None = None,
         github_commit: str | None = None,
+        schedule_rruleset: str | None = None,
+        schedule_enabled: bool = False,
     ) -> PageModel:
         """Create a page model from the GitHub repository."""
         name = uuid4().hex  # random slug for API uploads
@@ -230,6 +243,8 @@ class PageModel:
             repository_sidecar_extension=repository_sidecar_extension,
             repository_source_sha=repository_source_sha,
             repository_sidecar_sha=repository_sidecar_sha,
+            schedule_rruleset=schedule_rruleset,
+            schedule_enabled=schedule_enabled,
         )
         p.strip_ipynb()
         return p
@@ -393,6 +408,23 @@ class PageModel:
             extra_keys=["metadata.kernelspec"],
         )
         self.ipynb = self.write_ipynb(notebook)
+
+    @property
+    def schedule(self) -> RunSchedule | None:
+        """The schedule for the page, if it is scheduled to run
+        periodically.
+
+        Returns
+        -------
+        RunSchedule | None
+            The recurrence rule set for scheduling the page's runs, or
+            `None` if no schedule is set.
+        """
+        if self.schedule_rruleset is None:
+            return None
+        return RunSchedule(
+            self.schedule_rruleset, enabled=self.schedule_enabled
+        )
 
 
 @dataclass

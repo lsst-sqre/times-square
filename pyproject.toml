@@ -41,6 +41,7 @@ dependencies = [
     "sentry-sdk",
     "sse-starlette",
     "nbstripout>=0.8.1",
+    "python-dateutil>=2.9.0.post0",
 ]
 dynamic = ["version"]
 
@@ -69,6 +70,7 @@ dev = [
     "httpx-sse == 0.4.0",
     "holdup",
     "scriv",
+    "freezegun>=1.5.2",
 ]
 docs = [
     "documenteer[guide]>=1.0",
@@ -87,6 +89,7 @@ typing = [
     "mypy",
     "sqlalchemy[mypy]",
     "types-PyYAML",
+    "types-python-dateutil"
 ]
 
 [tool.setuptools_scm]
@@ -134,6 +137,11 @@ warn_redundant_casts = true
 warn_unreachable = true
 warn_unused_ignores = true
 
+[[tool.mypy.overrides]]
+# In order to use private members of the dateutil rruleset; a necessary evil
+module = "timessquare.domain.schedule"
+disable_error_code = ["attr-defined"]
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
@@ -179,6 +187,9 @@ extend-exclude = [
 ]
 "src/timessquare/sentry.py" = [
     "S311",  # We're not using random.random for cryptography
+]
+"src/timessquare/domain/schedule.py" = [
+    "SLF001",  # Necessary evil to use private members
 ]
 "tests/**" = [
     "C901",    # tests are allowed to be complex, sometimes that's convenient

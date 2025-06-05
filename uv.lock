@@ -629,6 +629,18 @@ wheels = [
 ]
 
 [[package]]
+name = "freezegun"
+version = "1.5.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c7/75/0455fa5029507a2150da59db4f165fbc458ff8bb1c4f4d7e8037a14ad421/freezegun-1.5.2.tar.gz", hash = "sha256:a54ae1d2f9c02dbf42e02c18a3ab95ab4295818b549a34dac55592d72a905181", size = 34855, upload-time = "2025-05-24T12:38:47.051Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/b2/68d4c9b6431121b6b6aa5e04a153cac41dcacc79600ed6e2e7c3382156f5/freezegun-1.5.2-py3-none-any.whl", hash = "sha256:5aaf3ba229cda57afab5bd311f0108d86b6fb119ae89d2cd9c43ec8c1733c85b", size = 18715, upload-time = "2025-05-24T12:38:45.274Z" },
+]
+
+[[package]]
 name = "gidgethub"
 version = "5.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2385,6 +2397,7 @@ dependencies = [
     { name = "nbstripout" },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
+    { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "safir", extra = ["arq", "db", "redis"] },
     { name = "sentry-sdk" },
@@ -2397,6 +2410,7 @@ dependencies = [
 dev = [
     { name = "asgi-lifespan" },
     { name = "coverage" },
+    { name = "freezegun" },
     { name = "holdup" },
     { name = "httpx" },
     { name = "httpx-sse" },
@@ -2424,6 +2438,7 @@ tox = [
 typing = [
     { name = "mypy" },
     { name = "sqlalchemy", extra = ["mypy"] },
+    { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
 ]
 
@@ -2444,6 +2459,7 @@ requires-dist = [
     { name = "nbstripout", specifier = ">=0.8.1" },
     { name = "pydantic", extras = ["email"] },
     { name = "pydantic-settings" },
+    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
     { name = "pyyaml" },
     { name = "safir", extras = ["arq", "db", "redis"] },
     { name = "sentry-sdk" },
@@ -2456,6 +2472,7 @@ requires-dist = [
 dev = [
     { name = "asgi-lifespan" },
     { name = "coverage", extras = ["toml"] },
+    { name = "freezegun", specifier = ">=1.5.2" },
     { name = "holdup" },
     { name = "httpx" },
     { name = "httpx-sse", specifier = "==0.4.0" },
@@ -2481,6 +2498,7 @@ tox = [
 typing = [
     { name = "mypy" },
     { name = "sqlalchemy", extras = ["mypy"] },
+    { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
 ]
 
@@ -2578,6 +2596,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/eb/79/72064e6a701c2183016abbbfedaba506d81e30e232a68c9f0d6f6fcd1574/traitlets-5.14.3.tar.gz", hash = "sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7", size = 161621, upload-time = "2024-04-19T11:11:49.746Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/00/c0/8f5d070730d7836adc9c9b6408dec68c6ced86b304a9b26a14df072a6e8c/traitlets-5.14.3-py3-none-any.whl", hash = "sha256:b74e89e397b1ed28cc831db7aea759ba6640cb3de13090ca145426688ff1ac4f", size = 85359, upload-time = "2024-04-19T11:11:46.763Z" },
+]
+
+[[package]]
+name = "types-python-dateutil"
+version = "2.9.0.20250516"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/88/d65ed807393285204ab6e2801e5d11fbbea811adcaa979a2ed3b67a5ef41/types_python_dateutil-2.9.0.20250516.tar.gz", hash = "sha256:13e80d6c9c47df23ad773d54b2826bd52dbbb41be87c3f339381c1700ad21ee5", size = 13943, upload-time = "2025-05-16T03:06:58.385Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c5/3f/b0e8db149896005adc938a1e7f371d6d7e9eca4053a29b108978ed15e0c2/types_python_dateutil-2.9.0.20250516-py3-none-any.whl", hash = "sha256:2b2b3f57f9c6a61fba26a9c0ffb9ea5681c9b83e69cd897c6b5f668d9c0cab93", size = 14356, upload-time = "2025-05-16T03:06:57.249Z" },
 ]
 
 [[package]]
