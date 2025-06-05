@@ -110,6 +110,11 @@ class RunSchedulerService:
             return None
 
         next_run = schedule.next(after=now)
+        self._logger.debug(
+            "Computed scheduled run for page",
+            page_name=page.name,
+            next_run=next_run.isoformat() if next_run else None,
+        )
 
         if next_run and (next_run - now) <= check_window:
             # Check if there's an existing scheduled run
