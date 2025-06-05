@@ -283,7 +283,7 @@ class ScheduleRule(ScheduleRuleBase):
     ] = None
 
     hour: Annotated[
-        list[int],
+        list[int] | None,
         Field(
             description=(
                 "The hours of the day (0-23) when the recurrence happens"

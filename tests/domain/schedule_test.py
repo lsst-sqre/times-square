@@ -142,3 +142,25 @@ def test_schedule_with_fixed_date() -> None:
     next_run = schedule.next(datetime(2025, 1, 1, 0, 0, tzinfo=UTC))
     # Note that the start is forced as UTC
     assert next_run == datetime(2025, 1, 7, 3, 0, tzinfo=UTC)
+
+
+@freeze_time("2020-06-05 19:45:00", tz_offset=0)
+def test_schedule_by_minute() -> None:
+    schedule_json = json.dumps(
+        [
+            {
+                "freq": "minutely",
+                "minute": list(range(0, 60, 5)),  # every 5 minutes
+                "hour": None,  # No specific hour
+            }
+        ]
+    )
+    schedule = RunSchedule(schedule_json, enabled=True)
+
+    assert schedule.enabled is True
+    assert isinstance(schedule.rules, ScheduleRules)
+    assert isinstance(schedule.rruleset, rruleset)
+
+    next_run = schedule.next(datetime(2025, 6, 5, 19, 45, tzinfo=UTC))
+    # Note that the start is forced as UTC
+    assert next_run == datetime(2025, 6, 5, 19, 50, tzinfo=UTC)
