@@ -101,9 +101,10 @@ class RunSchedulerService:
                 page_name=page.name,
                 schedule_rruleset=page.schedule_rruleset,
             )
+            raise
         if schedule is None:
             self._logger.warning(
-                "Page has no run schedule, despite being expoected to",
+                "Page has no run schedule, despite being expected to",
                 page_name=page.name,
             )
             return None
