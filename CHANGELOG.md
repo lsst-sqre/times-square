@@ -8,6 +8,42 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.22.0'></a>
+
+## 0.22.0 (2025-06-05)
+
+### Backwards-incompatible changes
+
+- This release requires a database schema migration to `747a655bacf6`.
+
+### New features
+
+- Pages can now be scheduled to run automatically. This is useful for preparing reports and creating dashboards on a regular basis. Scheduled page runs use the page's default parameter values, and replace any pre-cached results. Scheduling works great in combination with dynamic defaults for date parameters, which allows you to compute a notebook for a specific day, while still keeping historical results.
+
+  Schedules are set up in the notebook's YAML sidecar file with the `schedule` and `schedule_enabled` keys. An example of a schedule that runs every day at 08:00 UTC:
+
+  ```yaml
+  schedule:
+    - freq: "daily"
+      hour: 8
+      minute: 0
+  schedule_enabled: true
+  ```
+
+  A more sophisticated schedule that runs on the last day of every month at 23:59 UTC:
+
+  ```yaml
+  schedule:
+    - freq: "monthly"
+      day: -1
+      hour: 23
+      minute: 59
+  schedule_enabled: true
+  ```
+
+  More scheduling options are available that can accommodate almost any imaginable cadence.
+  See the documentation for details.
+
 <a id='changelog-0.21.1'></a>
 
 ## 0.21.1 (2025-05-30)
