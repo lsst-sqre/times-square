@@ -7,7 +7,12 @@ from functools import lru_cache
 
 import dateutil.rrule
 
-from .schedulerule import ScheduleDate, ScheduleRruleset, ScheduleRule
+from .schedulerule import (
+    ScheduleDate,
+    ScheduleFromDate,
+    ScheduleRule,
+    ScheduleRules,
+)
 
 __all__ = ["RunSchedule"]
 
@@ -17,28 +22,37 @@ class RunSchedule:
 
     Parameters
     ----------
-    rruleset_json
-        A JSON-serialized string representing the rruleset.
+    schedule_json
+        A JSON-serialized string representing the schedule rules.
     enabled
         Whether the schedule is enabled.
     """
 
-    def __init__(self, rruleset_json: str, *, enabled: bool) -> None:
-        self._rruleset_json = rruleset_json
+    def __init__(self, schedule_json: str, *, enabled: bool) -> None:
+        self._schedule_json = schedule_json
         self.enabled = enabled
 
     @property
-    def schedule_rruleset_json(self) -> str:
+    def schedule_json(self) -> str:
         """The schedule rruleset as a JSON string."""
-        return self._rruleset_json
+        return self._schedule_json
+
+    @property
+    def rules(self) -> ScheduleRules:
+        """The schedule rruleset as a ScheduleRruleset object.
+
+        This property is primarily for testing.
+        """
+        return ScheduleRules.model_validate_json(self._schedule_json)
 
     @property
     def rruleset(self) -> dateutil.rrule.rruleset:
         """The schedule rruleset as a dateutil rruleset object."""
-        return _deserialize_rruleset_str(self._rruleset_json)
+        return _deserialize_schedule_json(self._schedule_json)
 
     def next(
-        self, after: datetime.datetime | None
+        self,
+        after: datetime.datetime | None,
     ) -> datetime.datetime | None:
         """Get the next scheduled time after a given datetime.
 
@@ -74,11 +88,11 @@ class RunSchedule:
 # it isn't part of the next property for RunSchedule because we want to
 # avoid a memory leak when using lru_cache in conjunction with methods.
 @lru_cache
-def _deserialize_rruleset_str(
+def _deserialize_schedule_json(
     rruleset_json: str,
 ) -> dateutil.rrule.rruleset:
     """Deserialize a JSON string into a list of ScheduleRule objects."""
-    schedule_rules = ScheduleRruleset.model_validate_json(rruleset_json)
+    schedule_rules = ScheduleRules.model_validate_json(rruleset_json)
     rset = dateutil.rrule.rruleset(cache=True)
     for rule in schedule_rules.root:
         if isinstance(rule, ScheduleDate):
@@ -86,7 +100,7 @@ def _deserialize_rruleset_str(
                 rset.exdate(rule.date)
             else:
                 rset.rdate(rule.date)
-        elif isinstance(rule, ScheduleRule):
+        elif isinstance(rule, (ScheduleRule, ScheduleFromDate)):
             if rule.exclude:
                 rset.exrule(rule.to_rrule())
             else:
@@ -94,7 +108,7 @@ def _deserialize_rruleset_str(
         else:
             raise TypeError(
                 f"Unexpected rule type: {type(rule)}. "
-                "Expected ScheduleDate or ScheduleRrule."
+                "Expected ScheduleDate, ScheduleRule, or ScheduleFromDate."
             )
 
     return rset

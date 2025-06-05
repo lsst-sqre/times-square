@@ -5,19 +5,19 @@
 
 from __future__ import annotations
 
-import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Any
-from zoneinfo import ZoneInfo
+from typing import Annotated, Any, Self
 
 import dateutil.rrule
 from pydantic import (
+    AfterValidator,
     BaseModel,
+    BeforeValidator,
     Discriminator,
     Field,
     RootModel,
     Tag,
-    field_serializer,
     field_validator,
     model_validator,
 )
@@ -26,9 +26,10 @@ __all__ = [
     "ByWeekday",
     "FreqEnum",
     "ScheduleDate",
-    "ScheduleRruleset",
+    "ScheduleFromDate",
     "ScheduleRule",
     "ScheduleRuleBase",
+    "ScheduleRules",
     "WeekdayEnum",
 ]
 
@@ -110,44 +111,54 @@ class ByWeekday(BaseModel):
         return weekday
 
 
-def _convert_to_datetime(
-    v: Any, default_tz: datetime.tzinfo = datetime.UTC
-) -> datetime.datetime | None:
-    """Convert a datetime value to a datetime.datetime, or None."""
-    if v is None:
-        return v
-    if isinstance(v, datetime.datetime):
-        # If no timezone info, assume default timezone
-        if v.tzinfo is None:
-            return v.replace(tzinfo=default_tz)
-        return v
-    if isinstance(v, str):
-        # Try to parse ISO format
-        try:
-            dt = datetime.datetime.fromisoformat(v)
-            # If no timezone info in parsed datetime, add default
-            if dt.tzinfo is None:
-                return dt.replace(tzinfo=default_tz)
-        except ValueError:
-            return None
+def ensure_list(value: Any) -> Any:
+    """Ensure that the value is a list (before validator)."""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return [value]
+    else:
+        return value
+
+
+def ensure_byweekday_object(value: Any) -> Any:
+    """Convert strings for days of the week to `ByWeekday` objects.
+    (before validator).
+
+    This is used to validate the `weekday` field in the `ScheduleRule` model.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        value = [value]
+
+    values = []
+    for item in value:
+        if isinstance(item, dict):
+            values.append(item)
+        elif isinstance(item, str):
+            # If an integer is provided, create a ByWeekday with that index
+            values.append({"day": item})
         else:
-            return dt
-    return None
+            raise ValueError(  # noqa: TRY004
+                "value must be a list of ByWeekday objects or strings "
+                "representing the day of the week"
+            )
+    return values
+
+
+def ensure_timezone_aware(value: datetime) -> datetime:
+    """Ensure that the datetime is timezone aware, defaulting to UTC.
+
+    Use as an after-validator.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
 
 
 class ScheduleRuleBase(BaseModel):
     """Base class for scheduling rules."""
-
-    timezone: Annotated[
-        ZoneInfo,
-        Field(
-            description=(
-                "Default timezone for any datetime fields that don't contain "
-                "explicit datetimes"
-            ),
-            default_factory=lambda: ZoneInfo("UTC"),
-        ),
-    ]
 
     exclude: Annotated[
         bool,
@@ -159,51 +170,18 @@ class ScheduleRuleBase(BaseModel):
         ),
     ]
 
-    @field_validator("timezone", mode="before")
-    @classmethod
-    def preprocess_timezone(cls, v: Any) -> ZoneInfo:
-        """Convert a timezone into a ZoneInfo instance."""
-        if v is None:
-            raise ValueError("timezone cannot be None")
-        if isinstance(v, ZoneInfo):
-            return v
-        if isinstance(v, str):
-            try:
-                return ZoneInfo(v)
-            except Exception as e:
-                raise ValueError(f"Invalid timezone string: {v}.") from e
-        # Handle other timezone types like datetime.timezone.utc
-        if hasattr(v, "tzname"):
-            # Convert UTC timezone to ZoneInfo
-            if v == datetime.UTC or (
-                hasattr(v, "utcoffset")
-                and v.utcoffset(None) == datetime.timedelta(0)
-            ):
-                return ZoneInfo("UTC")
-        raise ValueError(
-            "timezone must be a string, ZoneInfo, or timezone object"
-        )
-
-    @field_serializer("timezone")
-    def serialize_timezone(self, timezone: ZoneInfo) -> str:
-        """Serialize timezone to string."""
-        # For ZoneInfo objects, get the key
-        if hasattr(timezone, "key"):
-            return timezone.key
-        # For other timezone objects, use the tzname
-        return str(timezone)
-
 
 class ScheduleDate(ScheduleRuleBase):
     """A scheduling rule for a fixed date."""
 
     date: Annotated[
-        datetime.datetime,
+        datetime,
         Field(
             description=(
                 "A fixed datetime to include (or exclude) from the schedule."
             ),
         ),
+        AfterValidator(ensure_timezone_aware),
     ]
 
 
@@ -224,6 +202,235 @@ class ScheduleRule(ScheduleRuleBase):
         Field(description="Frequency of recurrence"),
     ]
 
+    week_start: Annotated[
+        WeekdayEnum,
+        Field(
+            default=WeekdayEnum.monday,
+            description="The week start day for weekly frequencies.",
+        ),
+    ]
+
+    set_position: Annotated[
+        list[int] | None,
+        Field(
+            description=(
+                "Each integer specifies the occurence number within the "
+                "recurrence frequency (freq). For example, with a monthly "
+                "frequency, and a by_weekday of Friday, a value of ``1`` "
+                "specifies the first Friday of the month. Likewise, ``-1`` "
+                "specifies the last Friday of the month"
+            ),
+        ),
+        BeforeValidator(ensure_list),
+    ] = None
+
+    month: Annotated[
+        list[int] | None,
+        Field(
+            description=(
+                "The months (1-12) when the recurrence happens. Use negative "
+                "integers to specify an index from the end of the year"
+            ),
+        ),
+        BeforeValidator(ensure_list),
+    ] = None
+
+    day_of_month: Annotated[
+        list[int] | None,
+        Field(
+            description=(
+                "The days of the month (1-31) when the recurrence happens. "
+                "Use negative integers to specify an index from the end of "
+                "the month"
+            ),
+        ),
+        BeforeValidator(ensure_list),
+    ] = None
+
+    day_of_year: Annotated[
+        list[int] | None,
+        Field(
+            description=(
+                "The days of the year (1-366; allowing for leap years) when "
+                "the recurrence happens. Use negative integers to specify a "
+                "day relative to the end of the year"
+            ),
+        ),
+        BeforeValidator(ensure_list),
+    ] = None
+
+    week: Annotated[
+        list[int] | None,
+        Field(
+            default=None,
+            description=(
+                "The weeks of the year (1-52) when the recurrence happens. "
+                "Use negative integers to specify a week relative to the end "
+                "of the year. The definition of week matches ISO 8601: the "
+                "first week of the year is the one with at least 4 days"
+            ),
+        ),
+        BeforeValidator(ensure_list),
+    ]
+
+    weekday: Annotated[
+        list[ByWeekday] | None,
+        Field(
+            description="The days of the week when the recurrence happens",
+        ),
+        BeforeValidator(ensure_list),
+        BeforeValidator(ensure_byweekday_object),
+    ] = None
+
+    hour: Annotated[
+        list[int],
+        Field(
+            description=(
+                "The hours of the day (0-23) when the recurrence happens"
+            ),
+            default_factory=lambda: [0],
+        ),
+        BeforeValidator(ensure_list),
+    ]
+
+    minute: Annotated[
+        list[int],
+        Field(
+            description=(
+                "The minutes of the hour (0-59) when the recurrence happens"
+            ),
+            default_factory=lambda: [0],
+        ),
+        BeforeValidator(ensure_list),
+    ]
+
+    second: Annotated[
+        int,
+        Field(
+            description=(
+                "The second of the minute (0-59) when the recurrence happens."
+            ),
+            ge=0,
+            le=59,
+        ),
+    ] = 0
+
+    @field_validator("day_of_year", mode="after")
+    @classmethod
+    def check_year_day_index(cls, v: list[int] | None) -> list[int] | None:
+        """Validate year day indices."""
+        if v is None:
+            return v
+        for item in v:
+            if not ((1 <= item <= 366) or (-366 <= item <= -1)):
+                raise ValueError(
+                    "value must be in the range [1, 366] or [-366, -1]"
+                )
+        return v
+
+    @field_validator("month", mode="after")
+    @classmethod
+    def check_month_index(cls, v: list[int] | None) -> list[int] | None:
+        """Validate month indices."""
+        if v is None:
+            return v
+        for item in v:
+            if not ((1 <= item <= 12) or (-12 <= item <= -1)):
+                raise ValueError(
+                    "value must be in the range [1, 12] or [-12, -1]"
+                )
+        return v
+
+    @field_validator("day_of_month", mode="after")
+    @classmethod
+    def check_month_day(cls, v: list[int] | None) -> list[int] | None:
+        """Validate month day indices."""
+        if v is None:
+            return v
+        for item in v:
+            if not ((1 <= item <= 31) or (-31 <= item <= -1)):
+                raise ValueError(
+                    "value must be in the range [1, 31] or [-31, -1]"
+                )
+        return v
+
+    @field_validator("week", mode="after")
+    @classmethod
+    def check_week(cls, v: list[int] | None) -> list[int] | None:
+        """Validate week indices."""
+        if v is None:
+            return v
+        for item in v:
+            if not ((1 <= item <= 52) or (-52 <= item <= -1)):
+                raise ValueError(
+                    "value must be in the range [1, 52] or [-52, -1]"
+                )
+        return v
+
+    @field_validator("hour", mode="after")
+    @classmethod
+    def check_hour(cls, v: list[int] | None) -> list[int] | None:
+        """Validate hour values."""
+        if v is None:
+            return v
+        for item in v:
+            if not (0 <= item <= 23):
+                raise ValueError("value must be in the range [0, 23]")
+        return v
+
+    @field_validator("minute", mode="after")
+    @classmethod
+    def check_minute(cls, v: list[int] | None) -> list[int] | None:
+        """Validate minute values."""
+        if v is None:
+            return v
+        for item in v:
+            if not (0 <= item <= 59):
+                raise ValueError("value must be in the range [0, 59]")
+        return v
+
+    def to_rrule(self) -> dateutil.rrule.rrule:
+        """Export to a `dateutil.rrule.rrule`."""
+        return dateutil.rrule.rrule(
+            freq=self.freq.to_rrule_freq(),
+            dtstart=datetime.now(tz=UTC),  # Default start time
+            wkst=(
+                self.week_start.to_rrule_weekday() if self.week_start else None
+            ),
+            bysetpos=self.set_position,
+            bymonth=self.month,
+            bymonthday=self.day_of_month,
+            byyearday=self.day_of_year,
+            byweekno=self.week,
+            byweekday=(
+                [w.to_rrule_weekday() for w in self.weekday]
+                if self.weekday
+                else None
+            ),
+            byhour=self.hour,
+            byminute=self.minute,
+            bysecond=self.second,
+        )
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class ScheduleFromDate(ScheduleRuleBase):
+    """A schedule rule that repeats from a specific date."""
+
+    start: Annotated[
+        datetime,
+        Field(
+            description=("The date when the repeating rule starts."),
+        ),
+        AfterValidator(ensure_timezone_aware),
+    ]
+
+    freq: Annotated[
+        FreqEnum,
+        Field(description="Frequency of recurrence"),
+    ]
+
     interval: Annotated[
         int,
         Field(
@@ -233,22 +440,12 @@ class ScheduleRule(ScheduleRuleBase):
                 "``freq`` is monthly, an interval of ``2`` means that the "
                 "rule triggers every two months."
             ),
-        ),
-    ]
-
-    start: Annotated[
-        datetime.datetime,
-        Field(
-            description=(
-                "The date when the repeating rule starts. If not set, the "
-                "rule is assumed to start now"
-            ),
-            default_factory=lambda: datetime.datetime.now(datetime.UTC),
+            ge=1,
         ),
     ]
 
     end: Annotated[
-        datetime.datetime | None,
+        datetime | None,
         Field(
             default=None,
             description=(
@@ -257,6 +454,7 @@ class ScheduleRule(ScheduleRuleBase):
                 "set, the rule can recur infinitely"
             ),
         ),
+        AfterValidator(ensure_timezone_aware),
     ]
 
     count: Annotated[
@@ -270,210 +468,8 @@ class ScheduleRule(ScheduleRuleBase):
         ),
     ]
 
-    week_start: Annotated[
-        WeekdayEnum | None,
-        Field(
-            default=None,
-            description="The week start day for weekly frequencies",
-        ),
-    ]
-
-    by_set_position: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "Each integer specifies the occurence number within the "
-                "recurrence frequency (freq). For example, with a monthly "
-                "frequency, and a by_weekday of Friday, a value of ``1`` "
-                "specifies the first Friday of the month. Likewise, ``-1`` "
-                "specifies the last Friday of the month"
-            ),
-        ),
-    ]
-
-    by_month: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The months (1-12) when the recurrence happens. Use negative "
-                "integers to specify an index from the end of the year"
-            ),
-        ),
-    ]
-
-    by_month_day: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The days of the month (1-31) when the recurrence happens. "
-                "Use negative integers to specify an index from the end of "
-                "the month"
-            ),
-        ),
-    ]
-
-    by_year_day: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The days of the year (1-366; allowing for leap years) when "
-                "the recurrence happens. Use negative integers to specify a "
-                "day relative to the end of the year"
-            ),
-        ),
-    ]
-
-    by_week: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The weeks of the year (1-52) when the recurrence happens. "
-                "Use negative integers to specify a week relative to the end "
-                "of the year. The definition of week matches ISO 8601: the "
-                "first week of the year is the one with at least 4 days"
-            ),
-        ),
-    ]
-
-    by_weekday: Annotated[
-        list[ByWeekday] | None,
-        Field(
-            default=None,
-            description="The days of the week when the recurrence happens",
-        ),
-    ]
-
-    by_hour: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The hours of the day (0-23) when the recurrence happens"
-            ),
-        ),
-    ]
-
-    by_minute: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The minutes of the hour (0-59) when the recurrence happens"
-            ),
-        ),
-    ]
-
-    by_second: Annotated[
-        list[int] | None,
-        Field(
-            default=None,
-            description=(
-                "The seconds of the minute (0-59) when the recurrence happens"
-            ),
-        ),
-    ]
-
-    @field_validator("start", "end", mode="before")
-    @classmethod
-    def preprocess_optional_datetime(cls, v: Any) -> datetime.datetime | None:
-        """Convert a datetime into a datetime.datetime, or None."""
-        if v is None:
-            return v
-        # TODO(jonathansick): get the default timezone from the model
-        return _convert_to_datetime(v, default_tz=datetime.UTC)
-
-    @field_validator("by_set_position", "by_year_day")
-    @classmethod
-    def check_year_day_index(cls, v: list[int] | None) -> list[int] | None:
-        """Validate year day indices."""
-        if v is None:
-            return v
-        for item in v:
-            if not ((1 <= item <= 366) or (-366 <= item <= -1)):
-                raise ValueError(
-                    "value must be in the range [1, 366] or [-366, -1]"
-                )
-        return v
-
-    @field_validator("by_month")
-    @classmethod
-    def check_month_index(cls, v: list[int] | None) -> list[int] | None:
-        """Validate month indices."""
-        if v is None:
-            return v
-        for item in v:
-            if not ((1 <= item <= 12) or (-12 <= item <= -1)):
-                raise ValueError(
-                    "value must be in the range [1, 12] or [-12, -1]"
-                )
-        return v
-
-    @field_validator("by_month_day")
-    @classmethod
-    def check_month_day(cls, v: list[int] | None) -> list[int] | None:
-        """Validate month day indices."""
-        if v is None:
-            return v
-        for item in v:
-            if not ((1 <= item <= 31) or (-31 <= item <= -1)):
-                raise ValueError(
-                    "value must be in the range [1, 31] or [-31, -1]"
-                )
-        return v
-
-    @field_validator("by_week")
-    @classmethod
-    def check_week(cls, v: list[int] | None) -> list[int] | None:
-        """Validate week indices."""
-        if v is None:
-            return v
-        for item in v:
-            if not ((1 <= item <= 52) or (-52 <= item <= -1)):
-                raise ValueError(
-                    "value must be in the range [1, 52] or [-52, -1]"
-                )
-        return v
-
-    @field_validator("by_hour")
-    @classmethod
-    def check_hour(cls, v: list[int] | None) -> list[int] | None:
-        """Validate hour values."""
-        if v is None:
-            return v
-        for item in v:
-            if not (0 <= item <= 23):
-                raise ValueError("value must be in the range [0, 23]")
-        return v
-
-    @field_validator("by_minute")
-    @classmethod
-    def check_minute(cls, v: list[int] | None) -> list[int] | None:
-        """Validate minute values."""
-        if v is None:
-            return v
-        for item in v:
-            if not (0 <= item <= 59):
-                raise ValueError("value must be in the range [0, 59]")
-        return v
-
-    @field_validator("by_second")
-    @classmethod
-    def check_second(cls, v: list[int] | None) -> list[int] | None:
-        """Validate second values."""
-        if v is None:
-            return v
-        for item in v:
-            if not (0 <= item <= 59):
-                raise ValueError("value must be in the range [0, 59]")
-        return v
-
     @model_validator(mode="after")
-    def check_combinations(self) -> ScheduleRule:
+    def check_combinations(self) -> Self:
         """Validate that fields are used together correctly.
 
         Notes
@@ -490,25 +486,11 @@ class ScheduleRule(ScheduleRuleBase):
         """Export to a `dateutil.rrule.rrule`."""
         return dateutil.rrule.rrule(
             freq=self.freq.to_rrule_freq(),
-            dtstart=self.start if self.start else None,
+            dtstart=self.start,
             interval=self.interval,
-            wkst=(
-                self.week_start.to_rrule_weekday() if self.week_start else None
-            ),
             until=self.end if self.end else None,
-            bysetpos=self.by_set_position,
-            bymonth=self.by_month,
-            bymonthday=self.by_month_day,
-            byyearday=self.by_year_day,
-            byweekno=self.by_week,
-            byweekday=(
-                [w.to_rrule_weekday() for w in self.by_weekday]
-                if self.by_weekday
-                else None
-            ),
-            byhour=self.by_hour,
-            byminute=self.by_minute,
-            bysecond=self.by_second,
+            count=self.count,
+            bysecond=0,
         )
 
     model_config = {"arbitrary_types_allowed": True}
@@ -517,30 +499,41 @@ class ScheduleRule(ScheduleRuleBase):
 def schedule_discriminator(v: Any) -> str:
     """Discriminator function for schedule rules."""
     if isinstance(v, dict):
-        return "date" if "date" in v else "rule"
+        if "date" in v:
+            return "date"
+        elif "start" in v:
+            return "from_date"
+        else:
+            return "rule"
+
     # For already instantiated objects
     if hasattr(v, "date"):
         return "date"
-    return "rule"
+    elif hasattr(v, "start"):
+        return "from_date"
+    else:
+        # Default case for ScheduleRule
+        return "rule"
 
 
 # Create the discriminated union type
 ScheduleItem = Annotated[
     (
         Annotated[ScheduleDate, Tag("date")]
+        | Annotated[ScheduleFromDate, Tag("from_date")]
         | Annotated[ScheduleRule, Tag("rule")]
     ),
     Discriminator(schedule_discriminator),
 ]
 
 
-class ScheduleRruleset(RootModel[list[ScheduleItem]]):
+class ScheduleRules(RootModel[list[ScheduleItem]]):
     """A Pydantic model for a list of schedule rules.
 
     This is used to validate and serialize/deserialize the rruleset
     JSON string.
     """
 
-    def serialize_to_rruleset_json(self) -> str:
+    def serialize_to_json(self) -> str:
         """Export the ScheduleRruleset to a JSON string."""
         return self.model_dump_json(exclude_none=False)

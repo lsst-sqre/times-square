@@ -11,7 +11,7 @@ from safir.pydantic import HumanTimedelta
 from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.domain.schedule import RunSchedule
-from timessquare.domain.schedulerule import ScheduleRruleset
+from timessquare.domain.schedulerule import ScheduleRules
 
 from ._parameterschema import ParameterSchemaModel
 from ._person import SidecarPersonModel
@@ -81,7 +81,7 @@ class NotebookSidecarFile(BaseModel):
     ]
 
     schedule: Annotated[
-        ScheduleRruleset | None,
+        ScheduleRules | None,
         Field(
             title="Schedule rules for the notebook",
             description=(
@@ -128,7 +128,7 @@ class NotebookSidecarFile(BaseModel):
         if self.schedule is None or len(self.schedule.root) == 0:
             return None
 
-        rruleset_json = self.schedule.serialize_to_rruleset_json()
+        rruleset_json = self.schedule.serialize_to_json()
 
         return RunSchedule(
             rruleset_json,
