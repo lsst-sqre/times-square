@@ -11,9 +11,9 @@ from timessquare.domain.pageparameters import (
     BooleanParameterSchema,
     DateParameterSchema,
     DatetimeParameterSchema,
+    DayObsParameterSchema,
     IntegerParameterSchema,
     NumberParameterSchema,
-    ObsDateParameterSchema,
     PageParameters,
     StringParameterSchema,
     create_and_validate_parameter_schema,
@@ -594,8 +594,8 @@ def test_datetime_parameter_schema() -> None:
     ) == ("2025-02-21T12:00:00+00:00")
 
 
-def test_obsdate_parameter_schema() -> None:
-    """Test basic ObsDateParameterSchema functionality."""
+def test_dayobs_parameter_schema() -> None:
+    """Test basic DayObsParameterSchema functionality."""
     schema = create_and_validate_parameter_schema(
         "myvar",
         {
@@ -604,7 +604,7 @@ def test_obsdate_parameter_schema() -> None:
             "default": "20250101",
         },
     )
-    assert isinstance(schema, ObsDateParameterSchema)
+    assert isinstance(schema, DayObsParameterSchema)
     assert schema.default == "20250101"
 
     # Test casting various input types
@@ -656,10 +656,10 @@ def test_obsdate_parameter_schema() -> None:
         schema.cast_value([])  # Invalid type
 
 
-def test_obsdate_parameter_dynamic_default(
+def test_dayobs_parameter_dynamic_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test ObsDateParameterSchema with X-Dynamic-Default."""
+    """Test DayObsParameterSchema with X-Dynamic-Default."""
     # Mock datetime.now to return a fixed datetime in UTC-12 timezone
     # January 1, 2025 at 14:00 UTC-12
     utc_minus_12 = timezone(-timedelta(hours=12))
@@ -674,7 +674,7 @@ def test_obsdate_parameter_dynamic_default(
 
     with monkeypatch.context() as m:
         m.setattr(
-            "timessquare.domain.pageparameters._obsdateparameter.datetime",
+            "timessquare.domain.pageparameters._dayobsparameter.datetime",
             MockDatetime,
         )
 
@@ -687,7 +687,7 @@ def test_obsdate_parameter_dynamic_default(
                 "X-Dynamic-Default": "today",
             },
         )
-        assert isinstance(schema_today, ObsDateParameterSchema)
+        assert isinstance(schema_today, DayObsParameterSchema)
         assert schema_today.default == "20250101"
 
         schema_yesterday = create_and_validate_parameter_schema(
@@ -732,7 +732,7 @@ def test_obsdate_parameter_dynamic_default(
         assert schema_minus_3d.default == "20241229"
 
 
-def test_obsdate_parameter_dynamic_default_validation() -> None:
+def test_dayobs_parameter_dynamic_default_validation() -> None:
     """Test validation of X-Dynamic-Default values for ObsDateParameter."""
     # Valid patterns should work
     valid_patterns = [
@@ -764,7 +764,7 @@ def test_obsdate_parameter_dynamic_default_validation() -> None:
                 "X-Dynamic-Default": pattern,
             },
         )
-        assert isinstance(schema, ObsDateParameterSchema)
+        assert isinstance(schema, DayObsParameterSchema)
 
     # Invalid patterns should raise validation errors
     invalid_patterns = [
@@ -787,8 +787,8 @@ def test_obsdate_parameter_dynamic_default_validation() -> None:
             )
 
 
-def test_obsdate_parameter_timezone_handling() -> None:
-    """Test ObsDateParameterSchema timezone conversions."""
+def test_dayobs_parameter_timezone_handling() -> None:
+    """Test DayObsParameterSchema timezone conversions."""
     schema = create_and_validate_parameter_schema(
         "myvar",
         {
@@ -817,8 +817,8 @@ def test_obsdate_parameter_timezone_handling() -> None:
     assert schema.cast_value(jst_dt) == "20250214"
 
 
-def test_obsdate_parameter_edge_cases() -> None:
-    """Test edge cases for ObsDateParameterSchema."""
+def test_dayobs_parameter_edge_cases() -> None:
+    """Test edge cases for DayObsParameterSchema."""
     schema = create_and_validate_parameter_schema(
         "myvar",
         {
@@ -852,7 +852,7 @@ def test_obsdate_parameter_edge_cases() -> None:
         schema.cast_value("20250132")  # Day 32
 
 
-def test_obsdate_parameter_strict_schema() -> None:
+def test_dayobs_parameter_strict_schema() -> None:
     """Test that strict_schema removes custom format and adds regex pattern."""
     schema = create_and_validate_parameter_schema(
         "myvar",

@@ -9,15 +9,16 @@ from timessquare.exceptions import PageParameterValueCastingError
 from ._datedynamicdefault import DateDynamicDefault
 from ._schemabase import PageParameterSchema
 
-__all__ = ["ObsDateParameterSchema"]
+__all__ = ["DayObsParameterSchema"]
 
 
-class ObsDateParameterSchema(PageParameterSchema):
+class DayObsParameterSchema(PageParameterSchema):
     """A parameter schema for the custom Rubin DayObs format.
 
     DayObs is defined as the date in the UTC-12 timezone. It's string
-    representationformatted is YYYYMMDD. Times Square treats DayObs parameters
-    as strings, although some applicatinos may use them as integers.
+    representation formatted is YYYYMMDD. Times Square parameters validate
+    dayobs parameters as strings, although some applications may use them as
+    integers.
     """
 
     tz = timezone(-timedelta(hours=12))
