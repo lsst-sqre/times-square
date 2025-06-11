@@ -46,13 +46,14 @@ class ParameterSchemaModel(BaseModel):
     ]
 
     format: Annotated[
-        Literal["date", "date-time", "dayobs"] | None,
+        Literal["date", "date-time", "dayobs", "dayobs-date"] | None,
         Field(
             title="The JSON schema format",
             description=(
                 "For example, the format of a date or time. Only used for "
                 "the string type. Times Square also supports extensions to "
-                "format: 'dayobs' for Rubin DayObs dates."
+                "format: 'dayobs' for Rubin DayObs dates and 'dayobs-date' "
+                "for Rubin DayObs dates with dashes."
             ),
         ),
     ] = None
@@ -120,6 +121,11 @@ class ParameterSchemaModel(BaseModel):
         if "format" in json_schema and json_schema["format"] == "dayobs":
             del json_schema["format"]
             json_schema["X-TS-Format"] = "dayobs"
+        elif (
+            "format" in json_schema and json_schema["format"] == "dayobs-date"
+        ):
+            del json_schema["format"]
+            json_schema["X-TS-Format"] = "dayobs-date"
         return create_and_validate_parameter_schema(
             name=name, json_schema=json_schema
         )
@@ -133,10 +139,11 @@ class ParameterSchemaModel(BaseModel):
             if self.type != JsonSchemaTypeEnum.string or self.format not in {
                 "date",
                 "dayobs",
+                "dayobs-date",
             }:
                 raise ValueError(
                     "dynamic_default can only be set when type is 'string' "
-                    "and format is 'date' or 'dayobs'. "
+                    "and format is 'date', 'dayobs', or 'dayobs-date'. "
                 )
         return self
 
@@ -148,7 +155,7 @@ class ParameterSchemaModel(BaseModel):
         if (
             self.dynamic_default is not None
             and self.type == JsonSchemaTypeEnum.string
-            and self.format in {"date", "dayobs"}
+            and self.format in {"date", "dayobs", "dayobs-date"}
         ):
             if not DYNAMIC_DATE_PATTERN.match(self.dynamic_default):
                 raise ValueError(

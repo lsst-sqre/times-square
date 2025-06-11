@@ -22,6 +22,7 @@ from timessquare.exceptions import (
 from ._booleanparameter import BooleanParameterSchema
 from ._dateparameter import DateParameterSchema
 from ._datetimeparameter import DatetimeParameterSchema
+from ._dayobsdateparameter import DayObsDateParameterSchema
 from ._dayobsparameter import DayObsParameterSchema
 from ._integerparameter import IntegerParameterSchema
 from ._numberparameter import NumberParameterSchema
@@ -61,6 +62,8 @@ def create_page_parameter_schema(
         return BooleanParameterSchema(validator=validator)
     elif schema_type == "string" and schema_format == "dayobs":
         return DayObsParameterSchema(validator=validator)
+    elif schema_type == "string" and schema_format == "dayobs-date":
+        return DayObsDateParameterSchema(validator=validator)
     elif schema_type == "string" and schema_format == "date":
         return DateParameterSchema(validator=validator)
     elif schema_type == "string" and schema_format == "date-time":
