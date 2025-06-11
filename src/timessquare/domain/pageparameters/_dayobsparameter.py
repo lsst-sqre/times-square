@@ -17,7 +17,7 @@ class DayObsParameterSchema(PageParameterSchema):
 
     DayObs is defined as the date in the UTC-12 timezone. It's string
     representation formatted is YYYYMMDD. Times Square parameters validate
-    dayobs parameters as strings, although some applications may use them as
+    dayobs parameters as int types in notebook code.
     integers.
     """
 
@@ -57,7 +57,7 @@ class DayObsParameterSchema(PageParameterSchema):
         else:
             return False
 
-    def cast_value(self, v: Any) -> str:
+    def cast_value(self, v: Any) -> int:
         """Cast a value to its Python type."""
         try:
             # Parse a YYYYMMDD string, integer, date object, or datetime object
@@ -75,7 +75,7 @@ class DayObsParameterSchema(PageParameterSchema):
         except Exception as e:
             raise PageParameterValueCastingError.for_value(v, "date") from e
 
-    def _cast_string(self, v: str) -> str:
+    def _cast_string(self, v: str) -> int:
         """Cast a string value to the DayObs format."""
         match = re.match(r"^\d{8}$", v)
         if not match:
@@ -86,15 +86,15 @@ class DayObsParameterSchema(PageParameterSchema):
         day = int(v[6:8])
         return self._cast_date(date(year, month, day))
 
-    def _cast_integer(self, v: int) -> str:
+    def _cast_integer(self, v: int) -> int:
         """Cast an integer value to the DayObs format."""
         return self._cast_string(str(v))
 
-    def _cast_date(self, v: date) -> str:
+    def _cast_date(self, v: date) -> int:
         """Cast a date object to the DayObs format."""
-        return v.strftime("%Y%m%d")
+        return int(v.strftime("%Y%m%d"))
 
-    def _cast_datetime(self, v: datetime) -> str:
+    def _cast_datetime(self, v: datetime) -> int:
         """Cast a datetime object to the DayObs format."""
         if v.tzinfo is not None:
             # Convert to UTC-12 timezone
@@ -105,14 +105,14 @@ class DayObsParameterSchema(PageParameterSchema):
         return self._cast_date(v.date())
 
     def create_python_assignment(self, name: str, value: Any) -> str:
-        date_value = self.cast_value(value)
-        return f"{name} = {date_value!r}"
+        int_value = self.cast_value(value)
+        return f"{name} = {int_value}"
 
     def create_json_value(self, value: Any) -> str:
-        return self.cast_value(value)
+        return str(self.cast_value(value))
 
     def create_qs_value(self, value: Any) -> str:
-        return self.cast_value(value)
+        return str(self.cast_value(value))
 
     @property
     def default(self) -> str:
@@ -120,7 +120,9 @@ class DayObsParameterSchema(PageParameterSchema):
             dynamic_default = DateDynamicDefault(
                 self.schema["X-Dynamic-Default"]
             )
-            return self.cast_value(
-                dynamic_default(datetime.now(tz=self.tz).date())
+            return str(
+                self.cast_value(
+                    dynamic_default(datetime.now(tz=self.tz).date())
+                )
             )
-        return self.cast_value(self.schema["default"])
+        return str(self.cast_value(self.schema["default"]))

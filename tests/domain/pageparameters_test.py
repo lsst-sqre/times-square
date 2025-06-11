@@ -610,33 +610,33 @@ def test_dayobs_parameter_schema() -> None:
     assert schema.default == "20250101"
 
     # Test casting various input types
-    assert schema.cast_value("20250215") == "20250215"
-    assert schema.cast_value(20250215) == "20250215"
-    assert schema.cast_value(date(2025, 2, 15)) == "20250215"
+    assert schema.cast_value("20250215") == 20250215
+    assert schema.cast_value(20250215) == 20250215
+    assert schema.cast_value(date(2025, 2, 15)) == 20250215
 
     # Test datetime casting with timezone conversion
     utc_dt = datetime(2025, 2, 15, 14, 0, 0, tzinfo=UTC)
     # UTC 14:00 -> UTC-12 02:00 (same day)
-    assert schema.cast_value(utc_dt) == "20250215"
+    assert schema.cast_value(utc_dt) == 20250215
 
     # Test datetime that crosses date boundary due to timezone conversion
     # UTC 02:00 -> UTC-12 14:00 previous day
     utc_dt_early = datetime(2025, 2, 15, 2, 0, 0, tzinfo=UTC)
-    assert schema.cast_value(utc_dt_early) == "20250214"
+    assert schema.cast_value(utc_dt_early) == 20250214
 
     # Test another boundary case - late UTC time that stays same day in UTC-12
     utc_dt_afternoon = datetime(2025, 2, 15, 18, 0, 0, tzinfo=UTC)
     # UTC 18:00 -> UTC-12 06:00 (same day)
-    assert schema.cast_value(utc_dt_afternoon) == "20250215"
+    assert schema.cast_value(utc_dt_afternoon) == 20250215
 
     # Test naive datetime (treated as UTC-12)
     naive_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=None)  # noqa: DTZ001
-    assert schema.cast_value(naive_dt) == "20250215"
+    assert schema.cast_value(naive_dt) == 20250215
 
     # Test serialization methods
     assert (
         schema.create_python_assignment("myvar", "20250215")
-        == "myvar = '20250215'"
+        == "myvar = 20250215"
     )
     assert schema.create_json_value("20250215") == "20250215"
     assert schema.create_qs_value("20250215") == "20250215"
@@ -809,15 +809,15 @@ def test_dayobs_parameter_timezone_handling() -> None:
     base_utc = datetime(2025, 2, 15, 12, 0, 0, tzinfo=UTC)
 
     # UTC 12:00 -> UTC-12 00:00 (same day)
-    assert schema.cast_value(base_utc) == "20250215"
+    assert schema.cast_value(base_utc) == 20250215
 
     # UTC-12 12:00 (already in target timezone)
     utc_minus_12_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=utc_minus_12)
-    assert schema.cast_value(utc_minus_12_dt) == "20250215"
+    assert schema.cast_value(utc_minus_12_dt) == 20250215
 
     # JST 09:00 -> UTC 00:00 -> UTC-12 12:00 previous day
     jst_dt = datetime(2025, 2, 15, 9, 0, 0, tzinfo=utc_plus_9)
-    assert schema.cast_value(jst_dt) == "20250214"
+    assert schema.cast_value(jst_dt) == 20250214
 
 
 def test_dayobs_parameter_edge_cases() -> None:
@@ -832,17 +832,17 @@ def test_dayobs_parameter_edge_cases() -> None:
     )
 
     # Test leap year dates
-    assert schema.cast_value("20240229") == "20240229"  # Valid leap year
-    assert schema.cast_value(date(2024, 2, 29)) == "20240229"
+    assert schema.cast_value("20240229") == 20240229  # Valid leap year
+    assert schema.cast_value(date(2024, 2, 29)) == 20240229
 
     # Test month/day boundaries
-    assert schema.cast_value("20250131") == "20250131"  # End of January
-    assert schema.cast_value("20250201") == "20250201"  # Start of February
-    assert schema.cast_value("20251231") == "20251231"  # End of year
+    assert schema.cast_value("20250131") == 20250131  # End of January
+    assert schema.cast_value("20250201") == 20250201  # Start of February
+    assert schema.cast_value("20251231") == 20251231  # End of year
 
     # Test year boundaries
-    assert schema.cast_value("19990101") == "19990101"  # Y2K-1
-    assert schema.cast_value("20000101") == "20000101"  # Y2K
+    assert schema.cast_value("19990101") == 19990101  # Y2K-1
+    assert schema.cast_value("20000101") == 20000101  # Y2K
 
     # Test invalid dates that would pass regex but fail date parsing
     with pytest.raises(PageParameterValueCastingError):
