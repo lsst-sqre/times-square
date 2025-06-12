@@ -8,6 +8,20 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.23.0'></a>
+
+## 0.23.0 (2025-06-12)
+
+### Backwards-incompatible changes
+
+- The `dayobs` parameter format now creates an int value in the notebook rather than a string. For example, `mydate = 20250115` instead of `mydate = '20250115'`. This is a better match for the DayObs metadata standard described in [SITCOMTN-032](https://sitcomtn-032.lsst.io).
+
+  Any early adopters of the `dayobs` format will need to update their notebooks. Also consider using the new `dayobs-date` format instead.
+
+### New features
+
+- Added a new `dayobs-date` parameter format. This is similar to the original `dayobs` format in the use of the UTC-12 timezone, but expects dates in the `YYYY-MM-DD` format and assigns the parameters as `datetime.date` values in the notebook. Although this is not the standard usage of `dayobs`, it should be useful for many applications because the ISO 8601 string format is more readable and the `datetime.date` type is more convenient to use in Python code. `dayobs-date` works with dynamic defaults like `dayobs` and standard `date` formats.
+
 <a id='changelog-0.22.0'></a>
 
 ## 0.22.0 (2025-06-05)

@@ -12,7 +12,7 @@ from safir.github.models import GitHubBlobModel
 from timessquare.domain.pageparameters import (
     DateParameterSchema,
     DatetimeParameterSchema,
-    ObsDateParameterSchema,
+    DayObsParameterSchema,
 )
 from timessquare.storage.github.settingsfiles import (
     NotebookSidecarFile,
@@ -160,7 +160,7 @@ def test_default_with_dynamic_default() -> None:
 
 
 def test_dayobs_format_parameter() -> None:
-    """Test that dayobs format creates ObsDateParameterSchema."""
+    """Test that dayobs format creates DayObsParameterSchema."""
     json_schema = {
         "type": "string",
         "format": "dayobs",
@@ -169,7 +169,7 @@ def test_dayobs_format_parameter() -> None:
     }
     parameter = ParameterSchemaModel.model_validate(json_schema)
     parameter_schema = parameter.to_parameter_schema("mydayobs")
-    assert isinstance(parameter_schema, ObsDateParameterSchema)
+    assert isinstance(parameter_schema, DayObsParameterSchema)
 
 
 def test_dayobs_format_parameter_with_dynamic_default(
@@ -184,7 +184,7 @@ def test_dayobs_format_parameter_with_dynamic_default(
 
     # Apply the monkeypatch for the entire test
     monkeypatch.setattr(
-        "timessquare.domain.pageparameters._obsdateparameter.datetime",
+        "timessquare.domain.pageparameters._dayobsparameter.datetime",
         MockDatetime,
     )
 
@@ -196,7 +196,7 @@ def test_dayobs_format_parameter_with_dynamic_default(
     }
     parameter = ParameterSchemaModel.model_validate(json_schema)
     parameter_schema = parameter.to_parameter_schema("mydynamicdayobs")
-    assert isinstance(parameter_schema, ObsDateParameterSchema)
+    assert isinstance(parameter_schema, DayObsParameterSchema)
     assert parameter_schema.default == "20250115"
 
 

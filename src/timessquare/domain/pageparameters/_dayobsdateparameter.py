@@ -9,15 +9,16 @@ from timessquare.exceptions import PageParameterValueCastingError
 from ._datedynamicdefault import DateDynamicDefault
 from ._schemabase import PageParameterSchema
 
-__all__ = ["ObsDateParameterSchema"]
+__all__ = ["DayObsDateParameterSchema"]
 
 
-class ObsDateParameterSchema(PageParameterSchema):
-    """A parameter schema for the custom Rubin DayObs format.
+class DayObsDateParameterSchema(PageParameterSchema):
+    """A parameter schema for the custom Rubin DayObs date format with dashes.
 
-    DayObs is defined as the date in the UTC-12 timezone. It's string
-    representationformatted is YYYYMMDD. Times Square treats DayObs parameters
-    as strings, although some applicatinos may use them as integers.
+    DayObsDate is defined as a date in the UTC-12 timezone with the string
+    representation formatted as YYYY-MM-DD. Times Square parameters validate
+    dayobs-date parameters as strings, but the Python assignment returns a
+    datetime.date instance.
     """
 
     tz = timezone(-timedelta(hours=12))
@@ -27,8 +28,8 @@ class ObsDateParameterSchema(PageParameterSchema):
     def strict_schema(self) -> dict[str, Any]:
         """Get the JSON schema without the custom format."""
         schema = super().strict_schema
-        # Add a basic regex pattern to validate the DayObs format
-        schema["pattern"] = r"^\d{8}$"
+        # Add a basic regex pattern to validate the YYYY-MM-DD format
+        schema["pattern"] = r"^\d{4}-\d{2}-\d{2}$"
         return schema
 
     def validate_default(self) -> bool:
@@ -56,14 +57,12 @@ class ObsDateParameterSchema(PageParameterSchema):
         else:
             return False
 
-    def cast_value(self, v: Any) -> str:
+    def cast_value(self, v: Any) -> date:
         """Cast a value to its Python type."""
         try:
-            # Parse a YYYYMMDD string, integer, date object, or datetime object
+            # Parse a YYYY-MM-DD string, date object, or datetime object
             if isinstance(v, str):
                 return self._cast_string(v)
-            elif isinstance(v, int):
-                return self._cast_integer(v)
             elif isinstance(v, datetime):
                 # Check datetime before date because of inheritance
                 return self._cast_datetime(v)
@@ -74,52 +73,50 @@ class ObsDateParameterSchema(PageParameterSchema):
         except Exception as e:
             raise PageParameterValueCastingError.for_value(v, "date") from e
 
-    def _cast_string(self, v: str) -> str:
-        """Cast a string value to the DayObs format."""
-        match = re.match(r"^\d{8}$", v)
+    def _cast_string(self, v: str) -> date:
+        """Cast a string value to the date format."""
+        match = re.match(r"^\d{4}-\d{2}-\d{2}$", v)
         if not match:
-            raise ValueError(f"Invalid YYYYMMDD format: {v}")
+            raise ValueError(f"Invalid YYYY-MM-DD format: {v}")
 
         year = int(v[:4])
-        month = int(v[4:6])
-        day = int(v[6:8])
-        return self._cast_date(date(year, month, day))
+        month = int(v[5:7])
+        day = int(v[8:10])
+        return date(year, month, day)
 
-    def _cast_integer(self, v: int) -> str:
-        """Cast an integer value to the DayObs format."""
-        return self._cast_string(str(v))
+    def _cast_date(self, v: date) -> date:
+        """Cast a date object directly (no conversion needed)."""
+        return v
 
-    def _cast_date(self, v: date) -> str:
-        """Cast a date object to the DayObs format."""
-        return v.strftime("%Y%m%d")
-
-    def _cast_datetime(self, v: datetime) -> str:
-        """Cast a datetime object to the DayObs format."""
+    def _cast_datetime(self, v: datetime) -> date:
+        """Cast a datetime object to the DayObs date format."""
         if v.tzinfo is not None:
             # Convert to UTC-12 timezone
             v = v.astimezone(self.tz)
         else:
             # If no timezone info, assume it's in UTC-12
             v = v.replace(tzinfo=self.tz)
-        return self._cast_date(v.date())
+        return v.date()
+
+    def create_python_imports(self) -> list[str]:
+        return ["import datetime"]
 
     def create_python_assignment(self, name: str, value: Any) -> str:
         date_value = self.cast_value(value)
-        return f"{name} = {date_value!r}"
+        str_value = date_value.isoformat()
+        return f'{name} = datetime.date.fromisoformat("{str_value}")'
 
     def create_json_value(self, value: Any) -> str:
-        return self.cast_value(value)
+        return self.cast_value(value).isoformat()
 
     def create_qs_value(self, value: Any) -> str:
-        return self.cast_value(value)
+        return self.cast_value(value).isoformat()
 
     @property
-    def default(self) -> str:
+    def default(self) -> date:
         if "X-Dynamic-Default" in self.schema:
             dynamic_default = DateDynamicDefault(
                 self.schema["X-Dynamic-Default"]
             )
-            return self.cast_value(
-                dynamic_default(datetime.now(tz=self.tz).date())
-            )
+            return dynamic_default(datetime.now(tz=self.tz).date())
         return self.cast_value(self.schema["default"])

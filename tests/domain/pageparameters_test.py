@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
@@ -11,9 +12,10 @@ from timessquare.domain.pageparameters import (
     BooleanParameterSchema,
     DateParameterSchema,
     DatetimeParameterSchema,
+    DayObsDateParameterSchema,
+    DayObsParameterSchema,
     IntegerParameterSchema,
     NumberParameterSchema,
-    ObsDateParameterSchema,
     PageParameters,
     StringParameterSchema,
     create_and_validate_parameter_schema,
@@ -594,8 +596,8 @@ def test_datetime_parameter_schema() -> None:
     ) == ("2025-02-21T12:00:00+00:00")
 
 
-def test_obsdate_parameter_schema() -> None:
-    """Test basic ObsDateParameterSchema functionality."""
+def test_dayobs_parameter_schema() -> None:
+    """Test basic DayObsParameterSchema functionality."""
     schema = create_and_validate_parameter_schema(
         "myvar",
         {
@@ -604,37 +606,37 @@ def test_obsdate_parameter_schema() -> None:
             "default": "20250101",
         },
     )
-    assert isinstance(schema, ObsDateParameterSchema)
+    assert isinstance(schema, DayObsParameterSchema)
     assert schema.default == "20250101"
 
     # Test casting various input types
-    assert schema.cast_value("20250215") == "20250215"
-    assert schema.cast_value(20250215) == "20250215"
-    assert schema.cast_value(date(2025, 2, 15)) == "20250215"
+    assert schema.cast_value("20250215") == 20250215
+    assert schema.cast_value(20250215) == 20250215
+    assert schema.cast_value(date(2025, 2, 15)) == 20250215
 
     # Test datetime casting with timezone conversion
     utc_dt = datetime(2025, 2, 15, 14, 0, 0, tzinfo=UTC)
     # UTC 14:00 -> UTC-12 02:00 (same day)
-    assert schema.cast_value(utc_dt) == "20250215"
+    assert schema.cast_value(utc_dt) == 20250215
 
     # Test datetime that crosses date boundary due to timezone conversion
     # UTC 02:00 -> UTC-12 14:00 previous day
     utc_dt_early = datetime(2025, 2, 15, 2, 0, 0, tzinfo=UTC)
-    assert schema.cast_value(utc_dt_early) == "20250214"
+    assert schema.cast_value(utc_dt_early) == 20250214
 
     # Test another boundary case - late UTC time that stays same day in UTC-12
     utc_dt_afternoon = datetime(2025, 2, 15, 18, 0, 0, tzinfo=UTC)
     # UTC 18:00 -> UTC-12 06:00 (same day)
-    assert schema.cast_value(utc_dt_afternoon) == "20250215"
+    assert schema.cast_value(utc_dt_afternoon) == 20250215
 
     # Test naive datetime (treated as UTC-12)
     naive_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=None)  # noqa: DTZ001
-    assert schema.cast_value(naive_dt) == "20250215"
+    assert schema.cast_value(naive_dt) == 20250215
 
     # Test serialization methods
     assert (
         schema.create_python_assignment("myvar", "20250215")
-        == "myvar = '20250215'"
+        == "myvar = 20250215"
     )
     assert schema.create_json_value("20250215") == "20250215"
     assert schema.create_qs_value("20250215") == "20250215"
@@ -656,10 +658,10 @@ def test_obsdate_parameter_schema() -> None:
         schema.cast_value([])  # Invalid type
 
 
-def test_obsdate_parameter_dynamic_default(
+def test_dayobs_parameter_dynamic_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test ObsDateParameterSchema with X-Dynamic-Default."""
+    """Test DayObsParameterSchema with X-Dynamic-Default."""
     # Mock datetime.now to return a fixed datetime in UTC-12 timezone
     # January 1, 2025 at 14:00 UTC-12
     utc_minus_12 = timezone(-timedelta(hours=12))
@@ -674,7 +676,7 @@ def test_obsdate_parameter_dynamic_default(
 
     with monkeypatch.context() as m:
         m.setattr(
-            "timessquare.domain.pageparameters._obsdateparameter.datetime",
+            "timessquare.domain.pageparameters._dayobsparameter.datetime",
             MockDatetime,
         )
 
@@ -687,7 +689,7 @@ def test_obsdate_parameter_dynamic_default(
                 "X-Dynamic-Default": "today",
             },
         )
-        assert isinstance(schema_today, ObsDateParameterSchema)
+        assert isinstance(schema_today, DayObsParameterSchema)
         assert schema_today.default == "20250101"
 
         schema_yesterday = create_and_validate_parameter_schema(
@@ -732,7 +734,7 @@ def test_obsdate_parameter_dynamic_default(
         assert schema_minus_3d.default == "20241229"
 
 
-def test_obsdate_parameter_dynamic_default_validation() -> None:
+def test_dayobs_parameter_dynamic_default_validation() -> None:
     """Test validation of X-Dynamic-Default values for ObsDateParameter."""
     # Valid patterns should work
     valid_patterns = [
@@ -764,13 +766,14 @@ def test_obsdate_parameter_dynamic_default_validation() -> None:
                 "X-Dynamic-Default": pattern,
             },
         )
-        assert isinstance(schema, ObsDateParameterSchema)
+        assert isinstance(schema, DayObsParameterSchema)
 
     # Invalid patterns should raise validation errors
     invalid_patterns = [
         "invalid_pattern",
         "today_invalid",
         "+5x",  # Invalid unit
+        "-10z",  # Invalid unit
         "week_invalid",
         "",
     ]
@@ -787,8 +790,8 @@ def test_obsdate_parameter_dynamic_default_validation() -> None:
             )
 
 
-def test_obsdate_parameter_timezone_handling() -> None:
-    """Test ObsDateParameterSchema timezone conversions."""
+def test_dayobs_parameter_timezone_handling() -> None:
+    """Test DayObsParameterSchema timezone conversions."""
     schema = create_and_validate_parameter_schema(
         "myvar",
         {
@@ -806,19 +809,19 @@ def test_obsdate_parameter_timezone_handling() -> None:
     base_utc = datetime(2025, 2, 15, 12, 0, 0, tzinfo=UTC)
 
     # UTC 12:00 -> UTC-12 00:00 (same day)
-    assert schema.cast_value(base_utc) == "20250215"
+    assert schema.cast_value(base_utc) == 20250215
 
     # UTC-12 12:00 (already in target timezone)
     utc_minus_12_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=utc_minus_12)
-    assert schema.cast_value(utc_minus_12_dt) == "20250215"
+    assert schema.cast_value(utc_minus_12_dt) == 20250215
 
     # JST 09:00 -> UTC 00:00 -> UTC-12 12:00 previous day
     jst_dt = datetime(2025, 2, 15, 9, 0, 0, tzinfo=utc_plus_9)
-    assert schema.cast_value(jst_dt) == "20250214"
+    assert schema.cast_value(jst_dt) == 20250214
 
 
-def test_obsdate_parameter_edge_cases() -> None:
-    """Test edge cases for ObsDateParameterSchema."""
+def test_dayobs_parameter_edge_cases() -> None:
+    """Test edge cases for DayObsParameterSchema."""
     schema = create_and_validate_parameter_schema(
         "myvar",
         {
@@ -829,17 +832,17 @@ def test_obsdate_parameter_edge_cases() -> None:
     )
 
     # Test leap year dates
-    assert schema.cast_value("20240229") == "20240229"  # Valid leap year
-    assert schema.cast_value(date(2024, 2, 29)) == "20240229"
+    assert schema.cast_value("20240229") == 20240229  # Valid leap year
+    assert schema.cast_value(date(2024, 2, 29)) == 20240229
 
     # Test month/day boundaries
-    assert schema.cast_value("20250131") == "20250131"  # End of January
-    assert schema.cast_value("20250201") == "20250201"  # Start of February
-    assert schema.cast_value("20251231") == "20251231"  # End of year
+    assert schema.cast_value("20250131") == 20250131  # End of January
+    assert schema.cast_value("20250201") == 20250201  # Start of February
+    assert schema.cast_value("20251231") == 20251231  # End of year
 
     # Test year boundaries
-    assert schema.cast_value("19990101") == "19990101"  # Y2K-1
-    assert schema.cast_value("20000101") == "20000101"  # Y2K
+    assert schema.cast_value("19990101") == 19990101  # Y2K-1
+    assert schema.cast_value("20000101") == 20000101  # Y2K
 
     # Test invalid dates that would pass regex but fail date parsing
     with pytest.raises(PageParameterValueCastingError):
@@ -852,7 +855,7 @@ def test_obsdate_parameter_edge_cases() -> None:
         schema.cast_value("20250132")  # Day 32
 
 
-def test_obsdate_parameter_strict_schema() -> None:
+def test_dayobs_parameter_strict_schema() -> None:
     """Test that strict_schema removes custom format and adds regex pattern."""
     schema = create_and_validate_parameter_schema(
         "myvar",
@@ -894,3 +897,320 @@ def test_obsdate_parameter_strict_schema() -> None:
     assert pattern.match("2025-01-01") is None  # Has dashes
     assert pattern.match("abcd1234") is None  # Letters
     assert pattern.match("202501ab") is None  # Mixed
+
+
+def test_dayobs_date_parameter_schema() -> None:
+    """Test basic DayObsDateParameterSchema functionality."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs-date",
+            "default": "2025-01-01",
+        },
+    )
+    assert isinstance(schema, DayObsDateParameterSchema)
+    assert schema.default == date(2025, 1, 1)
+
+    # Test casting various input types
+    assert schema.cast_value("2025-02-15") == date(2025, 2, 15)
+    assert schema.cast_value(date(2025, 2, 15)) == date(2025, 2, 15)
+
+    # Test datetime casting with timezone conversion
+    utc_dt = datetime(2025, 2, 15, 14, 0, 0, tzinfo=UTC)
+    # UTC 14:00 -> UTC-12 02:00 (same day)
+    assert schema.cast_value(utc_dt) == date(2025, 2, 15)
+
+    # Test datetime that crosses date boundary due to timezone conversion
+    # UTC 02:00 -> UTC-12 14:00 previous day
+    utc_dt_early = datetime(2025, 2, 15, 2, 0, 0, tzinfo=UTC)
+    assert schema.cast_value(utc_dt_early) == date(2025, 2, 14)
+
+    # Test another boundary case - late UTC time that stays same day in UTC-12
+    utc_dt_afternoon = datetime(2025, 2, 15, 18, 0, 0, tzinfo=UTC)
+    # UTC 18:00 -> UTC-12 06:00 (same day)
+    assert schema.cast_value(utc_dt_afternoon) == date(2025, 2, 15)
+
+    # Test naive datetime (treated as UTC-12)
+    naive_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=None)  # noqa: DTZ001
+    assert schema.cast_value(naive_dt) == date(2025, 2, 15)
+
+    # Test serialization methods
+    assert (
+        schema.create_python_assignment("myvar", "2025-02-15")
+        == 'myvar = datetime.date.fromisoformat("2025-02-15")'
+    )
+    assert schema.create_python_imports() == ["import datetime"]
+    assert schema.create_json_value("2025-02-15") == "2025-02-15"
+    assert schema.create_json_value(date(2025, 2, 15)) == "2025-02-15"
+    assert schema.create_qs_value("2025-02-15") == "2025-02-15"
+    assert schema.create_qs_value(date(2025, 2, 15)) == "2025-02-15"
+
+    # Test error cases
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("hello")
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025-021")  # Too short
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("202502155")  # No dashes, wrong format
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025ab15")  # Invalid characters
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("20250215")  # No dashes (YYYYMMDD format)
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value(20250215)  # Integer not supported
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value([])  # Invalid type
+
+
+def test_dayobs_date_parameter_dynamic_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test DayObsDateParameterSchema with X-Dynamic-Default."""
+    # Mock datetime.now to return a fixed datetime in UTC-12 timezone
+    # January 1, 2025 at 14:00 UTC-12
+    utc_minus_12 = timezone(-timedelta(hours=12))
+    fixed_datetime = datetime(2025, 1, 1, 14, 0, 0, tzinfo=utc_minus_12)
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            if tz is not None:
+                return fixed_datetime.astimezone(tz)
+            return fixed_datetime
+
+    with monkeypatch.context() as m:
+        m.setattr(
+            "timessquare.domain.pageparameters._dayobsdateparameter.datetime",
+            MockDatetime,
+        )
+
+        # Test basic dynamic defaults
+        schema_today = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs-date",
+                "X-Dynamic-Default": "today",
+            },
+        )
+        assert isinstance(schema_today, DayObsDateParameterSchema)
+        assert schema_today.default == date(2025, 1, 1)
+
+        schema_yesterday = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs-date",
+                "X-Dynamic-Default": "yesterday",
+            },
+        )
+        assert schema_yesterday.default == date(2024, 12, 31)
+
+        schema_tomorrow = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs-date",
+                "X-Dynamic-Default": "tomorrow",
+            },
+        )
+        assert schema_tomorrow.default == date(2025, 1, 2)
+
+        # Test day offset patterns
+        schema_plus_5d = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs-date",
+                "X-Dynamic-Default": "+5d",
+            },
+        )
+        assert schema_plus_5d.default == date(2025, 1, 6)
+
+        schema_minus_3d = create_and_validate_parameter_schema(
+            "myvar",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs-date",
+                "X-Dynamic-Default": "-3d",
+            },
+        )
+        assert schema_minus_3d.default == date(2024, 12, 29)
+
+
+def test_dayobs_date_parameter_dynamic_default_validation() -> None:
+    """Test validation of X-Dynamic-Default values for DayObsDateParameter."""
+    # Valid patterns should work
+    valid_patterns = [
+        "today",
+        "yesterday",
+        "tomorrow",
+        "+5d",
+        "-10d",
+        "week_start",
+        "week_end",
+        "+2week_start",
+        "-1week_end",
+        "month_start",
+        "month_end",
+        "+3month_start",
+        "-2month_end",
+        "year_start",
+        "year_end",
+        "+1year_start",
+        "-5year_end",
+    ]
+
+    for pattern in valid_patterns:
+        schema = create_and_validate_parameter_schema(
+            "test_param",
+            {
+                "type": "string",
+                "X-TS-Format": "dayobs-date",
+                "X-Dynamic-Default": pattern,
+            },
+        )
+        assert isinstance(schema, DayObsDateParameterSchema)
+
+    # Invalid patterns should raise validation errors
+    invalid_patterns = [
+        "invalid_pattern",
+        "today_invalid",
+        "+5x",  # Invalid unit
+        "-10z",  # Invalid unit
+        "week_invalid",
+        "",
+    ]
+
+    for pattern in invalid_patterns:
+        with pytest.raises(ParameterDefaultInvalidError):
+            create_and_validate_parameter_schema(
+                "test_param",
+                {
+                    "type": "string",
+                    "X-TS-Format": "dayobs-date",
+                    "X-Dynamic-Default": pattern,
+                },
+            )
+
+
+def test_dayobs_date_parameter_timezone_handling() -> None:
+    """Test DayObsDateParameterSchema timezone conversions."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs-date",
+            "default": "2025-01-01",
+        },
+    )
+
+    # Test various timezone scenarios
+    utc_minus_12 = timezone(-timedelta(hours=12))
+    utc_plus_9 = timezone(timedelta(hours=9))  # JST
+
+    # Same moment in different timezones
+    base_utc = datetime(2025, 2, 15, 12, 0, 0, tzinfo=UTC)
+
+    # UTC 12:00 -> UTC-12 00:00 (same day)
+    assert schema.cast_value(base_utc) == date(2025, 2, 15)
+
+    # UTC-12 12:00 (already in target timezone)
+    utc_minus_12_dt = datetime(2025, 2, 15, 12, 0, 0, tzinfo=utc_minus_12)
+    assert schema.cast_value(utc_minus_12_dt) == date(2025, 2, 15)
+
+    # JST 09:00 -> UTC 00:00 -> UTC-12 12:00 previous day
+    jst_dt = datetime(2025, 2, 15, 9, 0, 0, tzinfo=utc_plus_9)
+    assert schema.cast_value(jst_dt) == date(2025, 2, 14)
+
+
+def test_dayobs_date_parameter_edge_cases() -> None:
+    """Test edge cases for DayObsDateParameterSchema."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs-date",
+            "default": "2025-01-01",
+        },
+    )
+
+    # Test leap year dates
+    assert schema.cast_value("2024-02-29") == date(
+        2024, 2, 29
+    )  # Valid leap year
+    assert schema.cast_value(date(2024, 2, 29)) == date(2024, 2, 29)
+
+    # Test month/day boundaries
+    assert schema.cast_value("2025-01-31") == date(
+        2025, 1, 31
+    )  # End of January
+    assert schema.cast_value("2025-02-01") == date(
+        2025, 2, 1
+    )  # Start of February
+    assert schema.cast_value("2025-12-31") == date(2025, 12, 31)  # End of year
+
+    # Test year boundaries
+    assert schema.cast_value("1999-01-01") == date(1999, 1, 1)  # Y2K-1
+    assert schema.cast_value("2000-01-01") == date(2000, 1, 1)  # Y2K
+
+    # Test invalid dates that would pass regex but fail date parsing
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025-02-29")  # Feb 29 in non-leap year
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025-13-01")  # Month 13
+
+    with pytest.raises(PageParameterValueCastingError):
+        schema.cast_value("2025-01-32")  # Day 32
+
+
+def test_dayobs_date_parameter_strict_schema() -> None:
+    """Test that strict_schema removes custom format and adds regex pattern."""
+    schema = create_and_validate_parameter_schema(
+        "myvar",
+        {
+            "type": "string",
+            "X-TS-Format": "dayobs-date",
+            "default": "2025-01-01",
+            "description": "A dayobs-date parameter",
+        },
+    )
+
+    # Get the strict schema (for notebook metadata)
+    strict_schema = schema.strict_schema
+
+    # Should have the basic type and description
+    assert strict_schema["type"] == "string"
+    assert strict_schema["description"] == "A dayobs-date parameter"
+    assert strict_schema["default"] == "2025-01-01"
+
+    # Should NOT have the custom X-TS-Format
+    assert "X-TS-Format" not in strict_schema
+    assert "format" not in strict_schema
+
+    # Should have a regex pattern to validate YYYY-MM-DD format
+    assert "pattern" in strict_schema
+    assert strict_schema["pattern"] == r"^\d{4}-\d{2}-\d{2}$"
+
+    # The pattern should match valid dayobs-date strings
+    pattern = re.compile(strict_schema["pattern"])
+    assert pattern.match("2025-01-01") is not None
+    assert pattern.match("1999-12-31") is not None
+    assert pattern.match("2024-02-29") is not None
+
+    # The pattern should reject invalid formats
+    assert pattern.match("2025-1-01") is None  # Single digit month
+    assert pattern.match("2025-01-1") is None  # Single digit day
+    assert pattern.match("25-01-01") is None  # Two digit year
+    assert pattern.match("20250101") is None  # No dashes
+    assert pattern.match("2025/01/01") is None  # Wrong separators
+    assert pattern.match("abcd-12-34") is None  # Letters
+    assert pattern.match("2025-ab-01") is None  # Mixed
