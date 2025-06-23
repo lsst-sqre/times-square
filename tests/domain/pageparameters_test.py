@@ -884,8 +884,6 @@ def test_dayobs_parameter_strict_schema() -> None:
     assert strict_schema["pattern"] == r"^\d{8}$"
 
     # The pattern should match valid dayobs strings
-    import re
-
     pattern = re.compile(strict_schema["pattern"])
     assert pattern.match("20250101") is not None
     assert pattern.match("19991231") is not None
