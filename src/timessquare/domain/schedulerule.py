@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 import dateutil.rrule
 from pydantic import (
@@ -47,7 +47,7 @@ class FreqEnum(StrEnum):
     hourly = "hourly"
     minutely = "minutely"
 
-    def to_rrule_freq(self) -> int:
+    def to_rrule_freq(self) -> Literal[0, 1, 2, 3, 4, 5, 6]:
         """Convert the frequency to an integer for use as the ``freq``
         parameter in `dateutil.rrule.rrule`.
         """

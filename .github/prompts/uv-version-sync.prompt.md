@@ -1,1 +1,0 @@
-Update references to the version of `uv` used in this project to match the version found in [.pre-commit-config.yaml](../../.pre-commit-config.yaml). The `uv` version is used in [Dockerfile](../../Dockerfile) and [.github/workflows/\*.yaml](../workflows).
