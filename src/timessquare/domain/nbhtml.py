@@ -110,7 +110,7 @@ class NbHtmlModel(BaseModel):
         config.HTMLExporter.exclude_output_prompt = True
         exporter = HTMLExporter(config=config)
         notebook = page_instance.page.read_ipynb(ipynb)
-        html, resources = exporter.from_notebook_node(notebook)
+        html, _ = exporter.from_notebook_node(notebook)
 
         html_hash = sha256()
         html_hash.update(html.encode())
