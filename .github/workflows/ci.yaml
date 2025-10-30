@@ -65,7 +65,7 @@ jobs:
         run: uv run --only-group=tox tox run -e docker,coverage-report,typing
 
   build:
-    uses: lsst-sqre/multiplatform-build-and-push/.github/workflows/build.yaml@v1
+    uses: lsst-sqre/multiplatform-build-and-push/.github/workflows/build.yaml@v2
     needs: [lint, test]
     with:
       images: ghcr.io/${{ github.repository }}
