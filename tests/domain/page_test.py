@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from timessquare.domain.page import (
     PageInstanceIdModel,
     PageInstanceModel,
     PageModel,
 )
+from timessquare.domain.pageparameters import PageParameters
 
 
 def test_render_parameters() -> None:
@@ -84,10 +87,18 @@ def test_mark_parameters_cell() -> None:
     ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
     ipynb = ipynb_path.read_text()
 
-    page = PageModel.create_from_api_upload(
+    # Create page manually without auto-marking
+    notebook = PageModel.read_ipynb(ipynb)
+    parameters = PageParameters.create_from_notebook(notebook)
+
+    page = PageModel(
+        name=uuid4().hex,
         ipynb=ipynb,
+        parameters=parameters,
         title="Test marking",
-        uploader_username="testuser",
+        tags=[],
+        authors=[],
+        date_added=datetime.now(UTC),
     )
 
     # Initially no metadata on cells
@@ -147,10 +158,18 @@ def test_mark_parameters_cell_respects_existing() -> None:
     ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
     ipynb = ipynb_path.read_text()
 
-    page = PageModel.create_from_api_upload(
+    # Create page manually without auto-marking
+    notebook = PageModel.read_ipynb(ipynb)
+    parameters = PageParameters.create_from_notebook(notebook)
+
+    page = PageModel(
+        name=uuid4().hex,
         ipynb=ipynb,
+        parameters=parameters,
         title="Test author-specified",
-        uploader_username="testuser",
+        tags=[],
+        authors=[],
+        date_added=datetime.now(UTC),
     )
 
     # Manually mark the second code cell as parameters
@@ -260,3 +279,68 @@ def test_render_backward_compatibility_no_metadata() -> None:
     )
     assert "A = 3" in first_code_cell.source
     assert "y0 = 1.5" in first_code_cell.source
+
+
+def test_new_notebook_auto_marked() -> None:
+    """Test that newly created notebooks have parameters cell marked."""
+    ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
+    ipynb = ipynb_path.read_text()
+
+    # Create via API upload
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb,
+        title="New notebook",
+        uploader_username="testuser",
+    )
+
+    # Should automatically have marked parameters cell
+    nb = PageModel.read_ipynb(page.ipynb)
+    first_code_cell = next(c for c in nb.cells if c.cell_type == "code")
+    assert (
+        first_code_cell.metadata.get("times_square", {}).get("cell_type")
+        == "parameters"
+    )
+
+
+def test_metadata_survives_strip() -> None:
+    """Test that parameters cell metadata survives strip_ipynb()."""
+    ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
+    ipynb = ipynb_path.read_text()
+
+    # Create page manually without auto-marking
+    notebook = PageModel.read_ipynb(ipynb)
+    parameters = PageParameters.create_from_notebook(notebook)
+
+    page = PageModel(
+        name=uuid4().hex,
+        ipynb=ipynb,
+        parameters=parameters,
+        title="Test strip",
+        tags=[],
+        authors=[],
+        date_added=datetime.now(UTC),
+    )
+
+    # Manually mark parameters cell
+    page.mark_parameters_cell()
+
+    # Verify metadata is present before strip
+    nb_before = PageModel.read_ipynb(page.ipynb)
+    first_code_before = next(
+        c for c in nb_before.cells if c.cell_type == "code"
+    )
+    assert (
+        first_code_before.metadata.get("times_square", {}).get("cell_type")
+        == "parameters"
+    )
+
+    # Strip the notebook
+    page.strip_ipynb()
+
+    # Verify metadata survived
+    nb_after = PageModel.read_ipynb(page.ipynb)
+    first_code_after = next(c for c in nb_after.cells if c.cell_type == "code")
+    assert (
+        first_code_after.metadata.get("times_square", {}).get("cell_type")
+        == "parameters"
+    )
