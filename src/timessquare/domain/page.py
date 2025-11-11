@@ -409,6 +409,41 @@ class PageModel:
         )
         self.ipynb = self.write_ipynb(notebook)
 
+    def mark_parameters_cell(self) -> None:
+        """Mark the first code cell as the parameters cell.
+
+        Adds metadata to identify the parameters cell explicitly, enabling
+        bundled modules to be inserted before it in the future.
+
+        This method modifies the notebook in place by updating cell metadata.
+        If any cell already has the parameters marker, the existing metadata
+        is respected and no changes are made. This allows notebook authors
+        to explicitly specify which cell should be the parameters cell.
+        """
+        notebook = self.read_ipynb(self.ipynb)
+
+        # Check if any cell already has the parameters marker
+        if any(
+            cell.cell_type == "code"
+            and cell.metadata.get("times_square", {}).get("cell_type")
+            == "parameters"
+            for cell in notebook.cells
+        ):
+            return
+
+        # Otherwise, mark the first code cell as the parameters cell
+        for cell in notebook.cells:
+            if cell.cell_type == "code":
+                # Initialize times_square metadata if not present
+                if "times_square" not in cell.metadata:
+                    cell.metadata["times_square"] = {}
+
+                # Mark this cell as parameters cell
+                cell.metadata["times_square"]["cell_type"] = "parameters"
+                break
+
+        self.ipynb = self.write_ipynb(notebook)
+
     @property
     def schedule(self) -> RunSchedule | None:
         """The schedule for the page, if it is scheduled to run
