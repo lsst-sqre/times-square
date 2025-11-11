@@ -191,6 +191,7 @@ class PageModel:
             cache_ttl=cache_ttl,
         )
         p.strip_ipynb()
+        p.mark_parameters_cell()
         return p
 
     @classmethod
@@ -247,6 +248,7 @@ class PageModel:
             schedule_enabled=schedule_enabled,
         )
         p.strip_ipynb()
+        p.mark_parameters_cell()
         return p
 
     @property
