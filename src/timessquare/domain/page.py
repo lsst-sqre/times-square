@@ -646,13 +646,32 @@ class PageInstanceModel:
         # Read notebook and render cell-by-cell
         notebook = self.page.read_ipynb(self.page.ipynb)
         processed_first_cell = False
+
+        # Check if any cell has parameters metadata marker
+        has_marked_params_cell = any(
+            cell.cell_type == "code"
+            and cell.metadata.get("times_square", {}).get("cell_type")
+            == "parameters"
+            for cell in notebook.cells
+        )
+
         for cell_index, cell in enumerate(notebook.cells):
             if cell.cell_type == "code":
-                if processed_first_cell is False:
-                    # Handle first code cell specially by replacing it with a
-                    # cell that sets Python variables to their values
-                    cell.source = self._create_parameter_assignment_cell()
-                    processed_first_cell = True
+                # Check if this is the marked parameters cell
+                is_params_cell = (
+                    cell.metadata.get("times_square", {}).get("cell_type")
+                    == "parameters"
+                )
+
+                # BACKWARD COMPATIBILITY: If no metadata marker exists,
+                # fall back to first code cell as the parameters cell
+                if is_params_cell or (
+                    not processed_first_cell and not has_marked_params_cell
+                ):
+                    if not processed_first_cell:
+                        # Replace this cell with parameter assignments
+                        cell.source = self._create_parameter_assignment_cell()
+                        processed_first_cell = True
 
                 # Avoid Jinja templating in code cells
                 continue
