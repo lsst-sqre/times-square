@@ -215,6 +215,55 @@ async def run_nbstripout(
     await engine.dispose()
 
 
+@main.command("mark-params-cells")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Perform a dry run without modifying ipynb sources.",
+)
+@click.option(
+    "--page",
+    help="Mark parameters cell only for the specified page.",
+)
+@run_with_asyncio
+async def mark_parameters_cells(
+    *, dry_run: bool = True, page: str | None = None
+) -> None:
+    """Mark parameters cells in notebook sources with metadata.
+
+    This is a one-time migration operation to add metadata identifying the
+    parameters cell in existing notebook ipynb sources. New notebooks have
+    this metadata added automatically.
+
+    The metadata key used is:
+    cell.metadata.times_square.cell_type = "parameters"
+
+    It is applied to the first code cell (unless an author has already
+    explicitly marked a different cell).
+    """
+    logger = structlog.get_logger("timessquare")
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
+        page_service = factory.create_background_page_service()
+        count = await page_service.migrate_mark_parameters_cells(
+            dry_run=dry_run, for_page_id=page, db_session=factory.db_session
+        )
+        logger.info(
+            "Finished marking parameters cells",
+            count=count,
+            dry_run=dry_run,
+        )
+        await factory.db_session.commit()
+    await engine.dispose()
+
+
 @main.command("rename-github-owner")
 @click.option(
     "--old",
