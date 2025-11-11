@@ -220,3 +220,43 @@ def test_render_with_marked_parameters_cell() -> None:
     # Verify it was replaced with parameter assignments
     assert "A = 5" in params_cell.source
     assert "y0 = 2.0" in params_cell.source
+
+
+def test_render_backward_compatibility_no_metadata() -> None:
+    """Test that notebooks without metadata still work (first cell)."""
+    ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
+    ipynb = ipynb_path.read_text()
+
+    # Create page WITHOUT marking parameters cell
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb,
+        title="Test backward compat",
+        uploader_username="testuser",
+    )
+
+    # Manually remove any parameters metadata to simulate old notebooks
+    nb = PageModel.read_ipynb(page.ipynb)
+    for cell in nb.cells:
+        if cell.cell_type == "code":
+            if "times_square" in cell.metadata:
+                cell.metadata["times_square"].pop("cell_type", None)
+    page.ipynb = PageModel.write_ipynb(nb)
+
+    values = {
+        "A": 3,
+        "y0": 1.5,
+        "lambd": 0.4,
+        "title": "Compat Test",
+        "mydate": "2021-03-20",
+        "mydatetime": "2021-03-20T14:00:00+00:00",
+    }
+    page_instance = PageInstanceModel(page=page, values=values)
+    rendered = page_instance.render_ipynb()
+    rendered_nb = PageModel.read_ipynb(rendered)
+
+    # First code cell should still be replaced (backward compatibility)
+    first_code_cell = next(
+        c for c in rendered_nb.cells if c.cell_type == "code"
+    )
+    assert "A = 3" in first_code_cell.source
+    assert "y0 = 1.5" in first_code_cell.source
