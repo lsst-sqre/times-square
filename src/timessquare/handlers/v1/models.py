@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Self
 from urllib.parse import urlencode
 
@@ -572,7 +572,7 @@ class GitHubContributor(BaseModel):
     avatar_url: HttpUrl = Field(..., title="Avatar image URL")
 
 
-class GitHubPrState(str, Enum):
+class GitHubPrState(StrEnum):
     """The state of a GitHub PR."""
 
     draft = "draft"

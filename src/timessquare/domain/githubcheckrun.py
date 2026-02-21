@@ -535,7 +535,7 @@ class NotebookExecutionsCheck(GitHubCheck):
             path=notebook_path,
             is_success=job_result.success is True
             and job_result.ipynb_error is None,
-            runtime=job_result.runtime if job_result.runtime else None,
+            runtime=job_result.runtime or None,
         )
         self.notebook_executions.append(execution_info)
 

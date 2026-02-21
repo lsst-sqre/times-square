@@ -488,7 +488,7 @@ class ScheduleFromDate(ScheduleRuleBase):
             freq=self.freq.to_rrule_freq(),
             dtstart=self.start,
             interval=self.interval,
-            until=self.end if self.end else None,
+            until=self.end or None,
             count=self.count,
             bysecond=0,
         )

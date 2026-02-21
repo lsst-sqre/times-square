@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Annotated
 
@@ -19,7 +19,7 @@ __all__ = [
 ]
 
 
-class GitTreeMode(str, Enum):
+class GitTreeMode(StrEnum):
     """Git tree mode values."""
 
     file = "100644"

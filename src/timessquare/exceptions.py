@@ -38,14 +38,14 @@ class PageNotebookFormatError(TimesSquareClientError):
     """Error related to parsing an ipynb file."""
 
     error = "ipynb_invalid"
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class PageParameterError(TimesSquareClientError):
     """Error related to a page parameter's value."""
 
     error = "parameter_value_invalid"
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
     @classmethod
     def for_param(
@@ -74,7 +74,7 @@ class PageParameterValueCastingError(TimesSquareClientError):
     """
 
     error = "parameter_value_casting_error"
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
     @classmethod
     def for_value(
@@ -113,7 +113,7 @@ class ParameterSchemaValidationError(TimesSquareClientError):
     """Error related to a parameter."""
 
     error = "parameter_validation_failed"
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
     parameter: str
     """The name of the parameter that caused the error."""
