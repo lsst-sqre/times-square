@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 from httpx import AsyncClient
@@ -28,7 +28,7 @@ class NoteburstJobModel(BaseModel):
     ]
 
 
-class NoteburstJobStatus(str, Enum):
+class NoteburstJobStatus(StrEnum):
     """Enum of noteburst job statuses."""
 
     deferred = "deferred"
@@ -45,7 +45,7 @@ class NotebookError(BaseModel):
     message: Annotated[str, Field(description="The exception's message.")]
 
 
-class NoteburstErrorCodes(str, Enum):
+class NoteburstErrorCodes(StrEnum):
     """Error codes for Noteburst errors."""
 
     timeout = "timeout"

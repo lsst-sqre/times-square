@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 
-class JsonSchemaTypeEnum(str, Enum):
+class JsonSchemaTypeEnum(StrEnum):
     """JSON schema types that are supported."""
 
     string = "string"
