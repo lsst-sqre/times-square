@@ -6,7 +6,7 @@ import httpx
 from safir.arq import ArqMode, ArqQueue, MockArqQueue, RedisArqQueue
 from safir.github import GitHubAppClientFactory
 from safir.slack.blockkit import SlackException
-from sqlalchemy.ext.asyncio import async_scoped_session
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
@@ -22,7 +22,7 @@ from timessquare.storage.page import PageStore
 async def create_github_check_run_service(
     *,
     http_client: httpx.AsyncClient,
-    db_session: async_scoped_session,
+    db_session: AsyncSession,
     logger: BoundLogger,
     installation_id: int,
 ) -> GitHubCheckRunService:
@@ -63,7 +63,7 @@ async def create_github_check_run_service(
 async def create_github_repo_service(
     *,
     http_client: httpx.AsyncClient,
-    db_session: async_scoped_session,
+    db_session: AsyncSession,
     logger: BoundLogger,
     installation_id: int,
 ) -> GitHubRepoService:
@@ -98,7 +98,7 @@ async def create_page_service(
     *,
     http_client: httpx.AsyncClient,
     logger: BoundLogger,
-    db_session: async_scoped_session,
+    db_session: AsyncSession,
 ) -> BackgroundPageService:
     """Create a PageService for arq tasks."""
     redis = await redis_dependency()

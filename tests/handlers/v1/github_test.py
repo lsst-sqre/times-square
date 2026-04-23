@@ -109,7 +109,6 @@ async def test_github(client: AsyncClient) -> None:
     await session.commit()
 
     # Close the set up database
-    await session.remove()
     await engine.dispose()
 
     # Get data from the API to test tree construction

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from safir.database import datetime_from_db, datetime_to_db
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_scoped_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.page import SqlPage
 from timessquare.domain.githubtree import (
@@ -21,11 +21,11 @@ class PageStore:
 
     Parameters
     ----------
-    session : `sqlalchemy.ext.asyncio.async_scoped_session`
+    session : `sqlalchemy.ext.asyncio.AsyncSession`
         The database session proxy.
     """
 
-    def __init__(self, session: async_scoped_session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     def add(self, page: PageModel) -> None:

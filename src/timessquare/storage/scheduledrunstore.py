@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_scoped_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.scheduledrun import SqlScheduledRun
 from timessquare.domain.scheduledrun import ScheduledRun
@@ -22,7 +22,7 @@ class ScheduledRunStore:
         The SQLAlchemy database session.
     """
 
-    def __init__(self, session: async_scoped_session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         """Initialize the store with a database session."""
         self._session = session
 

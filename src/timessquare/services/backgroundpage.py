@@ -7,7 +7,7 @@ from base64 import b64decode
 from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy.ext.asyncio import async_scoped_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
 from timessquare.domain.page import PageInstanceModel
@@ -58,7 +58,7 @@ class BackgroundPageService(PageService):
         *,
         dry_run: bool = True,
         for_page_id: str | None = None,
-        db_session: async_scoped_session,
+        db_session: AsyncSession,
     ) -> int:
         """Migrate the ipynb files with nbstripout to remove outputs
         and metadata.
@@ -90,7 +90,7 @@ class BackgroundPageService(PageService):
         *,
         dry_run: bool = True,
         page_id: str,
-        db_session: async_scoped_session,
+        db_session: AsyncSession,
     ) -> int:
         """Run nbstripout on a page."""
         try:
