@@ -228,3 +228,59 @@ async def run_nbstripout(
             dry_run=dry_run,
         )
         await db_session.commit()
+
+
+@main.command("mark-params-cells")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Perform a dry run without modifying ipynb sources.",
+)
+@click.option(
+    "--page",
+    help="Mark parameters cell only for the specified page.",
+)
+@run_with_asyncio
+async def mark_parameters_cells(
+    *, dry_run: bool = True, page: str | None = None
+) -> None:
+    """Mark parameters cells in notebook sources with metadata.
+
+    This is a one-time migration operation to add metadata identifying the
+    parameters cell in existing notebook ipynb sources. New notebooks have
+    this metadata added automatically.
+
+    The metadata key used is:
+    cell.metadata.times_square.cell_type = "parameters"
+
+    It is applied to the first code cell (unless an author has already
+    explicitly marked a different cell).
+    """
+    # Create a database session
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    logger = structlog.get_logger("timessquare")
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+    await engine.dispose()
+    await db_session_dependency.initialize(
+        str(config.database_url), config.database_password.get_secret_value()
+    )
+    await redis_dependency.initialize(str(config.redis_url))
+
+    async for db_session in db_session_dependency():
+        page_service = await create_page_service(
+            http_client=httpx.AsyncClient(),
+            logger=structlog.get_logger("timessquare"),
+            db_session=db_session,
+        )
+        count = await page_service.migrate_mark_parameters_cells(
+            dry_run=dry_run, for_page_id=page, db_session=db_session
+        )
+        logger.info(
+            "Finished marking parameters cells",
+            count=count,
+            dry_run=dry_run,
+        )
+        await db_session.commit()

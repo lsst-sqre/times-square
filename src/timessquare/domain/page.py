@@ -191,6 +191,7 @@ class PageModel:
             cache_ttl=cache_ttl,
         )
         p.strip_ipynb()
+        p.mark_parameters_cell()
         return p
 
     @classmethod
@@ -247,6 +248,7 @@ class PageModel:
             schedule_enabled=schedule_enabled,
         )
         p.strip_ipynb()
+        p.mark_parameters_cell()
         return p
 
     @property
@@ -407,6 +409,41 @@ class PageModel:
             keep_id=False,
             extra_keys=["metadata.kernelspec"],
         )
+        self.ipynb = self.write_ipynb(notebook)
+
+    def mark_parameters_cell(self) -> None:
+        """Mark the first code cell as the parameters cell.
+
+        Adds metadata to identify the parameters cell explicitly, enabling
+        bundled modules to be inserted before it in the future.
+
+        This method modifies the notebook in place by updating cell metadata.
+        If any cell already has the parameters marker, the existing metadata
+        is respected and no changes are made. This allows notebook authors
+        to explicitly specify which cell should be the parameters cell.
+        """
+        notebook = self.read_ipynb(self.ipynb)
+
+        # Check if any cell already has the parameters marker
+        if any(
+            cell.cell_type == "code"
+            and cell.metadata.get("times_square", {}).get("cell_type")
+            == "parameters"
+            for cell in notebook.cells
+        ):
+            return
+
+        # Otherwise, mark the first code cell as the parameters cell
+        for cell in notebook.cells:
+            if cell.cell_type == "code":
+                # Initialize times_square metadata if not present
+                if "times_square" not in cell.metadata:
+                    cell.metadata["times_square"] = {}
+
+                # Mark this cell as parameters cell
+                cell.metadata["times_square"]["cell_type"] = "parameters"
+                break
+
         self.ipynb = self.write_ipynb(notebook)
 
     @property
@@ -611,13 +648,32 @@ class PageInstanceModel:
         # Read notebook and render cell-by-cell
         notebook = self.page.read_ipynb(self.page.ipynb)
         processed_first_cell = False
+
+        # Check if any cell has parameters metadata marker
+        has_marked_params_cell = any(
+            cell.cell_type == "code"
+            and cell.metadata.get("times_square", {}).get("cell_type")
+            == "parameters"
+            for cell in notebook.cells
+        )
+
         for cell_index, cell in enumerate(notebook.cells):
             if cell.cell_type == "code":
-                if processed_first_cell is False:
-                    # Handle first code cell specially by replacing it with a
-                    # cell that sets Python variables to their values
-                    cell.source = self._create_parameter_assignment_cell()
-                    processed_first_cell = True
+                # Check if this is the marked parameters cell
+                is_params_cell = (
+                    cell.metadata.get("times_square", {}).get("cell_type")
+                    == "parameters"
+                )
+
+                # BACKWARD COMPATIBILITY: If no metadata marker exists,
+                # fall back to first code cell as the parameters cell
+                if is_params_cell or (
+                    not processed_first_cell and not has_marked_params_cell
+                ):
+                    if not processed_first_cell:
+                        # Replace this cell with parameter assignments
+                        cell.source = self._create_parameter_assignment_cell()
+                        processed_first_cell = True
 
                 # Avoid Jinja templating in code cells
                 continue
