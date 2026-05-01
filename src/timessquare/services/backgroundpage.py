@@ -122,6 +122,114 @@ class BackgroundPageService(PageService):
             await db_session.commit()
         return 1 if has_kernelspec else 0
 
+    async def migrate_mark_parameters_cells(
+        self,
+        *,
+        dry_run: bool = True,
+        for_page_id: str | None = None,
+        db_session: async_scoped_session,
+    ) -> int:
+        """Mark the first code cell as parameters cell in existing notebooks.
+
+        This service method is intended to be run once via the
+        ``times-square mark-params-cells`` CLI command.
+
+        Parameters
+        ----------
+        dry_run
+            If True, only count notebooks that would be updated without
+            modifying them.
+        for_page_id
+            If provided, only process this specific page.
+        db_session
+            Database session for queries and updates.
+
+        Returns
+        -------
+        int
+            The number of pages that were migrated (or would be migrated,
+            if in dry-run mode).
+        """
+        if for_page_id:
+            return await self._mark_parameters_cell_on_page(
+                dry_run=dry_run, page_id=for_page_id, db_session=db_session
+            )
+
+        page_count = 0
+        for page_id in await self._page_store.list_page_names():
+            page_count += await self._mark_parameters_cell_on_page(
+                dry_run=dry_run, page_id=page_id, db_session=db_session
+            )
+
+        return page_count
+
+    async def _mark_parameters_cell_on_page(
+        self,
+        *,
+        dry_run: bool = True,
+        page_id: str,
+        db_session: async_scoped_session,
+    ) -> int:
+        """Mark parameters cell on a single page.
+
+        Returns
+        -------
+        int
+            1 if the page was (or would be) updated, 0 if skipped.
+        """
+        try:
+            page = await self.get_page(page_id)
+        except Exception as e:
+            self._logger.warning(
+                "Skipping page with error", page_id=page_id, error=str(e)
+            )
+            return 0
+
+        if not page.ipynb:
+            self._logger.warning(
+                "Skipping page with no ipynb", page_id=page_id
+            )
+            return 0
+
+        # Check if already has marked parameters cell
+        notebook = page.read_ipynb(page.ipynb)
+        has_marked_params = any(
+            cell.cell_type == "code"
+            and cell.metadata.get("times_square", {}).get("cell_type")
+            == "parameters"
+            for cell in notebook.cells
+        )
+
+        if has_marked_params:
+            self._logger.debug(
+                "Page already has marked parameters cell, skipping",
+                page_id=page_id,
+            )
+            return 0
+
+        # Check if page has any code cells to mark
+        has_code_cells = any(
+            cell.cell_type == "code" for cell in notebook.cells
+        )
+        if not has_code_cells:
+            self._logger.warning(
+                "Page has no code cells to mark", page_id=page_id
+            )
+            return 0
+
+        if not dry_run:
+            page.mark_parameters_cell()
+            await self.update_page_in_store(page, drop_html_cache=False)
+            # Commit per-page to avoid issues with large bulk commits
+            await db_session.commit()
+            self._logger.info("Marked parameters cell", page_id=page_id)
+        else:
+            self._logger.info(
+                "Would mark parameters cell (dry-run)", page_id=page_id
+            )
+
+        return 1
+
     async def migrate_html_cache_keys(
         self, *, dry_run: bool = True, for_page_id: str | None = None
     ) -> int:
