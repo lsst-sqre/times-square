@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import click
 import httpx
@@ -18,7 +19,10 @@ from safir.database import (
     stamp_database,
 )
 from safir.dependencies.db_session import db_session_dependency
+from sqlalchemy import CursorResult, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from timessquare.dbschema.page import SqlPage
 from timessquare.dependencies.redis import redis_dependency
 
 from .config import config
@@ -228,3 +232,78 @@ async def run_nbstripout(
             dry_run=dry_run,
         )
         await db_session.commit()
+
+
+@main.command("rename-github-owner")
+@click.option(
+    "--old",
+    "old_owner",
+    required=True,
+    help="Current github_owner value to rewrite (e.g. lsst-sitcom).",
+)
+@click.option(
+    "--new",
+    "new_owner",
+    required=True,
+    help="Replacement github_owner value (e.g. lsst-so).",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Report the affected row count without writing any changes.",
+)
+@run_with_asyncio
+async def rename_github_owner(
+    *, old_owner: str, new_owner: str, dry_run: bool = False
+) -> None:
+    """Rewrite the github_owner column on pages after a GitHub org/user rename.
+
+    Times Square looks pages up by the owner/repo strings stored on each row,
+    so a GitHub org rename leaves existing rows orphaned until this command
+    rewrites them.
+    """
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    logger = structlog.get_logger("timessquare")
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+    await engine.dispose()
+    await db_session_dependency.initialize(
+        str(config.database_url), config.database_password.get_secret_value()
+    )
+
+    async for db_session in db_session_dependency():
+        count = await _rename_github_owner_in_db(
+            db_session, old_owner=old_owner, new_owner=new_owner
+        )
+        if dry_run:
+            await db_session.rollback()
+        else:
+            await db_session.commit()
+        logger.info(
+            "Finished renaming github_owner",
+            old_owner=old_owner,
+            new_owner=new_owner,
+            count=count,
+            dry_run=dry_run,
+        )
+
+
+async def _rename_github_owner_in_db(
+    session: AsyncSession, *, old_owner: str, new_owner: str
+) -> int:
+    """Rewrite ``page.github_owner`` from ``old_owner`` to ``new_owner``.
+
+    Returns the number of rows affected. Does not commit; the caller is
+    responsible for committing or rolling back.
+    """
+    result = cast(
+        "CursorResult",
+        await session.execute(
+            update(SqlPage)
+            .where(SqlPage.github_owner == old_owner)
+            .values(github_owner=new_owner)
+        ),
+    )
+    return result.rowcount
