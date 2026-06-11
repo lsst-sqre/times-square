@@ -8,6 +8,19 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.24.0'></a>
+## 0.24.0 (2026-06-11)
+
+### New features
+
+- Added a `times-square rename-github-owner --old <owner> --new <owner> [--dry-run]` CLI command to rewrite the `github_owner` column on pages after a GitHub org or user rename. Existing rows are looked up by their owner/repo strings, so a rename leaves them orphaned until this command rewrites them. The config setting `TS_GITHUB_ORGS` must also be updated to accept webhook events from the new owner name.
+
+- Docker images are now available for both arm64 and amd64.
+
+### Bug fixes
+
+- Fix type annotations: `to_rrule_freq` method in `SchedulerRule` now returns a `Literal` type instead of an `int`.
+
 <a id='changelog-0.23.0'></a>
 
 ## 0.23.0 (2025-06-12)
