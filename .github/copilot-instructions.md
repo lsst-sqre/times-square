@@ -16,6 +16,6 @@
 
 ## Running tests, formatting, linting, and type checking
 
-- Run `tox run -e lint` to check for linting errors and fix formatting issues
-- Run `tox run -e typing` to run mypy
-- Run `tox run -e docker` to run pytests. To specify pytest arguments, use `--` followed by the arguments. For example, to run tests for a specific module, use `tox run -e docker -- tests/domain/pageparameters_test.py`.
+- Run `uv run --only-group=nox nox -s lint` to check for linting errors and fix formatting issues
+- Run `uv run --only-group=nox nox -s typing` to run mypy
+- Run `uv run --only-group=nox nox -s test` to run pytests. To specify pytest arguments, use `--` followed by the arguments. For example, to run tests for a specific module, use `uv run --only-group=nox nox -s test -- tests/domain/pageparameters_test.py`.
