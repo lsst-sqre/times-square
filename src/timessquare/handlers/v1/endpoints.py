@@ -117,7 +117,7 @@ async def get_page(
     """Get metadata about a page resource, which models a webpage that is
     rendered from a parameterized Jupyter Notebook.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             page_domain = await page_service.get_page(page)
@@ -142,7 +142,7 @@ async def get_pages(
     context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> list[PageSummary]:
     """List available pages."""
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         page_summaries_domain = await page_service.get_page_summaries()
         return [
@@ -223,7 +223,7 @@ async def post_page(
     - ``default`` is used when the URL does not override a parameter value.
     - ``description`` is used for documentation.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     username = context.get_request_username()
     if username is None:
         raise HTTPException(
@@ -271,7 +271,7 @@ async def get_page_source(
     """Get the content of the source ipynb file, which is unexecuted and has
     Jinja templating of parameterizations.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             page_domain = await page_service.get_page(page)
@@ -310,7 +310,7 @@ async def get_rendered_notebook(
     """Get a Jupyter Notebook by page slug, with the parameter values filled
     in. The notebook is still unexecuted.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     parameters = context.request.query_params
     async with context.session.begin():
         try:
@@ -347,7 +347,7 @@ async def get_page_html(
     context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> HTMLResponse:
     """Get the rendered HTML of a notebook."""
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             html = await page_service.get_html(
@@ -392,7 +392,7 @@ async def delete_page_html(
     triggers a background task that recomputes the notebook and replaces the
     cached HTML.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             page_instance = await page_service.soft_delete_html(
@@ -428,7 +428,7 @@ async def get_page_html_status(
     page: Annotated[str, page_path_parameter],
     context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> HtmlStatus:
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             html_status = await page_service.get_html_and_status(
@@ -470,7 +470,7 @@ async def get_page_html_events(
 ) -> EventSourceResponse:
     """Subscribe to an event stream for a page's execution and rendering."""
     context.logger.debug("Subscribing to page events")
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     html_base_url = context.request.url_for("get_page_html", page=page)
     async with context.session.begin():
         try:
@@ -506,7 +506,7 @@ async def get_github_tree(
     hierarchical structure of GitHub organization, repository, directories
     (as necessary) and finally the page itself.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         github_tree = await page_service.get_github_tree()
     return GitHubContentsRoot.from_tree(tree=github_tree)
@@ -536,7 +536,7 @@ async def get_github_rendered_notebook(
     but exposed at a different path so that different access controls can be
     applied upstream.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     parameters = context.request.query_params
     async with context.session.begin():
         try:
@@ -573,7 +573,7 @@ async def get_github_page(
     is queried via the page's GitHub "display path" rather than the opaque
     page name.
     """
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             page_domain = await page_service.get_github_backed_page(
@@ -608,7 +608,7 @@ async def get_github_pr_tree(
     its navigational view of GitHub pages for a specific pull request
     (actually a commit SHA) of a repository.
     """
-    repo_service = await context.create_github_repo_service(
+    repo_service = await context.factory.create_github_repo_service(
         owner=owner, repo=repo
     )  # consider handling response where the app is not installed
     page_service = repo_service.page_service
@@ -657,7 +657,7 @@ async def get_github_pr_page(
     context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> Page:
     """Get the metadata for a pull request preview of a GitHub-backed page."""
-    page_service = context.page_service
+    page_service = context.factory.create_page_service()
     async with context.session.begin():
         try:
             page_domain = await page_service.get_github_pr_page(

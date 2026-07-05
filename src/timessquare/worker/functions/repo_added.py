@@ -12,7 +12,7 @@ from safir.github.webhooks import (
 )
 from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 
-from timessquare.worker.servicefactory import create_github_repo_service
+from timessquare.factory import WorkerFactory
 
 
 async def repo_added(
@@ -35,11 +35,15 @@ async def repo_added(
 
     try:
         async for db_session in db_session_dependency():
-            github_repo_service = await create_github_repo_service(
-                http_client=ctx["http_client"],
+            factory = WorkerFactory(
                 logger=logger,
-                installation_id=payload.installation.id,
-                db_session=db_session,
+                session=db_session,
+                process_context=ctx["process_context"],
+            )
+            github_repo_service = (
+                await factory.create_github_repo_service_for_installation(
+                    installation_id=payload.installation.id
+                )
             )
             async with db_session.begin():
                 await github_repo_service.sync_from_repo_installation(

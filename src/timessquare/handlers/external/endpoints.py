@@ -8,8 +8,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response, status
 from gidgethub.sansio import Event
 from pydantic import AnyHttpUrl
-from safir.arq import ArqQueue
-from safir.dependencies.arq import arq_dependency
 from safir.dependencies.logger import logger_dependency
 from safir.metadata import get_metadata
 from structlog.stdlib import BoundLogger
@@ -68,8 +66,6 @@ async def get_index(
 )
 async def post_github_webhook(
     context: Annotated[RequestContext, Depends(context_dependency)],
-    logger: Annotated[BoundLogger, Depends(logger_dependency)],
-    arq_queue: Annotated[ArqQueue, Depends(arq_dependency)],
 ) -> Response:
     """Process GitHub webhook events."""
     if not config.enable_github_app:
@@ -85,20 +81,23 @@ async def post_github_webhook(
         context.request.headers, body, secret=webhook_secret
     )
 
-    github_client_factory = context.create_github_client_factory()
+    github_client_factory = context.factory.create_github_client_factory()
 
     # Bind the X-GitHub-Delivery header to the logger context; this identifies
     # the webhook request in GitHub's API and UI for diagnostics
-    logger = logger.bind(
+    context.rebind_logger(
         github_delivery_id=event.delivery_id, github_event=event.event
     )
 
-    logger.debug("Received GitHub webhook", payload=event.data)
+    context.logger.debug("Received GitHub webhook", payload=event.data)
 
     # Give GitHub some time to reach internal consistency.
     await asyncio.sleep(1)
     await webhook_router.dispatch(
-        event, logger, arq_queue, github_client_factory
+        event,
+        context.logger,
+        context.factory.arq_queue,
+        github_client_factory,
     )
 
     return Response(status_code=status.HTTP_202_ACCEPTED)

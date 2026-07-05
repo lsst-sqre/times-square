@@ -11,14 +11,11 @@ from typing import Any
 from safir.dependencies.db_session import db_session_dependency
 from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 
+from timessquare.factory import WorkerFactory
 from timessquare.storage.noteburst import (
     NoteburstApi,
     NoteburstJobModel,
     NoteburstJobStatus,
-)
-from timessquare.worker.servicefactory import (
-    create_arq_queue,
-    create_page_service,
 )
 
 
@@ -44,7 +41,7 @@ async def replace_nbhtml(
 
     try:
         noteburst_client = NoteburstApi(
-            http_client=ctx["http_client"],
+            http_client=ctx["process_context"].http_client,
         )
         updated_job_result = await noteburst_client.get_job(
             str(noteburst_job.job_url)
@@ -55,11 +52,12 @@ async def replace_nbhtml(
             )
 
         async for db_session in db_session_dependency():
-            page_service = await create_page_service(
-                http_client=ctx["http_client"],
+            factory = WorkerFactory(
                 logger=logger,
-                db_session=db_session,
+                session=db_session,
+                process_context=ctx["process_context"],
             )
+            page_service = factory.create_page_service()
 
             if updated_job_result.data.status == NoteburstJobStatus.complete:
                 # Job finished, so render the HTML and update the cache
@@ -79,8 +77,7 @@ async def replace_nbhtml(
                 # Job is still queued or running, so scheduled another task
                 # TODO(jonathansick): add a start time and a timeout to the
                 # job's parameters so we can abort if it takes too long.
-                arq_queue = await create_arq_queue()
-                await arq_queue.enqueue(
+                await factory.arq_queue.enqueue(
                     "replace_nbhtml",
                     page_name=page_name,
                     parameter_values=parameter_values,
