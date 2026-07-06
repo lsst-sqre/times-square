@@ -161,35 +161,13 @@ class GitHubNode:
             )
             return
         else:
-            # Find existing directory containing this page
-            for child_node in self.contents:
-                n = len(child_node.path_segments)
-                if (
-                    child_node.node_type == GitHubNodeType.directory
-                    and child_node.path_segments == result.path_segments[:n]
-                ):
-                    child_node.insert_node(result)
-                    return
-            # Create a directory node
-            dir_node = GitHubNode(
-                node_type=GitHubNodeType.directory,
-                path_segments=result.path_segments[
-                    : len(self.path_segments) + 1
-                ],
-                title=result.path_segments[len(self.path_segments)],
-                github_commit=result.github_commit,
-                contents=[],
-            )
-            self.contents.append(dir_node)
+            dir_node = self._find_or_create_directory_child(result)
             dir_node.insert_node(result)
 
     def _insert_node_from_directory(
         self, result: GitHubTreeQueryResult
     ) -> None:
-        self_segment_count = len(self.path_segments)
-        input_segment_count = len(result.path_segments)
-
-        if input_segment_count == self_segment_count + 1:
+        if len(result.path_segments) == len(self.path_segments) + 1:
             # a direct child of this directory
             self.contents.append(
                 GitHubNode(
@@ -201,16 +179,31 @@ class GitHubNode:
                 )
             )
         else:
-            # Create a directory node
-            dir_node = GitHubNode(
-                node_type=GitHubNodeType.directory,
-                path_segments=result.path_segments[: self_segment_count + 1],
-                title=result.path_segments[self_segment_count],
-                github_commit=result.github_commit,
-                contents=[],
-            )
-            self.contents.append(dir_node)
+            dir_node = self._find_or_create_directory_child(result)
             dir_node.insert_node(result)
+
+    def _find_or_create_directory_child(
+        self, result: GitHubTreeQueryResult
+    ) -> GitHubNode:
+        # Find an existing child directory on the result's path
+        n = len(self.path_segments) + 1
+        for child_node in self.contents:
+            if (
+                child_node.node_type == GitHubNodeType.directory
+                and child_node.path_segments == result.path_segments[:n]
+            ):
+                return child_node
+
+        # Create a directory node since one doesn't already exist
+        dir_node = GitHubNode(
+            node_type=GitHubNodeType.directory,
+            path_segments=result.path_segments[:n],
+            title=result.path_segments[n - 1],
+            github_commit=result.github_commit,
+            contents=[],
+        )
+        self.contents.append(dir_node)
+        return dir_node
 
 
 @dataclass
