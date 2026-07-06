@@ -9,8 +9,8 @@ from typing import Any
 from safir.dependencies.db_session import db_session_dependency
 from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 
+from timessquare.factory import WorkerFactory
 from timessquare.storage.noteburst import NoteburstApi, NoteburstJobStatus
-from timessquare.worker.servicefactory import create_page_service
 
 
 async def scheduled_page_run(
@@ -45,15 +45,16 @@ async def scheduled_page_run(
 
     try:
         noteburst_client = NoteburstApi(
-            http_client=ctx["http_client"],
+            http_client=ctx["process_context"].http_client,
         )
 
         async for db_session in db_session_dependency():
-            page_service = await create_page_service(
-                http_client=ctx["http_client"],
+            factory = WorkerFactory(
                 logger=logger,
-                db_session=db_session,
+                session=db_session,
+                process_context=ctx["process_context"],
             )
+            page_service = factory.create_page_service()
             page = await page_service.get_page(page_name)
             page_execution_info = (
                 await page_service.execute_page_with_defaults(page=page)

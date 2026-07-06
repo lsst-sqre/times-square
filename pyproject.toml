@@ -10,14 +10,14 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "Operating System :: POSIX",
     "Private :: Do Not Upload",
     "Typing :: Typed",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 # Use requirements/main.in for runtime dependencies instead.
 dependencies = [
     "fastapi",
@@ -68,7 +68,6 @@ dev = [
     "uvicorn",
     "respx",
     "httpx-sse == 0.4.0",
-    "holdup",
     "scriv",
     "freezegun>=1.5.2",
 ]
@@ -76,14 +75,14 @@ docs = [
     "documenteer[guide]>=1.0",
 ]
 lint = [
-    "pre-commit",
-    "pre-commit-uv",
+    "prek",
     "ruff",
+    "uv",
 ]
-tox = [
-    "tox",
-    "tox-uv",
-    "tox-docker",
+nox = [
+    "nox",
+    "nox-uv",
+    "testcontainers[postgres,redis]",
 ]
 typing = [
     "mypy",
@@ -100,7 +99,7 @@ branch = true
 source = ["timessquare"]
 
 [tool.coverage.paths]
-source = ["src", ".tox/*/site-packages"]
+source = ["src"]
 
 [tool.coverage.report]
 show_missing = true

@@ -12,7 +12,7 @@
 #   - Runs a non-root user.
 #   - Sets up the entrypoint and port.
 
-FROM python:3.13.7-slim-bookworm AS base-image
+FROM python:3.14.6-slim-bookworm AS base-image
 
 # Update system packages.
 COPY scripts/install-base-packages.sh .
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 FROM base-image AS install-image
 
 # Install uv.
-COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/uv
 
 # Install some additional packages required for building dependencies.
 COPY scripts/install-dependency-packages.sh .

@@ -8,27 +8,22 @@ from pathlib import Path
 from typing import cast
 
 import click
-import httpx
 import structlog
 import uvicorn
-from redis.asyncio import Redis
 from safir.asyncio import run_with_asyncio
 from safir.database import (
     create_database_engine,
     is_database_current,
     stamp_database,
 )
-from safir.dependencies.db_session import db_session_dependency
 from sqlalchemy import CursorResult, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.page import SqlPage
-from timessquare.dependencies.redis import redis_dependency
 
 from .config import config
 from .database import init_database
-from .storage.nbhtmlcache import NbHtmlCacheStore
-from .worker.servicefactory import create_page_service
+from .factory import Factory
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -126,18 +121,18 @@ async def validate_db_schema(*, alembic_config_path: Path) -> None:
 @run_with_asyncio
 async def reset_html() -> None:
     """Reset the Redis-based HTML result cache."""
-    redis = Redis.from_url(str(config.redis_url), password=None)
-    try:
-        html_store = NbHtmlCacheStore(redis)
-        html_store.scan("*")
+    logger = structlog.get_logger("timessquare")
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
+        html_store = factory.create_nbhtml_cache_store()
         n = len([r async for r in html_store.scan("*")])
         await html_store.delete_all("*")
         click.echo(f"Deleted {n} HTML records")
-    except Exception as e:
-        click.echo(str(e))
-    finally:
-        await redis.close()
-        await redis.connection_pool.disconnect()
+    await engine.dispose()
 
 
 @main.command("migrate-html-cache")
@@ -155,25 +150,17 @@ async def migrate_html_cache(
     *, dry_run: bool = True, page: str | None = None
 ) -> None:
     """Migrate the redis cache to the new format."""
-    # Create a database session
+    logger = structlog.get_logger("timessquare")
     engine = create_database_engine(
         config.database_url, config.database_password
     )
-    logger = structlog.get_logger("timessquare")
     if not await is_database_current(engine, logger):
         raise RuntimeError("Database schema out of date")
-    await engine.dispose()
-    await db_session_dependency.initialize(
-        str(config.database_url), config.database_password.get_secret_value()
-    )
-    await redis_dependency.initialize(str(config.redis_url))
 
-    async for db_session in db_session_dependency():
-        page_service = await create_page_service(
-            http_client=httpx.AsyncClient(),
-            logger=structlog.get_logger("timessquare"),
-            db_session=db_session,
-        )
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
+        page_service = factory.create_background_page_service()
         key_count = await page_service.migrate_html_cache_keys(
             dry_run=dry_run, for_page_id=page
         )
@@ -182,6 +169,7 @@ async def migrate_html_cache(
             key_count=key_count,
             dry_run=dry_run,
         )
+    await engine.dispose()
 
 
 @main.command("nbstripout")
@@ -204,34 +192,27 @@ async def run_nbstripout(
     metadata from the page ipynb sources. New pages have nbstripout run
     automatically.
     """
-    # Create a database session
+    logger = structlog.get_logger("timessquare")
     engine = create_database_engine(
         config.database_url, config.database_password
     )
-    logger = structlog.get_logger("timessquare")
     if not await is_database_current(engine, logger):
         raise RuntimeError("Database schema out of date")
-    await engine.dispose()
-    await db_session_dependency.initialize(
-        str(config.database_url), config.database_password.get_secret_value()
-    )
-    await redis_dependency.initialize(str(config.redis_url))
 
-    async for db_session in db_session_dependency():
-        page_service = await create_page_service(
-            http_client=httpx.AsyncClient(),
-            logger=structlog.get_logger("timessquare"),
-            db_session=db_session,
-        )
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
+        page_service = factory.create_background_page_service()
         count = await page_service.migrate_ipynb_with_nbstripout(
-            dry_run=dry_run, for_page_id=page, db_session=db_session
+            dry_run=dry_run, for_page_id=page, db_session=factory.db_session
         )
         logger.info(
             "Finished running nbstripout",
             count=count,
             dry_run=dry_run,
         )
-        await db_session.commit()
+        await factory.db_session.commit()
+    await engine.dispose()
 
 
 @main.command("rename-github-owner")
@@ -262,25 +243,23 @@ async def rename_github_owner(
     so a GitHub org rename leaves existing rows orphaned until this command
     rewrites them.
     """
+    logger = structlog.get_logger("timessquare")
     engine = create_database_engine(
         config.database_url, config.database_password
     )
-    logger = structlog.get_logger("timessquare")
     if not await is_database_current(engine, logger):
         raise RuntimeError("Database schema out of date")
-    await engine.dispose()
-    await db_session_dependency.initialize(
-        str(config.database_url), config.database_password.get_secret_value()
-    )
 
-    async for db_session in db_session_dependency():
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
         count = await _rename_github_owner_in_db(
-            db_session, old_owner=old_owner, new_owner=new_owner
+            factory.db_session, old_owner=old_owner, new_owner=new_owner
         )
         if dry_run:
-            await db_session.rollback()
+            await factory.db_session.rollback()
         else:
-            await db_session.commit()
+            await factory.db_session.commit()
         logger.info(
             "Finished renaming github_owner",
             old_owner=old_owner,
@@ -288,6 +267,7 @@ async def rename_github_owner(
             count=count,
             dry_run=dry_run,
         )
+    await engine.dispose()
 
 
 async def _rename_github_owner_in_db(

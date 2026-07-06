@@ -36,10 +36,10 @@ This complete procedure shows how to use uv to create a virtual environment and 
 
 .. _pre-commit-hooks:
 
-Pre-commit
-==========
+Pre-commit hooks
+================
 
-The pre-commit hooks, which are automatically installed by running the :command:`make init` command on :ref:`set up <dev-environment>`, ensure that files are valid and properly formatted.
+The pre-commit hooks, which are automatically installed with prek_ by running the :command:`make init` command on :ref:`set up <dev-environment>`, ensure that files are valid and properly formatted.
 Some pre-commit hooks automatically reformat code:
 The ``ruff`` hook automatically fixes some common Python issues and sorts Python imports.
 
@@ -51,64 +51,40 @@ To proceed, stage the new modifications and proceed with your Git commit.
 Running tests
 =============
 
-To test all components of Times Square, run tox_, which tests the library the same way that the GitHub Actions CI workflow does:
+To test all components of Times Square, run nox_, which tests the library the same way that the GitHub Actions CI workflow does:
 
 .. code-block:: sh
 
-   tox run
+   uv run --only-group=nox nox
 
-To see a listing of specific tox sessions, run:
+To see a listing of specific nox sessions, run:
 
 .. code-block:: sh
 
-   tox list
+   uv run --only-group=nox nox --list
 
-Times Square requires Docker to run its tests.
+Times Square requires Docker to run its tests: the test sessions start PostgreSQL and Redis with testcontainers_.
+
+.. _testcontainers: https://testcontainers-python.readthedocs.io/en/latest/
 
 Database migrations
 ===================
 
 Times Square uses Alembic_ for database migrations.
 If your work involves changing the database schema (in :file:`/src/timessquare/dbschema`) you will need to prepare an Alembic migration in the same PR.
-To create the migration, you will need to run a local postgres database for Alembic to compare the current schema to the new schema:
 
-1. With your existing codebase (before your changes; switch branches or stash changes if necessary), start up the database:
+To create the migration, run the ``create-migration`` nox session with your code changes in place:
 
-   .. code-block:: sh
+.. code-block:: sh
 
-      docker-compose -f docker-compose.yaml up
+   uv run --only-group=nox nox -s create-migration -- "Your migration message."
 
-2. Initialize the database:
+This session starts a temporary PostgreSQL database with testcontainers, applies the existing migrations to reproduce the current released schema, and then autogenerates a new migration by comparing that database to the schema declared in the code.
 
-   .. code-block:: sh
-
-      tox run -e cli -- init
-
-3. Apply code changes to the database schema in :file:`/src/timessquare/dbschema`.
-
-4. Generate the Alembic migration:
-
-   .. code-block:: sh
-
-      tox run -e alembic -- revision --autogenerate -m "Your migration message."
-
-5. Review the migration in :file:`alembic/versions/` and make any necessary changes.
-   In particular, enums require special handling. See the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#creating-database-migrations>`__ for more information.
-
-6. Apply the migration to the running database:
-
-   .. code-block:: sh
-
-      tox run -e cli -- update-db-schema --alembic-config-path alembic.ini
-
-7. Shut down the database:
-
-   .. code-block:: sh
-
-      docker-compose -f docker-compose.yaml down
+Review the migration in :file:`alembic/versions/` and make any necessary changes.
+In particular, enums require special handling. See the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#creating-database-migrations>`__ for more information.
 
 For more general information about preparing Alembic migrations, see the `Safir documentation <https://safir.lsst.io/user-guide/database/schema.html#testing-database-migrations>`__.
-Note that in Times Square the :file:`docker-compose.yaml` is hosted in the root of the repository rather than in the :file:`alembic` directory.
 
 Building documentation
 ======================
@@ -119,7 +95,7 @@ Documentation is built with Sphinx_:
 
 .. code-block:: sh
 
-   tox run -e docs
+   uv run --only-group=nox nox -s docs
 
 The build documentation is located in the :file:`docs/_build/html` directory.
 
@@ -127,7 +103,7 @@ To check the documentation for broken links, run:
 
 .. code-block:: sh
 
-   tox run -e docs-linkcheck
+   uv run --only-group=nox nox -s docs-linkcheck
 
 .. _dev-change-log:
 
@@ -174,7 +150,7 @@ Code
 - The code style follows :pep:`8`, though in practice lean on Black and ruff to format the code for you. Use :sqr:`072` for for architectural guidance.
 
 - Use :pep:`484` type annotations.
-  The ``tox run -e typing`` test session, which runs mypy_, ensures that the project's types are consistent.
+  The ``nox -s typing`` test session, which runs mypy_, ensures that the project's types are consistent.
 
 - Write tests for Pytest_.
 

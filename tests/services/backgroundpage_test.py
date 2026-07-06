@@ -7,12 +7,10 @@ from base64 import b64encode
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-import httpx
 import pytest
 import pytest_asyncio
 import respx
 import structlog
-from safir.arq import MockArqQueue
 from safir.database import (
     create_database_engine,
     initialize_database,
@@ -22,13 +20,10 @@ from safir.dependencies.db_session import db_session_dependency
 
 from timessquare.config import config
 from timessquare.dbschema import Base
-from timessquare.dependencies.redis import redis_dependency
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
 from timessquare.domain.page import PageInstanceIdModel, PageModel
+from timessquare.factory import ProcessContext, WorkerFactory
 from timessquare.services.backgroundpage import BackgroundPageService
-from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
-from timessquare.storage.noteburstjobstore import NoteburstJobStore
-from timessquare.storage.page import PageStore
 
 
 @pytest_asyncio.fixture
@@ -36,7 +31,6 @@ async def page_service() -> AsyncGenerator[BackgroundPageService]:
     """Return a BackgroundPageService."""
     logger = structlog.get_logger(config.logger_name)
 
-    http_client = httpx.AsyncClient()
     engine = create_database_engine(
         config.database_url, config.database_password.get_secret_value()
     )
@@ -47,18 +41,18 @@ async def page_service() -> AsyncGenerator[BackgroundPageService]:
     await db_session_dependency.initialize(
         str(config.database_url), config.database_password.get_secret_value()
     )
-    await redis_dependency.initialize(str(config.redis_url))
+    process_context = await ProcessContext.create()
 
     async for db_session in db_session_dependency():
-        redis = await redis_dependency()
-        yield BackgroundPageService(
-            page_store=PageStore(db_session),
-            html_cache=NbHtmlCacheStore(redis),
-            job_store=NoteburstJobStore(redis),
-            http_client=http_client,
+        factory = WorkerFactory(
             logger=logger,
-            arq_queue=MockArqQueue(),
+            session=db_session,
+            process_context=process_context,
         )
+        yield factory.create_page_service()
+
+    await process_context.aclose()
+    await db_session_dependency.aclose()
 
 
 @pytest.mark.asyncio

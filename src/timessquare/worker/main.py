@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 import arq
-import httpx
 import sentry_sdk
 import structlog
 from safir.database import create_database_engine, is_database_current
@@ -19,7 +18,7 @@ from safir.slack.webhook import SlackWebhookClient
 
 from timessquare import __version__
 from timessquare.config import config
-from timessquare.dependencies.redis import redis_dependency
+from timessquare.factory import ProcessContext
 
 from .functions import (
     cleanup_scheduled_runs,
@@ -58,9 +57,6 @@ async def startup(ctx: dict[Any, Any]) -> None:
 
     logger.info("Starting up worker")
 
-    http_client = httpx.AsyncClient()
-    ctx["http_client"] = http_client
-
     if config.slack_webhook_url:
         slack_client = SlackWebhookClient(
             str(config.slack_webhook_url),
@@ -79,12 +75,15 @@ async def startup(ctx: dict[Any, Any]) -> None:
         raise RuntimeError("Database schema out of date")
     await engine.dispose()
 
-    # Set up FastAPI dependencies; we can use them "manually" with
-    # arq to provide resources similarly to FastAPI endpoints
+    # Set up the database session dependency; we can use it "manually" with
+    # arq to provide sessions similarly to FastAPI endpoints
     await db_session_dependency.initialize(
         str(config.database_url), config.database_password.get_secret_value()
     )
-    await redis_dependency.initialize(str(config.redis_url))
+
+    # Shared process-wide resources; worker functions combine this with a
+    # database session to build a WorkerFactory for each task.
+    ctx["process_context"] = await ProcessContext.create()
 
     logger.info("Start up complete")
 
@@ -111,12 +110,11 @@ async def shutdown(ctx: dict[Any, Any]) -> None:
     logger.info("Running worker shutdown.")
 
     await db_session_dependency.aclose()
-    await redis_dependency.close()
 
     try:
-        await ctx["http_client"].aclose()
+        await ctx["process_context"].aclose()
     except Exception as e:
-        logger.warning("Issue closing the http_client: %s", str(e))
+        logger.warning("Issue closing the process context: %s", str(e))
 
     logger.info("Worker shutdown complete.")
 
