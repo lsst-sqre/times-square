@@ -8,6 +8,24 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.24.1'></a>
+## 0.24.1 (2026-07-06)
+
+### Bug fixes
+
+- Fixed duplicate directory nodes in the GitHub pages contents tree. When multiple pages shared a multi-segment directory prefix (e.g. `sst/mtm1m3`), each page after the first created a new duplicate directory node instead of being inserted into the existing one. Directory insertion now reuses existing directory nodes at every level of nesting, for both owner-rooted trees and repo-rooted (PR preview) trees.
+
+### Other changes
+
+- Switched the development tooling from tox to nox, using nox-uv to install uv dependency groups in sessions.
+- Test, run, and CLI sessions now provision PostgreSQL and Redis with testcontainers instead of docker-compose and tox-docker. The noxfile automatically configures testcontainers for Colima compatibility on macOS.
+- Added a `create-migration` nox session that generates Alembic migrations against a temporary PostgreSQL container, replacing the manual docker-compose-based migration workflow.
+- Switched from pre-commit to prek for running Git pre-commit hooks.
+- Updated to Python 3.14.
+- Updated `ruff-shared.toml` to the latest version from the lsst/templates FastAPI Safir app template.
+
+- Refactored service and storage construction around a new `Factory` class in `timessquare.factory`, following the pattern used by Ook and Docverse. Process-wide shared resources (the HTTP client, Redis client, and arq queue) are now held by a `ProcessContext` created once per process. The FastAPI request context provides a factory per request, arq worker tasks build a `WorkerFactory` (a factory variant whose page services are `BackgroundPageService` instances) per task, and CLI commands create a standalone factory with `Factory.create_standalone`. This replaces the service-construction properties on `RequestContext`, the `timessquare.worker.servicefactory` module, and the custom Redis FastAPI dependency.
+
 <a id='changelog-0.24.0'></a>
 ## 0.24.0 (2026-06-11)
 
