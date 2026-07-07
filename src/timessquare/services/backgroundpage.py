@@ -127,7 +127,7 @@ class BackgroundPageService(PageService):
         *,
         dry_run: bool = True,
         for_page_id: str | None = None,
-        db_session: async_scoped_session,
+        db_session: AsyncSession,
     ) -> int:
         """Mark the first code cell as parameters cell in existing notebooks.
 
@@ -168,7 +168,7 @@ class BackgroundPageService(PageService):
         *,
         dry_run: bool = True,
         page_id: str,
-        db_session: async_scoped_session,
+        db_session: AsyncSession,
     ) -> int:
         """Mark parameters cell on a single page.
 
