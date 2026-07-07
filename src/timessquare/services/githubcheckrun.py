@@ -30,6 +30,7 @@ from timessquare.domain.githubcheckrun import (
 )
 from timessquare.exceptions import PageJinjaError
 
+from ..domain.moduleinlining import LocalModuleCache
 from ..domain.page import PageExecutionInfo, PageModel
 from ..storage.noteburst import NoteburstJobStatus
 from .githubrepo import GitHubRepoService
@@ -151,15 +152,26 @@ class GitHubCheckRunService:
         await self._delete_existing_pages(checkout, check_run.head_sha)
 
         tree = await checkout.get_git_tree(self._github_client)
+        module_cache = LocalModuleCache()
         pending_pages: deque[PageExecutionInfo] = deque()
         for notebook_ref in tree.find_notebooks(checkout.settings):
             self._logger.debug(
                 "Started notebook execution for notebook",
                 path=notebook_ref.notebook_source_path,
             )
-            notebook = await checkout.load_notebook(
-                notebook_ref=notebook_ref, github_client=self._github_client
-            )
+            try:
+                notebook = await checkout.load_notebook(
+                    notebook_ref=notebook_ref,
+                    github_client=self._github_client,
+                    tree=tree,
+                    module_cache=module_cache,
+                )
+            except Exception as e:
+                check.report_ipynb_format_error(
+                    notebook_ref.notebook_source_path,
+                    error=e,
+                )
+                continue
             if notebook.sidecar.enabled is False:
                 self._logger.debug(
                     "Skipping notebook execution check for disabled notebook",

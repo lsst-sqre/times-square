@@ -5,7 +5,8 @@ Square notebooks based on GitHub's Git Tree API for a specific git ref SHA.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from functools import cached_property
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -21,6 +22,8 @@ from timessquare.storage.github.settingsfiles import (
     NotebookSidecarFile,
     RepositorySettingsFile,
 )
+
+from .moduleinlining import LocalModuleCache, prepare_notebook_for_execution
 
 
 @dataclass
@@ -132,8 +135,15 @@ class GitHubRepositoryCheckout:
         *,
         notebook_ref: RepositoryNotebookTreeRef,
         github_client: GitHubAPI,
+        tree: RepositoryTree,
+        module_cache: LocalModuleCache,
     ) -> RepositoryNotebookModel:
-        """Load a notebook from GitHub."""
+        """Load a notebook from GitHub and prepare it for execution.
+
+        The returned notebook's ``ipynb`` has its parameters cell marked and
+        any local repository module imports inlined, so that it is fully
+        self-contained for execution by Noteburst.
+        """
         # get the sidecar file and parse
         sidecar_blob = await self.load_git_blob(
             github_client=github_client, sha=notebook_ref.sidecar_git_tree_sha
@@ -145,6 +155,14 @@ class GitHubRepositoryCheckout:
             github_client=github_client, sha=notebook_ref.notebook_git_tree_sha
         )
 
+        ipynb, inlined_modules = await prepare_notebook_for_execution(
+            notebook_source=source_blob.decode(),
+            notebook_path_prefix=notebook_ref.path_prefix,
+            tree=tree,
+            checkout=self,
+            github_client=github_client,
+            module_cache=module_cache,
+        )
         return RepositoryNotebookModel(
             notebook_source_path=notebook_ref.notebook_source_path,
             sidecar_path=notebook_ref.sidecar_path,
@@ -152,6 +170,8 @@ class GitHubRepositoryCheckout:
             sidecar_git_tree_sha=notebook_ref.sidecar_git_tree_sha,
             notebook_source=source_blob.decode(),
             sidecar=sidecar_file,
+            ipynb=ipynb,
+            inlined_modules=inlined_modules,
         )
 
     async def load_git_blob(
@@ -168,6 +188,20 @@ class RepositoryTree:
     """A domain model for the tree of contents in a GitHub repository."""
 
     github_tree: RecursiveGitTreeModel
+
+    @cached_property
+    def _file_index(self) -> dict[str, GitTreeItem]:
+        return {
+            item.path: item
+            for item in self.github_tree.tree
+            if item.mode == GitTreeMode.file
+        }
+
+    def get_file(self, path: str) -> GitTreeItem | None:
+        """Get the tree item for a file path in the repository, or `None` if
+        no file exists at that path.
+        """
+        return self._file_index.get(path)
 
     def find_notebooks(
         self, settings: RepositorySettingsFile
@@ -248,31 +282,6 @@ class RepositoryNotebookTreeRef:
         """Export as a dictionary."""
         return asdict(self)
 
-
-@dataclass(kw_only=True)
-class RepositoryNotebookModel(RepositoryNotebookTreeRef):
-    """A domain model for a notebook in a GitHub repository."""
-
-    notebook_source: str
-    """Source content of the notebook file."""
-
-    sidecar: NotebookSidecarFile
-    """Contents of the notebook's sidecar configuration file."""
-
-    @property
-    def title(self) -> str:
-        """Title of the notebook page.
-
-        If available, this is the "title" field set in the sidecar file.
-        Otherwise it is the filename of the notebook source file (without
-        its extension).
-        """
-        if self.sidecar.title:
-            return self.sidecar.title
-        else:
-            path = PurePosixPath(self.notebook_source_path)
-            return PurePosixPath(path.name).stem
-
     @property
     def path_prefix(self) -> str:
         """Directories this notebook is contained in, or "" for the root
@@ -315,11 +324,35 @@ class RepositoryNotebookModel(RepositoryNotebookTreeRef):
         else:
             return f"{checkout.owner_name}/{checkout.name}/{name_stem}"
 
+
+@dataclass(kw_only=True)
+class RepositoryNotebookModel(RepositoryNotebookTreeRef):
+    """A domain model for a notebook in a GitHub repository."""
+
+    notebook_source: str
+    """Source content of the notebook file."""
+
+    sidecar: NotebookSidecarFile
+    """Contents of the notebook's sidecar configuration file."""
+
+    ipynb: str
+    """The notebook (ipynb JSON) prepared for execution: the parameters cell
+    is marked and local repository module imports are inlined."""
+
+    inlined_modules: list[str] = field(default_factory=list)
+    """Dotted names of local repository modules inlined into the notebook, in
+    execution order (empty if the notebook has no local imports)."""
+
     @property
-    def ipynb(self) -> str:
-        """The ipynb file, based on the ``notebook_source`` and including
-        Times Square metadata such as parameters.
+    def title(self) -> str:
+        """Title of the notebook page.
+
+        If available, this is the "title" field set in the sidecar file.
+        Otherwise it is the filename of the notebook source file (without
+        its extension).
         """
-        # If we support jupytext, this is where we'd convert that
-        # source file into ipynb
-        return self.notebook_source
+        if self.sidecar.title:
+            return self.sidecar.title
+        else:
+            path = PurePosixPath(self.notebook_source_path)
+            return PurePosixPath(path.name).stem
