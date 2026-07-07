@@ -6,10 +6,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
+
 from timessquare.domain.page import (
     PageInstanceIdModel,
     PageInstanceModel,
     PageModel,
+    mark_notebook_parameters_cell,
 )
 from timessquare.domain.pageparameters import PageParameters
 
@@ -300,6 +303,52 @@ def test_new_notebook_auto_marked() -> None:
         first_code_cell.metadata.get("times_square", {}).get("cell_type")
         == "parameters"
     )
+
+
+def test_mark_notebook_parameters_cell_function() -> None:
+    """Test the module-level mark_notebook_parameters_cell()."""
+    notebook = new_notebook()
+    notebook.cells = [
+        new_markdown_cell("# Title"),
+        new_code_cell("import numpy"),
+        new_code_cell("numpy.array([1])"),
+    ]
+
+    # First call marks the first code cell and reports a change.
+    assert mark_notebook_parameters_cell(notebook) is True
+    code_cells = [c for c in notebook.cells if c.cell_type == "code"]
+    assert (
+        code_cells[0].metadata.get("times_square", {}).get("cell_type")
+        == "parameters"
+    )
+    assert (
+        code_cells[1].metadata.get("times_square", {}).get("cell_type")
+        != "parameters"
+    )
+
+    # A second call is a no-op because a marker already exists.
+    assert mark_notebook_parameters_cell(notebook) is False
+
+
+def test_mark_notebook_parameters_cell_respects_existing() -> None:
+    """A pre-existing marker is respected and no change is made."""
+    notebook = new_notebook()
+    second = new_code_cell("y = 1")
+    second.metadata["times_square"] = {"cell_type": "parameters"}
+    notebook.cells = [new_code_cell("x = 1"), second]
+
+    assert mark_notebook_parameters_cell(notebook) is False
+    assert (
+        notebook.cells[0].metadata.get("times_square", {}).get("cell_type")
+        != "parameters"
+    )
+
+
+def test_mark_notebook_parameters_cell_no_code_cells() -> None:
+    """A notebook with no code cells is left unchanged."""
+    notebook = new_notebook()
+    notebook.cells = [new_markdown_cell("# Title")]
+    assert mark_notebook_parameters_cell(notebook) is False
 
 
 def test_metadata_survives_strip() -> None:

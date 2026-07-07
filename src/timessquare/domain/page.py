@@ -29,6 +29,7 @@ __all__ = [
     "PageModel",
     "PageSummaryModel",
     "PersonModel",
+    "mark_notebook_parameters_cell",
 ]
 
 NB_VERSION = 4
@@ -37,6 +38,51 @@ NB_VERSION = 4
 Generally this version should be upgraded as needed to support more modern
 notebook formats, while also being compatible with this app.
 """
+
+
+def mark_notebook_parameters_cell(notebook: nbformat.NotebookNode) -> bool:
+    """Mark the first code cell of a notebook as the parameters cell.
+
+    Adds metadata to identify the parameters cell explicitly, enabling
+    inlined-module cells to be inserted before it.
+
+    Modifies the notebook in place. If any code cell already has the
+    parameters marker, the existing metadata is respected and no changes
+    are made — this allows notebook authors to explicitly specify which
+    cell is the parameters cell.
+
+    Parameters
+    ----------
+    notebook
+        The parsed notebook to mark, modified in place.
+
+    Returns
+    -------
+    bool
+        `True` if the notebook was modified, `False` if a marker was
+        already present.
+    """
+    # Check if any cell already has the parameters marker
+    if any(
+        cell.cell_type == "code"
+        and cell.metadata.get("times_square", {}).get("cell_type")
+        == "parameters"
+        for cell in notebook.cells
+    ):
+        return False
+
+    # Otherwise, mark the first code cell as the parameters cell
+    for cell in notebook.cells:
+        if cell.cell_type == "code":
+            # Initialize times_square metadata if not present
+            if "times_square" not in cell.metadata:
+                cell.metadata["times_square"] = {}
+
+            # Mark this cell as parameters cell
+            cell.metadata["times_square"]["cell_type"] = "parameters"
+            return True
+
+    return False
 
 
 @dataclass
@@ -423,28 +469,8 @@ class PageModel:
         to explicitly specify which cell should be the parameters cell.
         """
         notebook = self.read_ipynb(self.ipynb)
-
-        # Check if any cell already has the parameters marker
-        if any(
-            cell.cell_type == "code"
-            and cell.metadata.get("times_square", {}).get("cell_type")
-            == "parameters"
-            for cell in notebook.cells
-        ):
-            return
-
-        # Otherwise, mark the first code cell as the parameters cell
-        for cell in notebook.cells:
-            if cell.cell_type == "code":
-                # Initialize times_square metadata if not present
-                if "times_square" not in cell.metadata:
-                    cell.metadata["times_square"] = {}
-
-                # Mark this cell as parameters cell
-                cell.metadata["times_square"]["cell_type"] = "parameters"
-                break
-
-        self.ipynb = self.write_ipynb(notebook)
+        if mark_notebook_parameters_cell(notebook):
+            self.ipynb = self.write_ipynb(notebook)
 
     @property
     def schedule(self) -> RunSchedule | None:
