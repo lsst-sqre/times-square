@@ -28,7 +28,11 @@ from timessquare.domain.githubcheckrun import (
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
 )
-from timessquare.exceptions import PageJinjaError
+from timessquare.exceptions import (
+    PageJinjaError,
+    PageModuleInlineError,
+    PageNotebookFormatError,
+)
 
 from ..domain.moduleinlining import LocalModuleCache
 from ..domain.page import PageExecutionInfo, PageModel
@@ -166,7 +170,7 @@ class GitHubCheckRunService:
                     tree=tree,
                     module_cache=module_cache,
                 )
-            except Exception as e:
+            except (PageModuleInlineError, PageNotebookFormatError) as e:
                 check.report_ipynb_format_error(
                     notebook_ref.notebook_source_path,
                     error=e,
