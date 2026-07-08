@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import re
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -105,33 +106,70 @@ class LocalModuleCache:
         return self._sources[item.sha]
 
 
+_PYTHON_BODY_CELL_MAGICS = frozenset(
+    {"time", "timeit", "capture", "prun", "debug"}
+)
+"""Cell magics whose body is executed as Python, and so may wrap real
+import statements. Other cell magics (``%%bash``, ``%%writefile``, ...) treat
+their body as non-Python and are not parsed.
+"""
+
+_INLINE_MAGIC_ASSIGNMENT = re.compile(
+    r"^(?P<prefix>\s*[A-Za-z_][\w.\[\], ]*=\s*)[%!]"
+)
+"""Matches an assignment whose right-hand side is an IPython inline magic
+(``x = %sx ls``) or shell escape (``y = !ls``); the RHS begins at the
+``%`` or ``!`` immediately after the prefix.
+"""
+
+
+def _neutralize_ipython_line(line: str) -> str:
+    """Rewrite an IPython-only line into valid Python so the surrounding
+    cell still parses, leaving ordinary Python lines untouched.
+    """
+    stripped = line.lstrip()
+    if stripped.startswith(("%", "!")):
+        indent = line[: len(line) - len(stripped)]
+        return indent + "pass"
+    match = _INLINE_MAGIC_ASSIGNMENT.match(line)
+    if match:
+        return match.group("prefix") + "None"
+    return line
+
+
 def extract_imports(source: str) -> list[ImportInfo] | None:
     """Extract import statements from Python source.
 
-    Handles IPython cell source on a best-effort basis: line magics
-    (``%matplotlib``) and shell escapes (``!pip``) are stripped before
-    parsing so they don't hide the cell's real imports behind a
-    `SyntaxError`.
+    Handles IPython cell source on a best-effort basis so real imports are
+    not hidden behind a `SyntaxError`:
+
+    - Line magics (``%matplotlib``) and shell escapes (``!pip``) are
+      neutralized, including when they form the right-hand side of an
+      assignment (``x = %sx ls``, ``y = !ls``).
+    - A cell opening with one of a known set of "Python-body" cell magics
+      (``%%time``, ``%%timeit``, ``%%capture``, ``%%prun``, ``%%debug``) has
+      its magic line stripped and its body parsed, since those magics
+      execute their body as Python.
 
     Returns
     -------
     list of ImportInfo or None
         The imports found, or `None` if the source could not be parsed
-        (including cells that open with a ``%%`` cell magic). Callers
-        should treat `None` as "no imports". Relative imports are not
-        reported; they are only meaningful inside packages and are handled
-        by `rewrite_relative_imports`.
+        (including cells that open with a non-Python cell magic such as
+        ``%%bash`` or ``%%writefile``). Callers should treat `None` as
+        "no imports". Relative imports are not reported; they are only
+        meaningful inside packages and are handled by
+        `rewrite_relative_imports`.
     """
+    lines = source.splitlines()
     if source.lstrip().startswith("%%"):
-        return None
-    cleaned_lines: list[str] = []
-    for line in source.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith(("%", "!")):
-            indent = line[: len(line) - len(stripped)]
-            cleaned_lines.append(indent + "pass")
-        else:
-            cleaned_lines.append(line)
+        magic_index = next(i for i, line in enumerate(lines) if line.strip())
+        tokens = lines[magic_index].lstrip()[2:].split(maxsplit=1)
+        magic_name = tokens[0] if tokens else ""
+        if magic_name not in _PYTHON_BODY_CELL_MAGICS:
+            return None
+        lines = lines[magic_index + 1 :]
+    cleaned_lines = [_neutralize_ipython_line(line) for line in lines]
     try:
         parsed = ast.parse("\n".join(cleaned_lines))
     except SyntaxError:

@@ -170,6 +170,41 @@ def test_extract_imports_cell_magic_none() -> None:
     assert extract_imports("%%bash\necho hello") is None
 
 
+def test_extract_imports_inline_magic_assignment() -> None:
+    """An inline magic on an assignment's RHS doesn't hide later imports."""
+    imports = extract_imports("x = %sx ls\nimport helpers")
+    assert imports is not None
+    assert [i.module_name for i in imports] == ["helpers"]
+
+
+def test_extract_imports_inline_shell_assignment() -> None:
+    """An inline shell escape on an assignment's RHS is neutralized."""
+    imports = extract_imports("y = !ls\nimport helpers")
+    assert imports is not None
+    assert [i.module_name for i in imports] == ["helpers"]
+
+
+def test_extract_imports_python_body_cell_magic() -> None:
+    """A ``%%time`` cell has its body parsed for imports."""
+    imports = extract_imports("%%time\nimport helpers\nhelpers.run()")
+    assert imports is not None
+    assert [i.module_name for i in imports] == ["helpers"]
+
+
+def test_extract_imports_capture_cell_magic() -> None:
+    """A ``%%capture`` cell has its body parsed for imports."""
+    imports = extract_imports("%%capture\nimport helpers")
+    assert imports is not None
+    assert [i.module_name for i in imports] == ["helpers"]
+
+
+def test_extract_imports_non_python_cell_magic_none() -> None:
+    """A non-Python cell magic returns None even if its body looks like an
+    import: the body is not executed as Python.
+    """
+    assert extract_imports("%%writefile foo.py\nimport helpers") is None
+
+
 def test_extract_imports_unparsable_none() -> None:
     """Genuinely unparsable source returns None."""
     assert extract_imports("def broken(:\n    pass") is None
