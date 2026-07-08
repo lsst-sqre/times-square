@@ -261,6 +261,16 @@ def test_find_local_module_package() -> None:
     assert item.path == "pkg/__init__.py"
 
 
+def test_find_local_module_package_preferred_over_module() -> None:
+    """When both a package and a like-named module exist in the same root,
+    the package ``__init__.py`` wins, mirroring CPython import precedence.
+    """
+    tree = make_tree(["foo/__init__.py", "foo.py"])
+    item = find_local_module("foo", search_roots=[""], tree=tree)
+    assert item is not None
+    assert item.path == "foo/__init__.py"
+
+
 def test_find_local_module_external_none() -> None:
     """A stdlib/external name does not resolve."""
     tree = make_tree(["helpers.py"])

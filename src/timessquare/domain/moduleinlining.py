@@ -166,9 +166,11 @@ def find_local_module(
 ) -> GitTreeItem | None:
     """Resolve a dotted module name to a file in the repository git tree.
 
-    For a name ``a.b``, checks ``{root}/a/b.py`` and then
-    ``{root}/a/b/__init__.py`` for each root in ``search_roots``, in order;
-    the first match wins.
+    For a name ``a.b``, checks ``{root}/a/b/__init__.py`` and then
+    ``{root}/a/b.py`` for each root in ``search_roots``, in order; the first
+    match wins. The package ``__init__.py`` is checked before the like-named
+    plain module, mirroring CPython, which imports a package in preference to
+    a module of the same name in the same directory.
 
     Parameters
     ----------
@@ -190,8 +192,8 @@ def find_local_module(
     for root in search_roots:
         prefix = f"{root}/" if root else ""
         for candidate in (
-            f"{prefix}{relative_path}.py",
             f"{prefix}{relative_path}/__init__.py",
+            f"{prefix}{relative_path}.py",
         ):
             item = tree.get_file(candidate)
             if item is not None:
