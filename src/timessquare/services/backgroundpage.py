@@ -172,6 +172,11 @@ class BackgroundPageService(PageService):
     ) -> int:
         """Mark parameters cell on a single page.
 
+        Any error while processing this single page is caught, logged, and
+        the database session is rolled back so that the surrounding migration
+        loop can continue to the next page. Because commits are per-page, a
+        propagating error would otherwise abort the whole migration mid-way.
+
         Returns
         -------
         int
@@ -179,56 +184,59 @@ class BackgroundPageService(PageService):
         """
         try:
             page = await self.get_page(page_id)
+
+            if not page.ipynb:
+                self._logger.warning(
+                    "Skipping page with no ipynb", page_id=page_id
+                )
+                return 0
+
+            # Check if already has marked parameters cell
+            notebook = page.read_ipynb(page.ipynb)
+            has_marked_params = any(
+                cell.cell_type == "code"
+                and cell.metadata.get("times_square", {}).get("cell_type")
+                == "parameters"
+                for cell in notebook.cells
+            )
+
+            if has_marked_params:
+                self._logger.debug(
+                    "Page already has marked parameters cell, skipping",
+                    page_id=page_id,
+                )
+                return 0
+
+            # Check if page has any code cells to mark
+            has_code_cells = any(
+                cell.cell_type == "code" for cell in notebook.cells
+            )
+            if not has_code_cells:
+                self._logger.warning(
+                    "Page has no code cells to mark", page_id=page_id
+                )
+                return 0
+
+            if not dry_run:
+                page.mark_parameters_cell()
+                await self.update_page_in_store(page, drop_html_cache=False)
+                # Commit per-page to avoid issues with large bulk commits
+                await db_session.commit()
+                self._logger.info("Marked parameters cell", page_id=page_id)
+            else:
+                self._logger.info(
+                    "Would mark parameters cell (dry-run)", page_id=page_id
+                )
         except Exception as e:
+            # Roll back so a failed or partial commit does not poison the
+            # session for the remaining pages in the migration loop.
+            await db_session.rollback()
             self._logger.warning(
                 "Skipping page with error", page_id=page_id, error=str(e)
             )
             return 0
-
-        if not page.ipynb:
-            self._logger.warning(
-                "Skipping page with no ipynb", page_id=page_id
-            )
-            return 0
-
-        # Check if already has marked parameters cell
-        notebook = page.read_ipynb(page.ipynb)
-        has_marked_params = any(
-            cell.cell_type == "code"
-            and cell.metadata.get("times_square", {}).get("cell_type")
-            == "parameters"
-            for cell in notebook.cells
-        )
-
-        if has_marked_params:
-            self._logger.debug(
-                "Page already has marked parameters cell, skipping",
-                page_id=page_id,
-            )
-            return 0
-
-        # Check if page has any code cells to mark
-        has_code_cells = any(
-            cell.cell_type == "code" for cell in notebook.cells
-        )
-        if not has_code_cells:
-            self._logger.warning(
-                "Page has no code cells to mark", page_id=page_id
-            )
-            return 0
-
-        if not dry_run:
-            page.mark_parameters_cell()
-            await self.update_page_in_store(page, drop_html_cache=False)
-            # Commit per-page to avoid issues with large bulk commits
-            await db_session.commit()
-            self._logger.info("Marked parameters cell", page_id=page_id)
         else:
-            self._logger.info(
-                "Would mark parameters cell (dry-run)", page_id=page_id
-            )
-
-        return 1
+            return 1
 
     async def migrate_html_cache_keys(
         self, *, dry_run: bool = True, for_page_id: str | None = None
