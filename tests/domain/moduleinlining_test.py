@@ -469,6 +469,53 @@ async def test_prepare_same_directory_import(
 
 
 @pytest.mark.asyncio
+async def test_prepare_import_above_marked_params_cell(
+    github_client: GitHubAPI,
+) -> None:
+    """When a later code cell is explicitly marked as the parameters cell,
+    the scaffolding and inlined-module cells are inserted before the first
+    code cell, so an earlier local import does not run before sys.modules is
+    reconstructed.
+    """
+    nb = new_notebook()
+    params_cell = new_code_cell("x = 1")
+    params_cell.metadata["times_square"] = {"cell_type": "parameters"}
+    nb.cells = [
+        new_markdown_cell("# Title"),
+        new_code_cell("import helpers\nhelpers.run()"),
+        params_cell,
+    ]
+    source = nbformat.writes(nb)
+    tree = make_tree(["notebooks/helpers.py"])
+    cache = FakeModuleCache({"notebooks/helpers.py": "def run(): pass"})
+    ipynb, inlined = await prepare_notebook_for_execution(
+        notebook_source=source,
+        notebook_path_prefix="notebooks",
+        tree=tree,
+        checkout=make_checkout(),
+        github_client=github_client,
+        module_cache=cache,
+    )
+    assert inlined == ["helpers"]
+    notebook = nbformat.reads(ipynb, as_version=4)
+    # The generated cells precede the `import helpers` cell.
+    import_idx = next(
+        i for i, c in enumerate(notebook.cells) if "import helpers" in c.source
+    )
+    generated_indices = [
+        i
+        for i, c in enumerate(notebook.cells)
+        if c.metadata.get("times_square", {}).get("cell_type")
+        in {"module_scaffolding", "inlined_module"}
+    ]
+    assert generated_indices
+    assert all(i < import_idx for i in generated_indices)
+    # The explicitly marked `x = 1` cell remains the parameters cell.
+    params_cell_out = notebook.cells[params_cell_index(notebook)]
+    assert params_cell_out.source == "x = 1"
+
+
+@pytest.mark.asyncio
 async def test_prepare_transitive_import(github_client: GitHubAPI) -> None:
     """A transitive same-directory import orders the dependency first."""
     source = make_notebook_source(["import a\na.go()"])

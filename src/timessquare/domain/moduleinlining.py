@@ -573,17 +573,15 @@ def _cell_id_for_module(module_name: str) -> str:
     return f"ts-mod-{module_name.replace('.', '-')}"[:64]
 
 
-def _parameters_cell_index(notebook: nbformat.NotebookNode) -> int:
-    """Find the index of the marked parameters cell (0 if none exists,
-    which can only happen for a notebook without code cells).
+def _first_code_cell_index(notebook: nbformat.NotebookNode) -> int:
+    """Find the index of the first code cell (0 if there are no code cells,
+    which cannot happen when there are modules to inline).
     """
     return next(
         (
             i
             for i, cell in enumerate(notebook.cells)
             if cell.cell_type == "code"
-            and cell.metadata.get("times_square", {}).get("cell_type")
-            == "parameters"
         ),
         0,
     )
@@ -685,6 +683,11 @@ async def prepare_notebook_for_execution(
         )
         for name in ordered_names
     )
-    insert_index = _parameters_cell_index(notebook)
+    # Insert the scaffolding and inlined-module cells before the first code
+    # cell so they run before any notebook code. This matters when the author
+    # explicitly marks a later code cell as the parameters cell: an earlier
+    # code cell may import a local module, which must not execute before the
+    # scaffolding reconstructs sys.modules.
+    insert_index = _first_code_cell_index(notebook)
     notebook.cells[insert_index:insert_index] = new_cells
     return PageModel.write_ipynb(notebook), ordered_names
