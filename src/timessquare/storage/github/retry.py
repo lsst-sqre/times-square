@@ -25,6 +25,7 @@ __all__ = [
     "INITIAL_BACKOFF",
     "MAX_ATTEMPTS",
     "MAX_BACKOFF",
+    "TRANSIENT_GITHUB_ERRORS",
     "retry_transient_github_errors",
 ]
 
@@ -42,6 +43,19 @@ TRANSIENT_HTTPX_ERRORS: tuple[type[httpx.HTTPError], ...] = (
 )
 """httpx transport/timeout errors that indicate a transient failure."""
 
+TRANSIENT_GITHUB_ERRORS: tuple[type[BaseException], ...] = (
+    *TRANSIENT_HTTPX_ERRORS,
+    GitHubBroken,
+)
+"""Exception types that are treated as transient GitHub failures.
+
+This is the full set classified as retryable by
+`retry_transient_github_errors`: httpx transport/timeout errors plus GitHub
+5xx responses (`gidgethub.GitHubBroken`). It is exported so callers can catch
+an *exhausted* transient failure (one that survived the retry budget) in an
+``except`` clause and handle it gracefully.
+"""
+
 MAX_ATTEMPTS = 3
 """Total number of attempts (the initial call plus retries)."""
 
@@ -56,7 +70,7 @@ def _is_transient(exc: BaseException) -> bool:
     """Classify whether an exception is a transient GitHub error worth
     retrying.
     """
-    return isinstance(exc, (*TRANSIENT_HTTPX_ERRORS, GitHubBroken))
+    return isinstance(exc, TRANSIENT_GITHUB_ERRORS)
 
 
 def _backoff_delay(attempt: int) -> float:
