@@ -16,6 +16,7 @@ from timessquare.domain.page import PageModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.services.page import PageService
 from timessquare.storage.github.settingsfiles import NotebookSidecarFile
+from timessquare.storage.nbexecutionfailurestore import NbExecutionFailureStore
 from timessquare.storage.nbhtmlcache import NbHtmlCacheStore
 from timessquare.storage.noteburstjobstore import NoteburstJobStore
 from timessquare.storage.page import PageStore
@@ -41,6 +42,7 @@ async def test_github(client: AsyncClient) -> None:
         page_store=PageStore(session=session),
         html_cache=NbHtmlCacheStore(redis),
         job_store=NoteburstJobStore(redis),
+        execution_failure_store=NbExecutionFailureStore(redis),
         http_client=client,
         logger=get_logger(),
         arq_queue=MockArqQueue(),

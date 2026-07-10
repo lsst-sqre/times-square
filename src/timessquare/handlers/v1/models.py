@@ -19,6 +19,10 @@ from safir.github.models import (
 )
 from safir.metadata import Metadata as SafirMetadata
 
+from timessquare.domain.executionoutcome import (
+    NotebookExecutionErrorCode,
+    NotebookExecutionFailure,
+)
 from timessquare.domain.githubtree import GitHubNode, GitHubNodeType
 from timessquare.domain.nbhtml import (
     NbDisplaySettings,
@@ -389,6 +393,45 @@ class PageSummary(BaseModel):
         )
 
 
+class HtmlExecutionError(BaseModel):
+    """A terminal notebook execution failure surfaced on the API.
+
+    This field is populated when a notebook could not be executed (an
+    infrastructure-level failure or an expired result), rather than when a
+    notebook cell raised an exception (which still yields a renderable
+    notebook).
+    """
+
+    code: NotebookExecutionErrorCode = Field(
+        ...,
+        title="Execution error code",
+        description="A machine-readable code identifying the failure class.",
+    )
+
+    title: str = Field(
+        ...,
+        title="Execution error title",
+        description="A short, human-readable title for the failure.",
+    )
+
+    message: str = Field(
+        ...,
+        title="Execution error message",
+        description="A human-readable description of the failure.",
+    )
+
+    @classmethod
+    def from_domain(
+        cls, failure: NotebookExecutionFailure
+    ) -> HtmlExecutionError:
+        """Create an API model from the domain failure model."""
+        return cls(
+            code=failure.code,
+            title=failure.title,
+            message=failure.message,
+        )
+
+
 class HtmlStatus(BaseModel):
     """Information about the availability of an HTML rendering for a given
     set of parameters.
@@ -415,6 +458,17 @@ class HtmlStatus(BaseModel):
         ),
     )
 
+    execution_error: HtmlExecutionError | None = Field(
+        None,
+        title="Execution error",
+        description=(
+            "A terminal notebook execution failure, or null if the notebook "
+            "did not fail to execute. When non-null, the render is terminal "
+            "(the client can stop polling) even though `available` is false. "
+            "This field is additive and backward compatible."
+        ),
+    )
+
     @classmethod
     def from_html_status(
         cls, *, html_status: NbHtmlStatusModel, request: Request
@@ -423,6 +477,12 @@ class HtmlStatus(BaseModel):
             request.url_for("get_page_html", page=request.path_params["page"])
         )
 
+        execution_error: HtmlExecutionError | None = None
+        if html_status.execution_error is not None:
+            execution_error = HtmlExecutionError.from_domain(
+                html_status.execution_error
+            )
+
         if html_status.nb_html is not None:
             qs = html_status.nb_html_key.url_query_string
             html_url = f"{base_html_url}?{qs}"
@@ -430,6 +490,7 @@ class HtmlStatus(BaseModel):
                 available=html_status.available,
                 html_url=AnyHttpUrl(html_url),
                 html_hash=html_status.nb_html.html_hash,
+                execution_error=execution_error,
             )
 
         else:
@@ -441,6 +502,7 @@ class HtmlStatus(BaseModel):
                 available=False,
                 html_url=AnyHttpUrl(html_url),
                 html_hash=None,
+                execution_error=execution_error,
             )
 
 
