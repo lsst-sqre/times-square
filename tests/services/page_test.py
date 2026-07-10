@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import pytest_asyncio
@@ -20,6 +22,10 @@ from safir.dependencies.db_session import db_session_dependency
 
 from timessquare.config import config
 from timessquare.dbschema import Base
+from timessquare.domain.executionoutcome import (
+    NotebookExecutionErrorCode,
+    NotebookExecutionFailure,
+)
 from timessquare.domain.page import PageInstanceModel, PageModel
 from timessquare.factory import ProcessContext, WorkerFactory
 from timessquare.services.page import PageService
@@ -245,3 +251,170 @@ async def test_live_job_takes_precedence_over_cached_failure(
     assert status.execution_error is None
     assert status.available is False
     assert post_route.call_count == posts_after_rerun
+
+
+async def _first_event_payload(
+    page_service: PageService,
+    *,
+    name: str,
+    query_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Consume the first SSE event from the events iterator and return its
+    decoded JSON payload.
+    """
+    iterator = cast(
+        "AsyncGenerator[bytes]",
+        await page_service.get_html_events_iter(
+            name=name,
+            query_params=query_params,
+            html_base_url=(
+                "https://example.com/times-square/api/v1/pages/demo/html"
+            ),
+        ),
+    )
+    try:
+        first = await anext(iterator)
+    finally:
+        await iterator.aclose()
+    data_line = next(
+        line
+        for line in first.decode().splitlines()
+        if line.startswith("data:")
+    )
+    return json.loads(data_line[len("data:") :].strip())
+
+
+@pytest.mark.asyncio
+async def test_events_terminal_failure(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """The SSE events stream emits a terminal event carrying execution_error
+    for a failed execution and performs the same cleanup as the interactive
+    path (failure cached, stale job record deleted).
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+
+    # Seed a Noteburst job record (the SSE iterator only reads existing jobs).
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert (
+        await page_service._job_store.get_instance(page_instance.id)
+        is not None
+    )
+
+    # Noteburst now reports a terminal execution failure.
+    respx_mock.get(JOB_URL).mock(return_value=_failed_job())
+
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is not None
+    assert payload["execution_error"]["code"] == "timeout"
+    assert payload["execution_error"]["title"]
+    assert payload["execution_error"]["message"]
+
+    # Same cleanup as the interactive path.
+    assert await page_service._job_store.get_instance(page_instance.id) is None
+    assert (
+        await page_service._execution_failure_store.get_instance(
+            page_instance.id
+        )
+        is not None
+    )
+
+    # With the job record gone, the stream keeps reporting the terminal
+    # failure from the cached marker.
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is not None
+    assert payload["execution_error"]["code"] == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_events_normal_has_null_execution_error(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """execution_error is null on the SSE payload in the normal pending
+    case (backward compatible).
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_events_live_job_takes_precedence_over_cached_failure(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """On the SSE stream a live Noteburst job record wins over a cached
+    terminal failure, so a marker written by a concurrent poll of a superseded
+    job cannot hide an execution that is still in flight.
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+
+    # A pending job is in flight...
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert (
+        await page_service._job_store.get_instance(page_instance.id)
+        is not None
+    )
+
+    # ...and a stale failure marker exists from a superseded execution.
+    await page_service._execution_failure_store.store_failure(
+        failure=NotebookExecutionFailure(
+            code=NotebookExecutionErrorCode.timeout,
+            title="Notebook execution timeout",
+            message="A stale failure from a superseded job.",
+        ),
+        page_id=page_instance.id,
+    )
+
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is None
+
+    # The in-flight job record is untouched.
+    assert (
+        await page_service._job_store.get_instance(page_instance.id)
+        is not None
+    )
