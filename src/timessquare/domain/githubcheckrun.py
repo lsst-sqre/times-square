@@ -674,7 +674,7 @@ class NotebookExecutionsCheck(GitHubCheck):
                 )
             elif job_result.status == NoteburstJobStatus.queued:
                 message += (
-                    " The notebook execution is still in the Noteburst queue."
+                    " The notebook execution is still in the Noteburst queue. "
                     f"after {job_result.runtime.total_seconds()} seconds."
                 )
         annotation = Annotation(

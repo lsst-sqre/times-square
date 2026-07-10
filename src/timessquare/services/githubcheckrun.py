@@ -210,7 +210,7 @@ class GitHubCheckRunService:
                 float(config.github_checkrun_timeout),
             )
         except TimeoutError:
-            self._report_pr_notebook_timeout_errors(check, pending_pages)
+            await self._report_pr_notebook_timeout_errors(check, pending_pages)
 
         await check.submit_conclusion(github_client=self._github_client)
 
@@ -320,23 +320,22 @@ class GitHubCheckRunService:
                     checked_page_count=checked_page_count,
                 )
 
-    def _report_pr_notebook_timeout_errors(
+    async def _report_pr_notebook_timeout_errors(
         self,
         check: NotebookExecutionsCheck,
         pending_pages: deque[PageExecutionInfo],
     ) -> None:
         """Report timeout errors for all pending pages."""
         for page_execution in pending_pages:
-            # Try to get the current job state including runtime
-            try:
-                if page_execution.noteburst_job is not None:
-                    r = self._page_service.noteburst_api.get_job(
-                        str(page_execution.noteburst_job.job_url)
-                    )
-                    job_result = r.data if r and hasattr(r, "data") else None
-                else:
-                    job_result = None
-            except Exception:
+            # Try to get the current job state including runtime. A failed or
+            # missing status lookup yields job_result=None so the timeout is
+            # still reported (without runtime).
+            if page_execution.noteburst_job is not None:
+                r = await self._page_service.noteburst_api.get_job(
+                    str(page_execution.noteburst_job.job_url)
+                )
+                job_result = r.data if r.status_code < 400 else None
+            else:
                 job_result = None
 
             check.report_noteburst_timeout(
