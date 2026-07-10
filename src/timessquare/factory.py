@@ -24,6 +24,7 @@ from .services.githubcheckrun import GitHubCheckRunService
 from .services.githubrepo import GitHubRepoService
 from .services.page import PageService
 from .services.runscheduler import RunSchedulerService
+from .storage.nbexecutionfailurestore import NbExecutionFailureStore
 from .storage.nbhtmlcache import NbHtmlCacheStore
 from .storage.noteburst import NoteburstApi
 from .storage.noteburstjobstore import NoteburstJobStore
@@ -220,6 +221,12 @@ class Factory:
         """
         return NoteburstJobStore(self.redis)
 
+    def create_nb_execution_failure_store(self) -> NbExecutionFailureStore:
+        """Create an NbExecutionFailureStore (Redis cache of terminal
+        notebook execution failures).
+        """
+        return NbExecutionFailureStore(self.redis)
+
     def create_scheduled_run_store(self) -> ScheduledRunStore:
         """Create a ScheduledRunStore (Postgres storage of scheduled runs)."""
         return ScheduledRunStore(self._session)
@@ -234,6 +241,7 @@ class Factory:
             page_store=self.create_page_store(),
             html_cache=self.create_nbhtml_cache_store(),
             job_store=self.create_noteburst_job_store(),
+            execution_failure_store=self.create_nb_execution_failure_store(),
             http_client=self.http_client,
             logger=self._logger,
             arq_queue=self.arq_queue,
@@ -247,6 +255,7 @@ class Factory:
             page_store=self.create_page_store(),
             html_cache=self.create_nbhtml_cache_store(),
             job_store=self.create_noteburst_job_store(),
+            execution_failure_store=self.create_nb_execution_failure_store(),
             http_client=self.http_client,
             logger=self._logger,
             arq_queue=self.arq_queue,
