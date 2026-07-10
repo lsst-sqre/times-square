@@ -187,6 +187,9 @@ extend-exclude = [
 "src/timessquare/sentry.py" = [
     "S311",  # We're not using random.random for cryptography
 ]
+"src/timessquare/storage/github/retry.py" = [
+    "S311",  # Backoff jitter isn't security-sensitive
+]
 "src/timessquare/domain/schedule.py" = [
     "SLF001",  # Necessary evil to use private members
 ]
