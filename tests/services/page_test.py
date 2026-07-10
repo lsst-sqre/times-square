@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import pytest_asyncio
@@ -143,3 +145,129 @@ async def test_terminal_failure_deletes_job_and_guards_reexecution(
     assert status.execution_error is not None
     assert post_route.call_count == posts_after_failure
     assert posts_after_failure == posts_after_request
+
+
+def _timeout_failure_response() -> Response:
+    return Response(
+        200,
+        json={
+            "job_id": "xyz",
+            "kernel_name": "",
+            "enqueue_time": "2022-03-15T04:12:00Z",
+            "status": "complete",
+            "self_url": JOB_URL,
+            "start_time": "2022-03-15T04:13:00Z",
+            "finish_time": "2022-03-15T04:13:10Z",
+            "success": False,
+            "ipynb": None,
+            "timeout": 30.0,
+            "error": {"code": "timeout"},
+        },
+    )
+
+
+async def _first_event_payload(
+    page_service: PageService,
+    *,
+    name: str,
+    query_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Consume the first SSE event from the events iterator and return its
+    decoded JSON payload.
+    """
+    iterator = cast(
+        "AsyncGenerator[bytes]",
+        await page_service.get_html_events_iter(
+            name=name,
+            query_params=query_params,
+            html_base_url=(
+                "https://example.com/times-square/api/v1/pages/demo/html"
+            ),
+        ),
+    )
+    try:
+        first = await anext(iterator)
+    finally:
+        await iterator.aclose()
+    data_line = next(
+        line
+        for line in first.decode().splitlines()
+        if line.startswith("data:")
+    )
+    return json.loads(data_line[len("data:") :].strip())
+
+
+@pytest.mark.asyncio
+async def test_events_terminal_failure(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """The SSE events stream emits a terminal event carrying execution_error
+    for a failed execution and performs the same cleanup as the interactive
+    path (failure cached, stale job record deleted).
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+
+    # Seed a Noteburst job record (the SSE iterator only reads existing jobs).
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert (
+        await page_service._job_store.get_instance(page_instance.id)
+        is not None
+    )
+
+    # Noteburst now reports a terminal execution failure.
+    respx_mock.get(JOB_URL).mock(return_value=_timeout_failure_response())
+
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is not None
+    assert payload["execution_error"]["code"] == "timeout"
+    assert payload["execution_error"]["message"]
+
+    # Same cleanup as the interactive path.
+    assert await page_service._job_store.get_instance(page_instance.id) is None
+    assert (
+        await page_service._execution_failure_store.get_instance(
+            page_instance.id
+        )
+        is not None
+    )
+
+
+@pytest.mark.asyncio
+async def test_events_normal_has_null_execution_error(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """execution_error is null on the SSE payload in the normal pending
+    case (backward compatible).
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is None
