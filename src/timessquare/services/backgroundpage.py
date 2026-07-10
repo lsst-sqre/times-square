@@ -9,6 +9,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from timessquare.domain.executionoutcome import (
+    ExecutionOutcomeKind,
+    classify_noteburst_outcome,
+)
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
 from timessquare.domain.page import PageInstanceModel
 from timessquare.storage.noteburst import NoteburstJobResponseModel
@@ -48,6 +52,25 @@ class BackgroundPageService(PageService):
         page_instance = PageInstanceModel(
             page=page, values=dict(parameter_values)
         )
+
+        outcome = classify_noteburst_outcome(noteburst_response)
+        if outcome.kind is ExecutionOutcomeKind.execution_failure:
+            # An infrastructure-level execution failure is an expected
+            # terminal outcome, not a bug. Log a structured warning, cache the
+            # failure, and clean up the stale Noteburst job record. Do not
+            # raise: raising would post a generic "worker exception" Slack
+            # message from the calling worker task.
+            await self._handle_execution_failure(
+                page_instance=page_instance,
+                noteburst_response=noteburst_response,
+                failure=outcome.failure,
+            )
+            return
+        if outcome.kind is ExecutionOutcomeKind.contract_violation:
+            # The impossible success=true + ipynb=None state is a genuine bug;
+            # keep raising loudly so it is not silently swallowed.
+            raise RuntimeError(outcome.contract_violation_message)
+
         # Create HTML for each display setting and store it in the cache
         await self.render_nbhtml_matrix_from_noteburst_response(
             page_instance=page_instance, noteburst_response=noteburst_response
