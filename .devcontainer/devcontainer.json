@@ -1,0 +1,24 @@
+{
+  "name": "times-square",
+  "build": { "dockerfile": "Dockerfile" },
+  "features": {
+    // Tests, `nox -s run`, and migrations start Postgres + Redis via
+    // testcontainers, so Docker must run inside the container.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  // docker-init.sh must run as root (PID 1) for dockerd to start;
+  // lifecycle commands and the editor still run as vscode.
+  "containerUser": "root",
+  "remoteUser": "vscode",
+  "privileged": true,
+  "postCreateCommand": "make init",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker"
+      ]
+    }
+  }
+}
