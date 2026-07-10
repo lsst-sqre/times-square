@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Mapping
 from contextlib import suppress
+from typing import Any
 
 import gidgethub.abc as gh_abc
 from gidgethub import sansio
 
-__all__ = ["SAMPLE_PRIVATE_KEY", "MockGitHubAPI"]
+__all__ = [
+    "SAMPLE_PRIVATE_KEY",
+    "MockGitHubAPI",
+    "MockGitHubCheckRunAPI",
+]
 
 
 SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
@@ -102,3 +108,82 @@ class MockGitHubAPI(gh_abc.GitHubAPI):
             "x-ratelimit-reset": "0",
             "content-type": gh_abc.JSON_UTF_8_CHARSET,
         }
+
+
+class MockGitHubCheckRunAPI(MockGitHubAPI):
+    """A concrete `MockGitHubAPI` for exercising the GitHub check-run flow.
+
+    It records every request, returns a canned check-run object for the
+    check-run POST/PATCH calls, and can be configured to raise a persistent
+    error on the ``times-square.yaml`` Contents GET (``contents_error``) or
+    on the recursive git tree GET (``tree_error``). Passing an
+    ``httpx.ReadTimeout`` (or another transient error) simulates GitHub
+    slowness that outlasts the retry budget; passing a non-transient error
+    simulates an unexpected failure that should propagate. When
+    ``contents_error`` is not set, the Contents GET returns a valid, empty
+    ``times-square.yaml`` blob so the checkout succeeds.
+    """
+
+    def __init__(
+        self,
+        *,
+        check_run: dict[str, Any],
+        contents_error: BaseException | None = None,
+        tree_error: BaseException | None = None,
+        oauth_token: str | None = None,
+        cache: gh_abc.CACHE_TYPE | None = None,
+        base_url: str = sansio.DOMAIN,
+    ) -> None:
+        super().__init__(
+            oauth_token=oauth_token, cache=cache, base_url=base_url
+        )
+        self._check_run = check_run
+        self._contents_error = contents_error
+        self._tree_error = tree_error
+        self.requests: list[tuple[str, str]] = []
+        self.patched: list[dict[str, Any]] = []
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes = b"",
+    ) -> tuple[int, Mapping[str, str], bytes]:
+        self.requests.append((method, url))
+        if (
+            self._contents_error is not None
+            and method == "GET"
+            and "times-square.yaml" in url
+        ):
+            raise self._contents_error
+        if (
+            self._tree_error is not None
+            and method == "GET"
+            and "git/trees" in url
+        ):
+            raise self._tree_error
+        return await super()._request(method, url, headers, body)
+
+    def create_response(
+        self, method: str, url: str, request_json: dict | None
+    ) -> tuple[int, dict, dict]:
+        """Return the canned check-run object for every call, recording the
+        bodies of PATCH requests (the in-progress and conclusion updates).
+
+        The ``times-square.yaml`` Contents GET instead returns a valid,
+        empty settings-file blob so a checkout can succeed.
+        """
+        if method == "GET" and "times-square.yaml" in url:
+            content = base64.b64encode(b'root: ""\n').decode()
+            blob = {
+                "content": content,
+                "encoding": "base64",
+                "url": "https://api.github.com/repos/x/y/git/blobs/abc123",
+                "sha": "abc123",
+                "size": len(content),
+            }
+            return 200, blob, {}
+        if method == "PATCH" and request_json is not None:
+            self.patched.append(request_json)
+        return 200, self._check_run, {}

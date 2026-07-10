@@ -8,6 +8,7 @@ from collections import deque
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
@@ -15,14 +16,18 @@ import pytest_asyncio
 import respx
 import structlog
 from gidgethub.httpx import GitHubAPI
-from httpx import Response
+from httpx import AsyncClient, Response
 from safir.database import (
     create_database_engine,
     initialize_database,
     stamp_database_async,
 )
 from safir.dependencies.db_session import db_session_dependency
-from safir.github.webhooks import GitHubCheckRunEventModel
+from safir.github.models import GitHubCheckRunConclusion, GitHubCheckRunModel
+from safir.github.webhooks import (
+    GitHubCheckRunEventModel,
+    GitHubCheckSuiteEventModel,
+)
 
 from timessquare.config import config
 from timessquare.dbschema import Base
@@ -32,9 +37,23 @@ from timessquare.domain.pageparameters import PageParameters
 from timessquare.factory import ProcessContext, WorkerFactory
 from timessquare.services.githubcheckrun import GitHubCheckRunService
 from timessquare.services.githubrepo import GitHubRepoService
+from timessquare.services.page import PageService
 from timessquare.storage.noteburst import NoteburstJobModel
 
+from ..support.github import MockGitHubCheckRunAPI
+
 JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
+
+DATA = Path(__file__).parent.joinpath("../data/github_webhooks")
+
+
+@pytest.fixture(autouse=True)
+def _instant_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make retry backoff instantaneous so tests do not actually wait."""
+    monkeypatch.setattr(
+        "timessquare.storage.github.retry._backoff_delay",
+        lambda _attempt: 0.0,
+    )
 
 
 @pytest_asyncio.fixture
@@ -255,3 +274,40 @@ async def test_report_timeout_noteburst_unreachable(
 
     assert len(check.notebook_executions) == 1
     assert check.notebook_executions[0].runtime is None
+
+
+@pytest.mark.asyncio
+async def test_notebook_check_concludes_on_transient_error(
+    http_client: AsyncClient,
+) -> None:
+    """A persistent transient checkout failure concludes the notebook check
+    with a ``failure`` conclusion rather than leaving it dangling
+    ``in_progress``, and no exception propagates.
+    """
+    payload = GitHubCheckSuiteEventModel.model_validate(
+        json.loads((DATA / "check_suite_completed.json").read_text())
+    )
+    check_run_data = json.loads((DATA / "check_run_created.json").read_text())[
+        "check_run"
+    ]
+    check_run = GitHubCheckRunModel.model_validate(check_run_data)
+    mock = MockGitHubCheckRunAPI(
+        check_run=check_run_data,
+        contents_error=httpx.ReadTimeout("slow"),
+    )
+
+    service = GitHubCheckRunService(
+        http_client=http_client,
+        github_client=cast("GitHubAPI", mock),
+        # The transient path returns before these services are used.
+        repo_service=cast("GitHubRepoService", None),
+        page_service=cast("PageService", None),
+        logger=structlog.get_logger(),
+    )
+
+    await service.run_notebook_check_run(
+        check_run=check_run, repo=payload.repository
+    )
+
+    # The check run was concluded with a failure rather than left in_progress.
+    assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure

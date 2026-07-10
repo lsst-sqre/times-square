@@ -24,6 +24,7 @@ from yaml import YAMLError
 from timessquare.config import config
 from timessquare.exceptions import PageJinjaError
 
+from ..storage.github.retry import TRANSIENT_GITHUB_ERRORS
 from ..storage.github.settingsfiles import NotebookSidecarFile
 from ..storage.noteburst import (
     NoteburstErrorCodes,
@@ -36,6 +37,13 @@ from .githubcheckout import (
     RepositoryTree,
 )
 from .page import PageExecutionInfo, PageModel
+
+TRANSIENT_CHECKOUT_ERROR_MESSAGE = (
+    "Times Square could not read the repository's contents from GitHub "
+    "due to a transient error; please re-run this check."
+)
+"""Actionable message shown when a repository checkout fails because of a
+transient GitHub error that outlasted the retry budget."""
 
 
 @dataclass(kw_only=True)
@@ -198,6 +206,24 @@ class GitHubCheck(metaclass=ABCMeta):
         """
         return [a.export() for a in self.annotations[:50]]
 
+    def report_transient_checkout_error(self) -> None:
+        """Record a failure annotation for an exhausted transient GitHub
+        error encountered while checking out the repository.
+
+        This lets the check reach a `failure` conclusion with an actionable,
+        re-runnable message instead of leaving the already-created check run
+        dangling ``in_progress``.
+        """
+        self.annotations.append(
+            Annotation(
+                path="times-square.yaml",
+                start_line=1,
+                message=TRANSIENT_CHECKOUT_ERROR_MESSAGE,
+                title="Transient GitHub error",
+                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+            )
+        )
+
     async def submit_in_progress(self, github_client: GitHubAPI) -> None:
         """Set the check run to "In progress"."""
         await github_client.patch(
@@ -313,15 +339,30 @@ class GitHubConfigsCheck(GitHubCheck):
             )
             check.annotations.extend(annotations)
             return check
+        except TRANSIENT_GITHUB_ERRORS:
+            # A transient GitHub/network error outlasted the retry budget in
+            # GitHubRepositoryCheckout.create. Conclude the check with an
+            # actionable failure rather than letting the exception propagate
+            # and leave the check run dangling in_progress.
+            check.report_transient_checkout_error()
+            return check
 
         # Validate each notebook yaml file
-        tree = await checkout.get_git_tree(github_client)
-        for notebook_ref in tree.find_notebooks(checkout.settings):
-            await check.validate_sidecar(
-                github_client=github_client,
-                repo=repo,
-                notebook_ref=notebook_ref,
-            )
+        try:
+            tree = await checkout.get_git_tree(github_client)
+            for notebook_ref in tree.find_notebooks(checkout.settings):
+                await check.validate_sidecar(
+                    github_client=github_client,
+                    repo=repo,
+                    notebook_ref=notebook_ref,
+                )
+        except TRANSIENT_GITHUB_ERRORS:
+            # A transient GitHub/network error outlasted the retry budget in
+            # the git tree read or a sidecar-file fetch. Conclude the check
+            # with an actionable failure rather than letting the exception
+            # propagate and leave the check run dangling in_progress.
+            check.report_transient_checkout_error()
+            return check
 
         # Cache this checkout and tree so that the notebook execution check
         # can reuse them efficiently.

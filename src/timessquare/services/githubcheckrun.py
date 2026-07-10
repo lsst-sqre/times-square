@@ -33,6 +33,7 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.exceptions import PageJinjaError
 
 from ..domain.page import PageExecutionInfo, PageModel
+from ..storage.github.retry import TRANSIENT_GITHUB_ERRORS
 from ..storage.noteburst import NoteburstJobStatus
 from .githubrepo import GitHubRepoService
 from .page import PageService
@@ -145,14 +146,26 @@ class GitHubCheckRunService:
         await check.submit_in_progress(self._github_client)
         self._logger.debug("Notebook executions check in progress")
 
-        checkout = await GitHubRepositoryCheckout.create(
-            github_client=self._github_client,
-            repo=repo,
-            head_sha=check_run.head_sha,
-        )
-        await self._delete_existing_pages(checkout, check_run.head_sha)
+        try:
+            checkout = await GitHubRepositoryCheckout.create(
+                github_client=self._github_client,
+                repo=repo,
+                head_sha=check_run.head_sha,
+            )
+            await self._delete_existing_pages(checkout, check_run.head_sha)
 
-        tree = await checkout.get_git_tree(self._github_client)
+            tree = await checkout.get_git_tree(self._github_client)
+        except TRANSIENT_GITHUB_ERRORS:
+            # A transient GitHub/network error outlasted the retry budget
+            # while checking out the repository. Conclude the check with an
+            # actionable failure rather than leaving it dangling in_progress.
+            self._logger.warning(
+                "Transient GitHub error during notebook check checkout"
+            )
+            check.report_transient_checkout_error()
+            await check.submit_conclusion(github_client=self._github_client)
+            return
+
         pending_pages: deque[PageExecutionInfo] = deque()
         for notebook_ref in tree.find_notebooks(checkout.settings):
             self._logger.debug(
