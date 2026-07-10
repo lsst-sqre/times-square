@@ -12,6 +12,11 @@ from httpx import AsyncClient
 from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
+from ..domain.executionoutcome import (
+    ExecutionOutcomeKind,
+    NotebookExecutionFailure,
+    classify_noteburst_outcome,
+)
 from ..domain.githubtree import GitHubNode
 from ..domain.nbhtml import (
     NbDisplaySettings,
@@ -28,6 +33,7 @@ from ..domain.page import (
 )
 from ..domain.ssemodels import HtmlEventsModel
 from ..exceptions import PageNotFoundError
+from ..storage.nbexecutionfailurestore import NbExecutionFailureStore
 from ..storage.nbhtmlcache import NbHtmlCacheStore
 from ..storage.noteburst import (
     NoteburstApi,
@@ -54,6 +60,7 @@ class PageService:
         page_store: PageStore,
         html_cache: NbHtmlCacheStore,
         job_store: NoteburstJobStore,
+        execution_failure_store: NbExecutionFailureStore,
         http_client: AsyncClient,
         logger: BoundLogger,
         arq_queue: ArqQueue,
@@ -61,6 +68,7 @@ class PageService:
         self._page_store = page_store
         self._html_store = html_cache
         self._job_store = job_store
+        self._execution_failure_store = execution_failure_store
         self._http_client = http_client
         self._logger = logger
         self._arq_queue = arq_queue
@@ -355,14 +363,28 @@ class PageService:
         # The fact that the UI periodically calls this service is what triggers
         # the rendering of the HTML after an execution by retrieving the
         # noteburst job.
+        execution_error: NotebookExecutionFailure | None = None
         if nbhtml is None:
-            nbhtml = await self._get_html_from_noteburst_job(
-                page_instance=page_instance,
-                display_settings=html_key.display_settings,
+            # A cached terminal failure short-circuits re-execution so that a
+            # persistently broken notebook does not trigger a fresh Noteburst
+            # execution on every poll.
+            execution_error = await self._execution_failure_store.get_instance(
+                page_instance.id
             )
+            if execution_error is None:
+                (
+                    nbhtml,
+                    execution_error,
+                ) = await self._get_html_from_noteburst_job(
+                    page_instance=page_instance,
+                    display_settings=html_key.display_settings,
+                )
 
         return NbHtmlStatusModel(
-            nb_html=nbhtml, nb_html_key=html_key, page_instance=page_instance
+            nb_html=nbhtml,
+            nb_html_key=html_key,
+            page_instance=page_instance,
+            execution_error=execution_error,
         )
 
     async def get_html(
@@ -395,7 +417,7 @@ class PageService:
         *,
         page_instance: PageInstanceModel,
         display_settings: NbDisplaySettings,
-    ) -> NbHtmlModel | None:
+    ) -> tuple[NbHtmlModel | None, NotebookExecutionFailure | None]:
         """Convert a noteburst job for a given page and parameter values into
         HTML (caching that HTML as well), and triggering a new noteburst job if
         the job was not found.
@@ -411,9 +433,10 @@ class PageService:
 
         Returns
         -------
-        nbhtml : `NbHtmlModel` or `None`
-            The NbHtmlModel if available, or `None` if the executed notebook is
-            not presently available.
+        tuple
+            A 2-tuple of the `NbHtmlModel` (or `None` if the executed notebook
+            is not presently available) and a `NotebookExecutionFailure` (or
+            `None` if the notebook did not terminally fail to execute).
         """
         # Is there an existing job in the noteburst job store?
         job = await self._job_store.get_instance(page_instance.id)
@@ -422,7 +445,7 @@ class PageService:
             # A record of a noteburst job is not available. Send a request
             # to noteburst.
             await self.request_noteburst_execution(page_instance)
-            return None
+            return None, None
 
         r = await self.noteburst_api.get_job(str(job.job_url))
 
@@ -433,7 +456,7 @@ class PageService:
             )
             await self._job_store.delete_instance(page_instance.id)
             await self.request_noteburst_execution(page_instance)
-            return None
+            return None, None
 
         elif r.status_code >= 500:
             # server error from noteburst
@@ -442,16 +465,26 @@ class PageService:
                 job_url=job.job_url,
                 noteburst_status=r.status_code,
             )
-            return None
+            return None, None
         elif r.data is None:
             self._logger.warning(
                 "Got empty response from noteburst job",
                 job_url=job.job_url,
                 noteburst_status=r.status_code,
             )
-            return None
+            return None, None
 
         if r.data.status == NoteburstJobStatus.complete:
+            outcome = classify_noteburst_outcome(r.data)
+            if outcome.kind is ExecutionOutcomeKind.execution_failure:
+                return None, await self._handle_execution_failure(
+                    page_instance=page_instance,
+                    noteburst_response=r.data,
+                    failure=outcome.failure,
+                )
+            if outcome.kind is ExecutionOutcomeKind.contract_violation:
+                raise RuntimeError(outcome.contract_violation_message)
+
             html_renders = (
                 await self.render_nbhtml_matrix_from_noteburst_response(
                     page_instance=page_instance,
@@ -459,11 +492,42 @@ class PageService:
                 )
             )
             # return the specific HTML render that the client asked for
-            return html_renders[display_settings]
+            return html_renders[display_settings], None
 
         else:
             # Noteburst job isn't complete
+            return None, None
+
+    async def _handle_execution_failure(
+        self,
+        *,
+        page_instance: PageInstanceModel,
+        noteburst_response: NoteburstJobResponseModel,
+        failure: NotebookExecutionFailure | None,
+    ) -> NotebookExecutionFailure | None:
+        """Handle a terminal notebook execution failure.
+
+        Logs a structured warning, caches the failure marker to prevent a
+        re-execution storm, and deletes the stale Noteburst job-store record.
+        """
+        if failure is None:
+            # Defensive: an execution_failure outcome always carries a failure.
             return None
+        self._logger.warning(
+            "Notebook execution failed",
+            page_name=page_instance.page_name,
+            parameters=page_instance.values,
+            execution_error_code=failure.code,
+            execution_error_message=failure.message,
+            job_url=str(noteburst_response.self_url),
+        )
+        await self._execution_failure_store.store_failure(
+            failure=failure, page_id=page_instance.id
+        )
+        deleted_job = await self._job_store.delete_instance(page_instance.id)
+        if deleted_job:
+            self._logger.debug("Deleted stale job record after failure")
+        return failure
 
     async def soft_delete_html(
         self, *, name: str, query_params: Mapping[str, Any]
@@ -541,7 +605,15 @@ class PageService:
         """
         html_matrix: dict[NbDisplaySettings, NbHtmlModel] = {}
         if noteburst_response.ipynb is None:
-            raise RuntimeError("Noteburst job is complete but has no ipynb")
+            outcome = classify_noteburst_outcome(noteburst_response)
+            if outcome.failure is not None:
+                raise RuntimeError(
+                    f"Notebook execution failed: {outcome.failure.message}"
+                )
+            raise RuntimeError(
+                outcome.contract_violation_message
+                or "Noteburst returned no executed notebook."
+            )
         for matrix_key in NbDisplaySettings.create_settings_matrix():
             nbhtml = NbHtmlModel.create_from_noteburst_result(
                 page_instance=page_instance,
