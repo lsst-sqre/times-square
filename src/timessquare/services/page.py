@@ -639,6 +639,43 @@ class PageService:
 
         return html_matrix
 
+    async def _resolve_events_execution_error(
+        self,
+        *,
+        page_instance: PageInstanceModel,
+        noteburst_data: NoteburstJobResponseModel | None,
+        nbhtml: NbHtmlModel | None,
+    ) -> NotebookExecutionFailure | None:
+        """Resolve a terminal execution failure for one SSE events iteration.
+
+        Classifies a completed Noteburst job; on execution failure performs the
+        same cleanup as the interactive path (log a structured warning, cache
+        the failure marker, and delete the stale job record). When no HTML is
+        available and no failure was just handled, falls back to a previously
+        cached failure marker so the stream keeps reporting the terminal
+        failure after the stale job record is gone.
+        """
+        execution_error: NotebookExecutionFailure | None = None
+        if (
+            noteburst_data is not None
+            and noteburst_data.status == NoteburstJobStatus.complete
+        ):
+            outcome = classify_noteburst_outcome(noteburst_data)
+            if outcome.kind is ExecutionOutcomeKind.execution_failure:
+                execution_error = await self._handle_execution_failure(
+                    page_instance=page_instance,
+                    noteburst_response=noteburst_data,
+                    failure=outcome.failure,
+                )
+            elif outcome.kind is ExecutionOutcomeKind.contract_violation:
+                raise RuntimeError(outcome.contract_violation_message)
+
+        if execution_error is None and nbhtml is None:
+            execution_error = await self._execution_failure_store.get_instance(
+                page_instance.id
+            )
+        return execution_error
+
     async def get_html_events_iter(
         self,
         name: str,
@@ -676,12 +713,21 @@ class PageService:
 
                     nbhtml = await self._html_store.get_instance(html_key)
 
+                    execution_error = (
+                        await self._resolve_events_execution_error(
+                            page_instance=page_instance,
+                            noteburst_data=noteburst_data,
+                            nbhtml=nbhtml,
+                        )
+                    )
+
                     payload = HtmlEventsModel.create(
                         page_instance=page_instance,
                         noteburst_job=noteburst_data,
                         nbhtml=nbhtml,
                         request_query_params=query_params,
                         html_base_url=html_base_url,
+                        execution_error=execution_error,
                     )
                     self._logger.debug(
                         "Built payload in events loop", payload=payload

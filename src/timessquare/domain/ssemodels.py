@@ -18,6 +18,7 @@ from sse_starlette import ServerSentEvent
 from timessquare.domain.page import PageInstanceModel
 
 from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
+from .executionoutcome import NotebookExecutionFailure
 from .nbhtml import NbHtmlKey, NbHtmlModel
 
 
@@ -81,6 +82,15 @@ class HtmlEventsModel(BaseModel):
         ),
     )
 
+    execution_error: NotebookExecutionFailure | None = Field(
+        default=None,
+        description=(
+            "A terminal notebook execution failure, or None if the notebook "
+            "did not terminally fail to execute. When set, the client has "
+            "reached a terminal state and can stop listening for events."
+        ),
+    )
+
     @field_serializer("execution_duration")
     def serialize_timedelta_seconds(
         self, td: timedelta | None
@@ -98,6 +108,7 @@ class HtmlEventsModel(BaseModel):
         nbhtml: NbHtmlModel | None,
         html_base_url: str,
         request_query_params: Mapping[str, Any],
+        execution_error: NotebookExecutionFailure | None = None,
     ) -> HtmlEventsModel:
         """Create an instance from a ``NoteburstJobResponseModelModel`` and the
         Redis-cached ``NbHtmlModel`` (if available).
@@ -161,6 +172,7 @@ class HtmlEventsModel(BaseModel):
             execution_duration=execution_duration,
             html_hash=html_hash,
             html_url=html_url,
+            execution_error=execution_error,
         )
 
     def to_sse(self) -> ServerSentEvent:
