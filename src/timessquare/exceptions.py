@@ -145,6 +145,23 @@ class ParameterNameValidationError(ParameterSchemaValidationError):
         message = f"Parameter name {name} is not valid."
         return cls(name, message, location=location, field_path=field_path)
 
+    @classmethod
+    def for_reserved_prefix(
+        cls,
+        name: str,
+        location: ErrorLocation | None = None,
+        field_path: list[str] | None = None,
+    ) -> Self:
+        """Create the error for a parameter using the reserved ``ts_``
+        prefix.
+        """
+        message = (
+            f"Parameter name {name} is not valid: the ts_ prefix is "
+            "reserved for Times Square viewer controls. Rename the "
+            "parameter so it does not start with ts_."
+        )
+        return cls(name, message, location=location, field_path=field_path)
+
 
 class ParameterSchemaError(ParameterSchemaValidationError):
     """The parameter's schema is not a valid JSON schema."""
