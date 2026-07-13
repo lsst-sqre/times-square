@@ -27,8 +27,13 @@ from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookModel,
 )
+from timessquare.exceptions import (
+    PageModuleInlineError,
+    PageNotebookFormatError,
+)
 from timessquare.storage.github.settingsfiles import RepositorySettingsFile
 
+from ..domain.moduleinlining import LocalModuleCache
 from ..domain.page import PageModel
 from .page import PageService
 
@@ -223,14 +228,32 @@ class GitHubRepoService:
         )
 
         tree = await checkout.get_git_tree(self._github_client)
+        module_cache = LocalModuleCache()
         for notebook_ref in tree.find_notebooks(checkout.settings):
             self._logger.info(
                 "Loading notebook to sync", notebook_ref=notebook_ref.to_dict()
             )
-            notebook = await checkout.load_notebook(
-                notebook_ref=notebook_ref, github_client=self._github_client
-            )
-            display_path = notebook.get_display_path(checkout)
+            display_path = notebook_ref.get_display_path(checkout)
+            try:
+                notebook = await checkout.load_notebook(
+                    notebook_ref=notebook_ref,
+                    github_client=self._github_client,
+                    tree=tree,
+                    module_cache=module_cache,
+                )
+            except (PageModuleInlineError, PageNotebookFormatError) as e:
+                self._logger.exception(
+                    "Notebook content is invalid; skipping sync for this "
+                    "notebook",
+                    display_path=display_path,
+                    error=str(e),
+                )
+                if display_path in existing_pages:
+                    # Keep the previously-synced page rather than letting
+                    # the trailing soft-delete pass remove it because its
+                    # latest commit is broken.
+                    found_display_paths.append(display_path)
+                continue
             found_display_paths.append(display_path)
             self._logger.debug("Display path", display_path=display_path)
 

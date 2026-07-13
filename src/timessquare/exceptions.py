@@ -41,6 +41,39 @@ class PageNotebookFormatError(TimesSquareClientError):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
+class PageModuleInlineError(TimesSquareClientError):
+    """Error inlining a local module import into a GitHub-synced
+    notebook.
+    """
+
+    error = "module_inline_error"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class CircularModuleImportError(PageModuleInlineError):
+    """A circular import was detected among the local modules inlined into
+    a GitHub-synced notebook.
+    """
+
+    error = "circular_module_import"
+
+    @classmethod
+    def for_cycle(
+        cls,
+        cycle: list[str],
+        location: ErrorLocation | None = None,
+        field_path: list[str] | None = None,
+    ) -> Self:
+        """Create an exception with a message naming every module in the
+        cycle.
+        """
+        message = (
+            "A circular import was detected among the notebook's local "
+            "modules: " + " -> ".join(cycle)
+        )
+        return cls(message, location=location, field_path=field_path)
+
+
 class PageParameterError(TimesSquareClientError):
     """Error related to a page parameter's value."""
 
