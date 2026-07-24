@@ -114,6 +114,18 @@ class Config(BaseSettings):
         description=("URL for the redis instance, used by the worker queue."),
     )
 
+    http_client_timeout: Annotated[
+        int,
+        Field(
+            gt=0,
+            alias="TS_HTTP_CLIENT_TIMEOUT",
+            description=(
+                "The timeout, in seconds, for the shared HTTP client used "
+                "for all outbound requests (GitHub API and Noteburst)."
+            ),
+        ),
+    ] = 30
+
     github_app_id: Annotated[
         int | None,
         Field(

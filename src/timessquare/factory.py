@@ -51,7 +51,7 @@ class ProcessContext:
     @classmethod
     async def create(cls) -> Self:
         """Create a ProcessContext from the application configuration."""
-        http_client = AsyncClient()
+        http_client = AsyncClient(timeout=config.http_client_timeout)
 
         redis_pool = BlockingConnectionPool.from_url(
             str(config.redis_url),
