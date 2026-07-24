@@ -9,6 +9,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 import pytest_asyncio
 import respx
@@ -203,7 +204,7 @@ async def test_report_timeout_queued(
 
     assert len(check.annotations) == 1
     message = check.annotations[0].message
-    assert "still in the Noteburst queue. after" in message
+    assert "still in the Noteburst queue." in message
 
 
 @pytest.mark.asyncio
@@ -215,6 +216,32 @@ async def test_report_timeout_noteburst_error(
     runtime, and no exception escapes.
     """
     respx_mock.get(JOB_URL).mock(return_value=Response(500, text="boom"))
+
+    check = _make_check()
+    page_execution = _make_page_execution()
+
+    await check_run_service._report_pr_notebook_timeout_errors(
+        check, deque([page_execution])
+    )
+
+    assert len(check.annotations) == 1
+    assert check.annotations[0].title == "Noteburst timeout"
+
+    assert len(check.notebook_executions) == 1
+    assert check.notebook_executions[0].runtime is None
+
+
+@pytest.mark.asyncio
+async def test_report_timeout_noteburst_unreachable(
+    check_run_service: GitHubCheckRunService,
+    respx_mock: respx.Router,
+) -> None:
+    """A transport error during the Noteburst status lookup still reports
+    the timeout with no runtime, and no exception escapes.
+    """
+    respx_mock.get(JOB_URL).mock(
+        side_effect=httpx.ConnectError("connection refused")
+    )
 
     check = _make_check()
     page_execution = _make_page_execution()

@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 
+import httpx
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
+from pydantic import ValidationError
 from safir.github.models import (
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
@@ -331,10 +333,13 @@ class GitHubCheckRunService:
             # missing status lookup yields job_result=None so the timeout is
             # still reported (without runtime).
             if page_execution.noteburst_job is not None:
-                r = await self._page_service.noteburst_api.get_job(
-                    str(page_execution.noteburst_job.job_url)
-                )
-                job_result = r.data if r.status_code < 400 else None
+                try:
+                    r = await self._page_service.noteburst_api.get_job(
+                        str(page_execution.noteburst_job.job_url)
+                    )
+                    job_result = r.data if r.status_code < 400 else None
+                except httpx.HTTPError, ValidationError:
+                    job_result = None
             else:
                 job_result = None
 
