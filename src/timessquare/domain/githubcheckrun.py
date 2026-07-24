@@ -675,7 +675,6 @@ class NotebookExecutionsCheck(GitHubCheck):
             elif job_result.status == NoteburstJobStatus.queued:
                 message += (
                     " The notebook execution is still in the Noteburst queue."
-                    f"after {job_result.runtime.total_seconds()} seconds."
                 )
         annotation = Annotation(
             path=path,
@@ -687,11 +686,7 @@ class NotebookExecutionsCheck(GitHubCheck):
         self.annotations.append(annotation)
 
         # Save execution info with runtime if available
-        runtime = (
-            job_result.runtime
-            if job_result and hasattr(job_result, "runtime")
-            else None
-        )
+        runtime = job_result.runtime if job_result else None
         self.notebook_executions.append(
             NotebookExecutionInfo(path=path, is_success=False, runtime=runtime)
         )
