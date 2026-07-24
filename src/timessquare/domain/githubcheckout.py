@@ -17,6 +17,7 @@ from timessquare.storage.github.apimodels import (
     GitTreeMode,
     RecursiveGitTreeModel,
 )
+from timessquare.storage.github.retry import retry_transient_github_errors
 from timessquare.storage.github.settingsfiles import (
     NotebookSidecarFile,
     RepositorySettingsFile,
@@ -85,8 +86,10 @@ class GitHubRepositoryCheckout:
         git_ref: str | None = None,
     ) -> GitHubRepositoryCheckout:
         uri = repo.contents_url + "{?ref}"
-        data = await github_client.getitem(
-            uri, url_vars={"path": "times-square.yaml", "ref": head_sha}
+        data = await retry_transient_github_errors(
+            lambda: github_client.getitem(
+                uri, url_vars={"path": "times-square.yaml", "ref": head_sha}
+            )
         )
         content_data = GitHubBlobModel.model_validate(data)
         file_content = content_data.decode()
@@ -120,9 +123,11 @@ class GitHubRepositoryCheckout:
         tree
             The contents of the repository's git tree.
         """
-        response = await github_client.getitem(
-            self.trees_url + "{?recursive}",
-            url_vars={"sha": self.head_sha, "recursive": "1"},
+        response = await retry_transient_github_errors(
+            lambda: github_client.getitem(
+                self.trees_url + "{?recursive}",
+                url_vars={"sha": self.head_sha, "recursive": "1"},
+            )
         )
         git_tree = RecursiveGitTreeModel.model_validate(response)
         return RepositoryTree(github_tree=git_tree)
@@ -157,8 +162,10 @@ class GitHubRepositoryCheckout:
     async def load_git_blob(
         self, *, github_client: GitHubAPI, sha: str
     ) -> GitHubBlobModel:
-        data = await github_client.getitem(
-            self.blobs_url, url_vars={"sha": sha}
+        data = await retry_transient_github_errors(
+            lambda: github_client.getitem(
+                self.blobs_url, url_vars={"sha": sha}
+            )
         )
         return GitHubBlobModel.model_validate(data)
 
