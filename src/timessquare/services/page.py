@@ -51,6 +51,7 @@ class PageService:
 
     def __init__(
         self,
+        *,
         page_store: PageStore,
         html_cache: NbHtmlCacheStore,
         job_store: NoteburstJobStore,
@@ -68,6 +69,7 @@ class PageService:
 
     async def create_page_with_notebook_from_upload(
         self,
+        *,
         ipynb: str,
         title: str,
         uploader_username: str,
