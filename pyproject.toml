@@ -209,4 +209,3 @@ extend-exclude = [
 [tool.ruff.lint.isort]
 known-first-party = ["timessquare", "tests"]
 known-third-party = ["alembic"]
-split-on-trailing-comma = false
