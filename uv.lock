@@ -2641,6 +2641,7 @@ dev = [
     { name = "pytest-mock" },
     { name = "respx" },
     { name = "scriv" },
+    { name = "uv" },
     { name = "uvicorn" },
 ]
 docs = [
@@ -2649,7 +2650,6 @@ docs = [
 lint = [
     { name = "prek" },
     { name = "ruff" },
-    { name = "uv" },
 ]
 nox = [
     { name = "nox" },
@@ -2702,13 +2702,13 @@ dev = [
     { name = "pytest-mock" },
     { name = "respx" },
     { name = "scriv" },
+    { name = "uv" },
     { name = "uvicorn" },
 ]
 docs = [{ name = "documenteer", extras = ["guide"], specifier = ">=1.0" }]
 lint = [
     { name = "prek" },
     { name = "ruff" },
-    { name = "uv" },
 ]
 nox = [
     { name = "nox" },
