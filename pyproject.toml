@@ -70,6 +70,7 @@ dev = [
     "httpx-sse == 0.4.0",
     "scriv",
     "freezegun>=1.5.2",
+    "uv",
 ]
 docs = [
     "documenteer[guide]>=1.0",
@@ -77,7 +78,6 @@ docs = [
 lint = [
     "prek",
     "ruff",
-    "uv",
 ]
 nox = [
     "nox",
