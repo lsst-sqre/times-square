@@ -184,7 +184,9 @@ class GitHubCheckRunService:
                     "Transient GitHub error loading notebook for check",
                     path=notebook_ref.notebook_source_path,
                 )
-                await self._conclude_transient_checkout_error(check)
+                await self._conclude_transient_checkout_error(
+                    check, notebook_ref.notebook_source_path
+                )
                 return
             if notebook.sidecar.enabled is False:
                 self._logger.debug(
@@ -241,12 +243,24 @@ class GitHubCheckRunService:
         await check.submit_conclusion(github_client=self._github_client)
 
     async def _conclude_transient_checkout_error(
-        self, check: NotebookExecutionsCheck
+        self, check: NotebookExecutionsCheck, path: str | None = None
     ) -> None:
         """Conclude a notebook check that hit an exhausted transient GitHub
         error, with an actionable, re-runnable failure annotation.
+
+        Parameters
+        ----------
+        check
+            The check run to conclude.
+        path
+            Repository path of the file the check was reading when the error
+            occurred. If `None`, the annotation falls back to the
+            repository's Times Square configuration file.
         """
-        check.report_transient_checkout_error()
+        if path is None:
+            check.report_transient_checkout_error()
+        else:
+            check.report_transient_checkout_error(path)
         await check.submit_conclusion(github_client=self._github_client)
 
     async def _delete_existing_pages(

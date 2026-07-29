@@ -279,6 +279,18 @@ async def test_report_timeout_noteburst_unreachable(
     assert check.notebook_executions[0].runtime is None
 
 
+def _transient_annotation_paths(mock: MockGitHubCheckRunAPI) -> list[str]:
+    """Get the paths of the transient-error annotations in the check run's
+    concluding PATCH body.
+    """
+    annotations = mock.patched[-1]["output"]["annotations"]
+    return [
+        a["path"]
+        for a in annotations
+        if a["message"] == TRANSIENT_CHECKOUT_ERROR_MESSAGE
+    ]
+
+
 @pytest.mark.asyncio
 async def test_notebook_check_concludes_on_transient_error(
     http_client: AsyncClient,
@@ -314,6 +326,9 @@ async def test_notebook_check_concludes_on_transient_error(
 
     # The check run was concluded with a failure rather than left in_progress.
     assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
+    # The checkout never got as far as a specific notebook, so the annotation
+    # falls back to the repository's times-square.yaml.
+    assert _transient_annotation_paths(mock) == ["times-square.yaml"]
 
 
 class _NoPagesPageService:
@@ -374,6 +389,9 @@ async def test_notebook_check_concludes_on_transient_blob_error(
 
     assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
     assert TRANSIENT_CHECKOUT_ERROR_MESSAGE in json.dumps(mock.patched[-1])
+    # The annotation points at the notebook that failed to load, not at the
+    # repository's times-square.yaml.
+    assert _transient_annotation_paths(mock) == ["demo.ipynb"]
 
 
 @pytest.mark.asyncio

@@ -209,17 +209,27 @@ class GitHubCheck(metaclass=ABCMeta):
         """
         return [a.export() for a in self.annotations[:50]]
 
-    def report_transient_checkout_error(self) -> None:
+    def report_transient_checkout_error(
+        self, path: str = "times-square.yaml"
+    ) -> None:
         """Record a failure annotation for an exhausted transient GitHub
         error encountered while checking out the repository.
 
         This lets the check reach a `failure` conclusion with an actionable,
         re-runnable message instead of leaving the already-created check run
         dangling ``in_progress``.
+
+        Parameters
+        ----------
+        path
+            Repository path of the file the check was reading when the error
+            occurred. The default, the repository's Times Square
+            configuration file, suits errors raised before any specific file
+            is in hand.
         """
         self.annotations.append(
             Annotation(
-                path="times-square.yaml",
+                path=path,
                 start_line=1,
                 message=TRANSIENT_CHECKOUT_ERROR_MESSAGE,
                 title="Transient GitHub error",
