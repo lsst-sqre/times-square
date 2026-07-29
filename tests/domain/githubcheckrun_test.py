@@ -124,6 +124,44 @@ async def test_validate_repo_concludes_on_transient_tree_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_validate_repo_retries_transient_sidecar_error() -> None:
+    """A transient failure fetching a notebook's sidecar blob is retried up to
+    the retry budget before the config check concludes with a ``failure``.
+    """
+    payload = _load_check_suite()
+    mock = MockGitHubCheckRunAPI(
+        check_run=_load_check_run(),
+        blob_error=httpx.ReadTimeout("slow"),
+    )
+    client = cast("GitHubAPI", mock)
+
+    check = await GitHubConfigsCheck.create_check_run_and_validate(
+        github_client=client,
+        repo=payload.repository,
+        head_sha=payload.check_suite.head_sha,
+    )
+    await check.submit_conclusion(github_client=client)
+
+    # The check concluded as a failure with the actionable message.
+    assert check.conclusion == GitHubCheckRunConclusion.failure
+    assert any(
+        a.message == TRANSIENT_CHECKOUT_ERROR_MESSAGE
+        for a in check.annotations
+    )
+
+    # The sidecar blob GET was retried up to the retry budget.
+    blob_gets = [
+        req
+        for req in mock.requests
+        if req[0] == "GET" and "git/blobs" in req[1]
+    ]
+    assert len(blob_gets) == MAX_ATTEMPTS
+
+    # The final PATCH posted a failure conclusion to GitHub.
+    assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
+
+
+@pytest.mark.asyncio
 async def test_validate_repo_propagates_non_transient_error() -> None:
     """A non-transient, unexpected error during checkout still propagates so
     the worker's Slack alert fires (behavior unchanged for real errors).

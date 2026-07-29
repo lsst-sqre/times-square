@@ -24,7 +24,10 @@ from yaml import YAMLError
 from timessquare.config import config
 from timessquare.exceptions import PageJinjaError
 
-from ..storage.github.retry import TRANSIENT_GITHUB_ERRORS
+from ..storage.github.retry import (
+    TRANSIENT_GITHUB_ERRORS,
+    retry_transient_github_errors,
+)
 from ..storage.github.settingsfiles import NotebookSidecarFile
 from ..storage.noteburst import (
     NoteburstErrorCodes,
@@ -383,9 +386,11 @@ class GitHubConfigsCheck(GitHubCheck):
         """Validate the sidecar file for a notebook, adding its results
         to the check.
         """
-        data = await github_client.getitem(
-            repo.blobs_url,
-            url_vars={"sha": notebook_ref.sidecar_git_tree_sha},
+        data = await retry_transient_github_errors(
+            lambda: github_client.getitem(
+                repo.blobs_url,
+                url_vars={"sha": notebook_ref.sidecar_git_tree_sha},
+            )
         )
         sidecar_blob = GitHubBlobModel.model_validate(data)
         try:
