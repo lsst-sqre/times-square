@@ -162,8 +162,7 @@ class GitHubCheckRunService:
             self._logger.warning(
                 "Transient GitHub error during notebook check checkout"
             )
-            check.report_transient_checkout_error()
-            await check.submit_conclusion(github_client=self._github_client)
+            await self._conclude_transient_checkout_error(check)
             return
 
         pending_pages: deque[PageExecutionInfo] = deque()
@@ -172,9 +171,21 @@ class GitHubCheckRunService:
                 "Started notebook execution for notebook",
                 path=notebook_ref.notebook_source_path,
             )
-            notebook = await checkout.load_notebook(
-                notebook_ref=notebook_ref, github_client=self._github_client
-            )
+            try:
+                notebook = await checkout.load_notebook(
+                    notebook_ref=notebook_ref,
+                    github_client=self._github_client,
+                )
+            except TRANSIENT_GITHUB_ERRORS:
+                # A transient GitHub/network error outlasted the retry budget
+                # while reading the notebook's git blobs. Conclude the check
+                # rather than leaving it dangling in_progress.
+                self._logger.warning(
+                    "Transient GitHub error loading notebook for check",
+                    path=notebook_ref.notebook_source_path,
+                )
+                await self._conclude_transient_checkout_error(check)
+                return
             if notebook.sidecar.enabled is False:
                 self._logger.debug(
                     "Skipping notebook execution check for disabled notebook",
@@ -227,6 +238,15 @@ class GitHubCheckRunService:
         except TimeoutError:
             await self._report_pr_notebook_timeout_errors(check, pending_pages)
 
+        await check.submit_conclusion(github_client=self._github_client)
+
+    async def _conclude_transient_checkout_error(
+        self, check: NotebookExecutionsCheck
+    ) -> None:
+        """Conclude a notebook check that hit an exhausted transient GitHub
+        error, with an actionable, re-runnable failure annotation.
+        """
+        check.report_transient_checkout_error()
         await check.submit_conclusion(github_client=self._github_client)
 
     async def _delete_existing_pages(

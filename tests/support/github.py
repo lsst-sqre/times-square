@@ -12,6 +12,7 @@ import gidgethub.abc as gh_abc
 from gidgethub import sansio
 
 __all__ = [
+    "CHECK_RUN_GIT_TREE",
     "SAMPLE_PRIVATE_KEY",
     "MockGitHubAPI",
     "MockGitHubCheckRunAPI",
@@ -110,18 +111,48 @@ class MockGitHubAPI(gh_abc.GitHubAPI):
         }
 
 
+CHECK_RUN_GIT_TREE: dict[str, Any] = {
+    "sha": "abc123",
+    "url": "https://api.github.com/repos/x/y/git/trees/abc123",
+    "truncated": False,
+    "tree": [
+        {
+            "path": "demo.ipynb",
+            "mode": "100644",
+            "sha": "notebooksha",
+            "url": "https://api.github.com/repos/x/y/git/blobs/notebooksha",
+        },
+        {
+            "path": "demo.yaml",
+            "mode": "100644",
+            "sha": "sidecarsha",
+            "url": "https://api.github.com/repos/x/y/git/blobs/sidecarsha",
+        },
+    ],
+}
+"""Canned recursive git tree with a single notebook/sidecar pair, enough for
+`GitHubRepositoryCheckout` to find one notebook to load.
+"""
+
+
 class MockGitHubCheckRunAPI(MockGitHubAPI):
     """A concrete `MockGitHubAPI` for exercising the GitHub check-run flow.
 
     It records every request, returns a canned check-run object for the
     check-run POST/PATCH calls, and can be configured to raise a persistent
-    error on the ``times-square.yaml`` Contents GET (``contents_error``) or
-    on the recursive git tree GET (``tree_error``). Passing an
+    error on the ``times-square.yaml`` Contents GET (``contents_error``), on
+    the recursive git tree GET (``tree_error``), or on the git blob GETs that
+    back notebook and sidecar loading (``blob_error``). Passing an
     ``httpx.ReadTimeout`` (or another transient error) simulates GitHub
     slowness that outlasts the retry budget; passing a non-transient error
-    simulates an unexpected failure that should propagate. When
-    ``contents_error`` is not set, the Contents GET returns a valid, empty
-    ``times-square.yaml`` blob so the checkout succeeds.
+    simulates an unexpected failure that should propagate.
+
+    When ``contents_error`` is not set, the Contents GET returns a valid,
+    empty ``times-square.yaml`` blob so the checkout succeeds. When
+    ``tree_error`` is not set, the git tree GET returns `CHECK_RUN_GIT_TREE`,
+    so the check reaches the notebook-loading blob GETs. Those blob GETs are
+    only meaningful with ``blob_error`` set; there is no canned notebook
+    content behind them.
     """
 
     def __init__(
@@ -130,6 +161,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         check_run: dict[str, Any],
         contents_error: BaseException | None = None,
         tree_error: BaseException | None = None,
+        blob_error: BaseException | None = None,
         oauth_token: str | None = None,
         cache: gh_abc.CACHE_TYPE | None = None,
         base_url: str = sansio.DOMAIN,
@@ -140,6 +172,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         self._check_run = check_run
         self._contents_error = contents_error
         self._tree_error = tree_error
+        self._blob_error = blob_error
         self.requests: list[tuple[str, str]] = []
         self.patched: list[dict[str, Any]] = []
 
@@ -163,6 +196,12 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
             and "git/trees" in url
         ):
             raise self._tree_error
+        if (
+            self._blob_error is not None
+            and method == "GET"
+            and "git/blobs" in url
+        ):
+            raise self._blob_error
         return await super()._request(method, url, headers, body)
 
     def create_response(
@@ -172,7 +211,8 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         bodies of PATCH requests (the in-progress and conclusion updates).
 
         The ``times-square.yaml`` Contents GET instead returns a valid,
-        empty settings-file blob so a checkout can succeed.
+        empty settings-file blob so a checkout can succeed, and the recursive
+        git tree GET returns `CHECK_RUN_GIT_TREE`.
         """
         if method == "GET" and "times-square.yaml" in url:
             content = base64.b64encode(b'root: ""\n').decode()
@@ -184,6 +224,8 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
                 "size": len(content),
             }
             return 200, blob, {}
+        if method == "GET" and "git/trees" in url:
+            return 200, CHECK_RUN_GIT_TREE, {}
         if method == "PATCH" and request_json is not None:
             self.patched.append(request_json)
         return 200, self._check_run, {}

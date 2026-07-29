@@ -31,7 +31,10 @@ from safir.github.webhooks import (
 
 from timessquare.config import config
 from timessquare.dbschema import Base
-from timessquare.domain.githubcheckrun import NotebookExecutionsCheck
+from timessquare.domain.githubcheckrun import (
+    TRANSIENT_CHECKOUT_ERROR_MESSAGE,
+    NotebookExecutionsCheck,
+)
 from timessquare.domain.page import PageExecutionInfo, PageModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.factory import ProcessContext, WorkerFactory
@@ -311,3 +314,89 @@ async def test_notebook_check_concludes_on_transient_error(
 
     # The check run was concluded with a failure rather than left in_progress.
     assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
+
+
+class _NoPagesPageService:
+    """Stand-in for `PageService` that reports no existing pages.
+
+    `run_notebook_check_run` only reaches `get_pages_for_repo` before it
+    loads the first notebook, so that is all the notebook-loading tests
+    below need from the page service.
+    """
+
+    async def get_pages_for_repo(
+        self, owner: str, name: str, commit: str | None = None
+    ) -> list[PageModel]:
+        return []
+
+
+def _make_notebook_load_service(
+    *, http_client: AsyncClient, mock: MockGitHubCheckRunAPI
+) -> GitHubCheckRunService:
+    """Build a check-run service that reaches the notebook-loading blob
+    fetches with the given mock GitHub client.
+    """
+    return GitHubCheckRunService(
+        http_client=http_client,
+        github_client=cast("GitHubAPI", mock),
+        # The check returns while loading the first notebook, before any
+        # page is created.
+        repo_service=cast("GitHubRepoService", None),
+        page_service=cast("PageService", _NoPagesPageService()),
+        logger=structlog.get_logger(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_notebook_check_concludes_on_transient_blob_error(
+    http_client: AsyncClient,
+) -> None:
+    """A persistent transient error while loading a notebook's git blobs
+    concludes the notebook check with a ``failure`` conclusion rather than
+    leaving it dangling ``in_progress``, and no exception propagates.
+    """
+    payload = GitHubCheckSuiteEventModel.model_validate(
+        json.loads((DATA / "check_suite_completed.json").read_text())
+    )
+    check_run_data = json.loads((DATA / "check_run_created.json").read_text())[
+        "check_run"
+    ]
+    check_run = GitHubCheckRunModel.model_validate(check_run_data)
+    mock = MockGitHubCheckRunAPI(
+        check_run=check_run_data,
+        blob_error=httpx.ReadTimeout("slow"),
+    )
+    service = _make_notebook_load_service(http_client=http_client, mock=mock)
+
+    await service.run_notebook_check_run(
+        check_run=check_run, repo=payload.repository
+    )
+
+    assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
+    assert TRANSIENT_CHECKOUT_ERROR_MESSAGE in json.dumps(mock.patched[-1])
+
+
+@pytest.mark.asyncio
+async def test_notebook_check_raises_on_nontransient_blob_error(
+    http_client: AsyncClient,
+) -> None:
+    """A non-transient error while loading a notebook's git blobs still
+    propagates, so the worker's Slack alerting is unchanged for real bugs.
+    """
+    payload = GitHubCheckSuiteEventModel.model_validate(
+        json.loads((DATA / "check_suite_completed.json").read_text())
+    )
+    check_run_data = json.loads((DATA / "check_run_created.json").read_text())[
+        "check_run"
+    ]
+    check_run = GitHubCheckRunModel.model_validate(check_run_data)
+    mock = MockGitHubCheckRunAPI(
+        check_run=check_run_data,
+        blob_error=RuntimeError("unexpected"),
+    )
+    service = _make_notebook_load_service(http_client=http_client, mock=mock)
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        await service.run_notebook_check_run(
+            check_run=check_run, repo=payload.repository
+        )
