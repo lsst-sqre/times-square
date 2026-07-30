@@ -553,6 +553,13 @@ class PageService:
         """Request a notebook execution for a given page and parameters,
         and store the job.
         """
+        # A new execution supersedes any cached terminal failure. Clearing it
+        # here covers every path that deliberately requests a re-run (a page
+        # update, a soft delete of the HTML, or a background recompute) so a
+        # stale failure cannot mask a fixed notebook for the remainder of the
+        # failure's lifetime.
+        await self._execution_failure_store.delete_instance(page_instance.id)
+
         ipynb = page_instance.render_ipynb()
         r = await self.noteburst_api.submit_job(
             ipynb=ipynb,

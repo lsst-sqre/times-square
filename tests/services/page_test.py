@@ -143,3 +143,71 @@ async def test_terminal_failure_deletes_job_and_guards_reexecution(
     assert status.execution_error is not None
     assert post_route.call_count == posts_after_failure
     assert posts_after_failure == posts_after_request
+
+
+@pytest.mark.asyncio
+async def test_explicit_rerun_clears_cached_failure(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """Requesting a fresh execution clears a cached terminal failure, so the
+    terminal state does not mask a re-run of a fixed notebook.
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    post_route = respx_mock.post(
+        "https://test.example.com/noteburst/v1/notebooks/"
+    ).mock(return_value=_queued_post())
+
+    # Drive the page instance into a cached terminal failure.
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    respx_mock.get(JOB_URL).mock(
+        return_value=Response(
+            200,
+            json={
+                "job_id": "xyz",
+                "kernel_name": "",
+                "enqueue_time": "2022-03-15T04:12:00Z",
+                "status": "complete",
+                "self_url": JOB_URL,
+                "start_time": "2022-03-15T04:13:00Z",
+                "finish_time": "2022-03-15T04:13:10Z",
+                "success": False,
+                "ipynb": None,
+                "timeout": 30.0,
+                "error": {"code": "timeout"},
+            },
+        )
+    )
+    status = await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert status.execution_error is not None
+
+    # An explicit re-run request clears the cached failure.
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.request_noteburst_execution(page_instance)
+    assert (
+        await page_service._execution_failure_store.get_instance(
+            page_instance.id
+        )
+        is None
+    )
+
+    # The next poll consults the fresh job rather than short-circuiting on the
+    # stale terminal failure.
+    posts_after_rerun = post_route.call_count
+    status = await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert status.execution_error is None
+    assert status.available is False
+    assert post_route.call_count == posts_after_rerun
