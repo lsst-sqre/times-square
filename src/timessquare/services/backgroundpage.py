@@ -48,6 +48,15 @@ class BackgroundPageService(PageService):
         page_instance = PageInstanceModel(
             page=page, values=dict(parameter_values)
         )
+
+        failure = await self._handle_completed_outcome(
+            page_instance=page_instance, noteburst_response=noteburst_response
+        )
+        if failure is not None:
+            # The failure is already logged and cached; skip rendering rather
+            # than raise, so the calling worker task completes normally.
+            return
+
         # Create HTML for each display setting and store it in the cache
         await self.render_nbhtml_matrix_from_noteburst_response(
             page_instance=page_instance, noteburst_response=noteburst_response

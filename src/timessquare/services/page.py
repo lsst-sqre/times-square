@@ -484,15 +484,11 @@ class PageService:
             return None, None
 
         if r.data.status == NoteburstJobStatus.complete:
-            outcome = classify_noteburst_outcome(r.data)
-            if outcome.kind is ExecutionOutcomeKind.execution_failure:
-                return None, await self._handle_execution_failure(
-                    page_instance=page_instance,
-                    noteburst_response=r.data,
-                    failure=outcome.failure,
-                )
-            if outcome.kind is ExecutionOutcomeKind.contract_violation:
-                raise RuntimeError(outcome.contract_violation_message)
+            failure = await self._handle_completed_outcome(
+                page_instance=page_instance, noteburst_response=r.data
+            )
+            if failure is not None:
+                return None, failure
 
             html_renders = (
                 await self.render_nbhtml_matrix_from_noteburst_response(
@@ -506,6 +502,53 @@ class PageService:
         else:
             # Noteburst job isn't complete
             return None, None
+
+    async def _handle_completed_outcome(
+        self,
+        *,
+        page_instance: PageInstanceModel,
+        noteburst_response: NoteburstJobResponseModel,
+    ) -> NotebookExecutionFailure | None:
+        """Classify a completed Noteburst response and handle the two
+        non-renderable outcomes.
+
+        Parameters
+        ----------
+        page_instance
+            The page instance the execution belongs to.
+        noteburst_response
+            A Noteburst job response with a ``complete`` status.
+
+        Returns
+        -------
+        NotebookExecutionFailure or None
+            The terminal failure when the execution failed at the
+            infrastructure level, or `None` when the response carries an
+            executed notebook and the caller should render it.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if Noteburst reported a successful execution but returned
+            no executed notebook.
+
+        Notes
+        -----
+        An execution failure is returned rather than raised because it is an
+        expected terminal outcome, not a bug: raising would surface it as a
+        generic worker exception in Slack. A contract violation is a genuine
+        bug, so it raises loudly instead of being silently swallowed.
+        """
+        outcome = classify_noteburst_outcome(noteburst_response)
+        if outcome.kind is ExecutionOutcomeKind.execution_failure:
+            return await self._handle_execution_failure(
+                page_instance=page_instance,
+                noteburst_response=noteburst_response,
+                failure=outcome.failure,
+            )
+        if outcome.kind is ExecutionOutcomeKind.contract_violation:
+            raise RuntimeError(outcome.contract_violation_message)
+        return None
 
     async def _handle_execution_failure(
         self,
