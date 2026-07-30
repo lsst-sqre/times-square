@@ -126,6 +126,24 @@ def test_execution_failure_result_expiry() -> None:
     assert outcome.failure.message
 
 
+def test_failure_serialization_shape() -> None:
+    # A classified failure serializes to exactly the public fields; no
+    # cell-level error field is carried on the no-notebook failure path.
+    response = _base_response(
+        success=False,
+        ipynb=None,
+        timeout=30.0,
+        error=NoteburstExecutionError(code=NoteburstErrorCodes.timeout),
+    )
+    outcome = classify_noteburst_outcome(response)
+    assert outcome.failure is not None
+    assert set(outcome.failure.model_dump().keys()) == {
+        "code",
+        "title",
+        "message",
+    }
+
+
 def test_contract_violation() -> None:
     # The genuinely impossible state: success True but no ipynb.
     response = _base_response(success=True, ipynb=None)

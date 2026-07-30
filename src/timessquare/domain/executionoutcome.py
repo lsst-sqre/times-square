@@ -30,11 +30,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from ..storage.noteburst import (
-    NotebookError,
-    NoteburstErrorCodes,
-    NoteburstJobResponseModel,
-)
+from ..storage.noteburst import NoteburstErrorCodes, NoteburstJobResponseModel
 
 __all__ = [
     "ExecutionOutcomeKind",
@@ -89,17 +85,6 @@ class NotebookExecutionFailure(BaseModel):
         str,
         Field(description="A human-readable description of the failure."),
     ]
-
-    ipynb_error: Annotated[
-        NotebookError | None,
-        Field(
-            description=(
-                "A cell-level error, if any. This is normally null on the "
-                "terminal no-notebook failure path and is provided only for "
-                "forward compatibility."
-            )
-        ),
-    ] = None
 
 
 class ExecutionOutcomeKind(StrEnum):
