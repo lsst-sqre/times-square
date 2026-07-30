@@ -29,11 +29,8 @@ from ..storage.github.retry import (
     retry_transient_github_errors,
 )
 from ..storage.github.settingsfiles import NotebookSidecarFile
-from ..storage.noteburst import (
-    NoteburstErrorCodes,
-    NoteburstJobResponseModel,
-    NoteburstJobStatus,
-)
+from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
+from .executionoutcome import ExecutionOutcomeKind, classify_noteburst_outcome
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookTreeRef,
@@ -570,7 +567,7 @@ class NotebookExecutionsCheck(GitHubCheck):
             NotebookExecutionInfo(path=path, is_success=False)
         )
 
-    def report_noteburst_completion(  # noqa: C901 PLR0912
+    def report_noteburst_completion(
         self,
         *,
         page_execution: PageExecutionInfo,
@@ -579,135 +576,61 @@ class NotebookExecutionsCheck(GitHubCheck):
         """Add a report to the check run about a completed noteburst job."""
         if job_result.status != NoteburstJobStatus.complete:
             raise ValueError("Noteburst job isn't complete yet")
-        if job_result.status is None:
-            raise RuntimeError("Noteburst job has no status")
 
         notebook_path = page_execution.page.repository_source_path
         if notebook_path is None:
             raise RuntimeError("Page execution has no notebook source path")
 
-        # Save execution information with runtime
+        # Classify once and let the outcome drive both the recorded execution
+        # status and the annotations. The check run and the API
+        # execution_error field cannot drift apart, and the status table
+        # cannot contradict the annotations.
+        outcome = classify_noteburst_outcome(job_result)
+
+        # A successful execution is one where the notebook rendered and no
+        # cell raised an exception.
         execution_info = NotebookExecutionInfo(
             path=notebook_path,
-            is_success=job_result.success is True
-            and job_result.ipynb_error is None,
+            is_success=(
+                outcome.kind is ExecutionOutcomeKind.renderable
+                and job_result.ipynb_error is None
+            ),
             runtime=job_result.runtime or None,
         )
         self.notebook_executions.append(execution_info)
 
-        if job_result.success and job_result.ipynb_error is None:
-            # The notebook executed successfully
-            return
-        elif job_result.success and job_result.ipynb_error is not None:
-            # The notebook executed successfully, but there was an error
-            # in the notebook itself (e.g. a cell raised an exception)
-            annotation = Annotation(
-                path=notebook_path,
-                start_line=1,
-                message=job_result.ipynb_error.message,
-                title=f"Notebook exception: {job_result.ipynb_error.name}",
-                annotation_level=GitHubCheckRunAnnotationLevel.failure,
+        if outcome.kind is ExecutionOutcomeKind.contract_violation:
+            raise RuntimeError(outcome.contract_violation_message)
+
+        if outcome.kind is ExecutionOutcomeKind.renderable:
+            ipynb_error = job_result.ipynb_error
+            if ipynb_error is None:
+                return
+            # The notebook rendered, but a cell raised an exception.
+            self.annotations.append(
+                Annotation(
+                    path=notebook_path,
+                    start_line=1,
+                    message=ipynb_error.message,
+                    title=f"Notebook exception: {ipynb_error.name}",
+                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
+                )
             )
-            self.annotations.append(annotation)
             return
-        elif job_result.success is False:
-            # The noteburst job itself failed
-            if (
-                job_result.error
-                and job_result.error.code == NoteburstErrorCodes.timeout
-            ):
-                # The notebook execution timed out
-                title = "Notebook execution timeout"
-                if job_result.timeout:
-                    message = (
-                        "The notebook execution timed out "
-                        f"(timeout is {job_result.timeout:.0f} s)."
-                    )
-                else:
-                    message = (
-                        "The notebook execution timed out "
-                        "but no timeout was specified."
-                    )
-                annotation = Annotation(
+
+        # The notebook could not be executed; annotate with the classifier's
+        # user-facing failure description.
+        failure = outcome.failure
+        if failure is not None:
+            self.annotations.append(
+                Annotation(
                     path=notebook_path,
                     start_line=1,
-                    message=message,
-                    title=title,
+                    message=failure.message,
+                    title=failure.title,
                     annotation_level=GitHubCheckRunAnnotationLevel.failure,
                 )
-                self.annotations.append(annotation)
-                return
-            elif (
-                job_result.error
-                and job_result.error.code == NoteburstErrorCodes.jupyter_error
-            ):
-                # The notebook execution failed because of a Jupyter error
-                title = "Notebook execution error"
-                message = (
-                    "The notebook execution failed because of a Jupyter error."
-                )
-                if job_result.error.message:
-                    message += f" ({job_result.error.message})"
-                annotation = Annotation(
-                    path=notebook_path,
-                    start_line=1,
-                    message=message,
-                    title=title,
-                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
-                )
-                self.annotations.append(annotation)
-                return
-            elif (
-                job_result.error
-                and job_result.error.code == NoteburstErrorCodes.unknown
-            ):
-                # The notebook execution failed because of an unknown error
-                title = "Notebook execution error"
-                message = (
-                    "The notebook execution failed because of an unexpected "
-                    "system error."
-                )
-                if job_result.error.message:
-                    message += (
-                        f" (exception: {job_result.error.exception_type}; "
-                        f"{job_result.error.message})"
-                    )
-                annotation = Annotation(
-                    path=notebook_path,
-                    start_line=1,
-                    message=message,
-                    title=title,
-                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
-                )
-                self.annotations.append(annotation)
-                return
-            else:
-                # The notebook execution failed because of an unknown error
-                title = "Notebook execution error"
-                message = "The noteburst error is unknown."
-                if job_result.error and job_result.error.message:
-                    message += f" ({job_result.error.message})"
-                annotation = Annotation(
-                    path=notebook_path,
-                    start_line=1,
-                    message=message,
-                    title=title,
-                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
-                )
-                self.annotations.append(annotation)
-                return
-        else:
-            title = "Noteburst job success or failure is not known"
-            message = "The noteburst job status is {job_result.status}."
-            annotation = Annotation(
-                path=notebook_path,
-                start_line=1,
-                message=message,
-                title=title,
-                annotation_level=GitHubCheckRunAnnotationLevel.failure,
             )
-            self.annotations.append(annotation)
-            return
 
     def report_noteburst_timeout(
         self,
