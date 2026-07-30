@@ -147,11 +147,23 @@ def ensure_byweekday_object(value: Any) -> Any:
     return values
 
 
-def ensure_timezone_aware(value: datetime) -> datetime:
+def ensure_timezone_aware(value: datetime | None) -> datetime | None:
     """Ensure that the datetime is timezone aware, defaulting to UTC.
 
     Use as an after-validator.
+
+    Notes
+    -----
+    ``None`` is passed through unchanged so that this validator can be
+    attached to optional datetime fields such as `ScheduleFromDate.end`.
+    Pydantic skips after-validators when a field is absent and its default is
+    used, but it *does* run them against an explicit ``null``. Since
+    `ScheduleRules.serialize_to_json` dumps with ``exclude_none=False``, an
+    unset optional field is persisted as ``null`` and is re-validated here on
+    every deserialization.
     """
+    if value is None:
+        return None
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value
