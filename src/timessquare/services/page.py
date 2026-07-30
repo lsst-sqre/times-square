@@ -724,15 +724,10 @@ class PageService:
             noteburst_data is not None
             and noteburst_data.status == NoteburstJobStatus.complete
         ):
-            outcome = classify_noteburst_outcome(noteburst_data)
-            if outcome.kind is ExecutionOutcomeKind.execution_failure:
-                execution_error = await self._handle_execution_failure(
-                    page_instance=page_instance,
-                    noteburst_response=noteburst_data,
-                    failure=outcome.failure,
-                )
-            elif outcome.kind is ExecutionOutcomeKind.contract_violation:
-                raise RuntimeError(outcome.contract_violation_message)
+            execution_error = await self._handle_completed_outcome(
+                page_instance=page_instance,
+                noteburst_response=noteburst_data,
+            )
 
         if execution_error is None and job is None and nbhtml is None:
             execution_error = await self._execution_failure_store.get_instance(
