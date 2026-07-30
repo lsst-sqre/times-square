@@ -30,7 +30,7 @@ from ..storage.github.retry import (
 )
 from ..storage.github.settingsfiles import NotebookSidecarFile
 from ..storage.noteburst import NoteburstJobResponseModel, NoteburstJobStatus
-from .executionoutcome import classify_noteburst_outcome
+from .executionoutcome import ExecutionOutcomeKind, classify_noteburst_outcome
 from .githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookTreeRef,
@@ -590,42 +590,42 @@ class NotebookExecutionsCheck(GitHubCheck):
         )
         self.notebook_executions.append(execution_info)
 
-        if job_result.success and job_result.ipynb_error is None:
-            # The notebook executed successfully
-            return
+        # Branch on the shared classifier's outcome so the check run and the
+        # API execution_error field cannot drift apart.
+        outcome = classify_noteburst_outcome(job_result)
 
-        if job_result.success and job_result.ipynb_error is not None:
-            # The notebook executed successfully, but there was an error
-            # in the notebook itself (e.g. a cell raised an exception)
+        if outcome.kind is ExecutionOutcomeKind.contract_violation:
+            raise RuntimeError(outcome.contract_violation_message)
+
+        if outcome.kind is ExecutionOutcomeKind.renderable:
+            ipynb_error = job_result.ipynb_error
+            if ipynb_error is None:
+                return
+            # The notebook rendered, but a cell raised an exception.
             self.annotations.append(
                 Annotation(
                     path=notebook_path,
                     start_line=1,
-                    message=job_result.ipynb_error.message,
-                    title=f"Notebook exception: {job_result.ipynb_error.name}",
+                    message=ipynb_error.message,
+                    title=f"Notebook exception: {ipynb_error.name}",
                     annotation_level=GitHubCheckRunAnnotationLevel.failure,
                 )
             )
             return
 
-        # The notebook could not be executed. Derive the annotation's title
-        # and message from the shared execution-outcome formatter so the
-        # check run and the API execution_error field cannot drift apart.
-        failure = classify_noteburst_outcome(job_result).failure
-        if failure is None:
-            raise RuntimeError(
-                "Noteburst reported a failed execution but the outcome could "
-                "not be classified into a failure description."
+        # The notebook could not be executed; annotate with the classifier's
+        # user-facing failure description.
+        failure = outcome.failure
+        if failure is not None:
+            self.annotations.append(
+                Annotation(
+                    path=notebook_path,
+                    start_line=1,
+                    message=failure.message,
+                    title=failure.title,
+                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
+                )
             )
-        self.annotations.append(
-            Annotation(
-                path=notebook_path,
-                start_line=1,
-                message=failure.message,
-                title=failure.title,
-                annotation_level=GitHubCheckRunAnnotationLevel.failure,
-            )
-        )
 
     def report_noteburst_timeout(
         self,

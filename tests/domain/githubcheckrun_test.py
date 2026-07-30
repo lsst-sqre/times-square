@@ -350,3 +350,46 @@ def test_report_completion_no_error_field() -> None:
     assert annotation.title == "Notebook execution error"
     # Standardized wording from the shared formatter.
     assert "unknown reason" in annotation.message
+
+
+def test_report_completion_ipynb_error_with_success_false() -> None:
+    """A notebook is present, so the outcome is renderable and the cell
+    exception is annotated regardless of the ``success`` flag.
+    """
+    check = _make_check()
+    job_result = _base_response(
+        success=False,
+        ipynb="{}",
+        ipynb_error=NotebookError(name="ValueError", message="boom"),
+    )
+    check.report_noteburst_completion(
+        page_execution=_make_page_execution(), job_result=job_result
+    )
+    assert len(check.annotations) == 1
+    annotation = check.annotations[0]
+    assert annotation.title == "Notebook exception: ValueError"
+    assert annotation.message == "boom"
+
+
+def test_report_completion_renderable_with_success_false() -> None:
+    """A notebook with no cell error is renderable and needs no annotation,
+    even if the ``success`` flag disagrees.
+    """
+    check = _make_check()
+    job_result = _base_response(success=False, ipynb="{}")
+    check.report_noteburst_completion(
+        page_execution=_make_page_execution(), job_result=job_result
+    )
+    assert check.annotations == []
+
+
+def test_report_completion_contract_violation() -> None:
+    """A successful execution with no notebook violates Noteburst's contract
+    and raises with the classifier's message.
+    """
+    check = _make_check()
+    job_result = _base_response(success=True, ipynb=None)
+    with pytest.raises(RuntimeError, match="did not return an executed"):
+        check.report_noteburst_completion(
+            page_execution=_make_page_execution(), job_result=job_result
+        )
