@@ -8,6 +8,35 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.25.0'></a>
+## 0.25.0 (2026-07-30)
+
+### New features
+
+- `GET /v1/pages/{page}/htmlstatus` now returns a terminal execution-failure result instead of HTTP 500 when Noteburst reports that a notebook could not be executed. The response gains an optional, backward-compatible `execution_error` object (a machine-readable `code` plus a human-readable `title` and `message`) that is null in the normal, pending, and available cases. Failures are cached so a persistently broken notebook is not re-executed on every poll; updating the page or soft-deleting its HTML clears the cached failure, and an in-flight execution always takes precedence. The failure-cache lifetime is configurable with `TS_EXECUTION_FAILURE_LIFETIME` (default: 600 seconds).
+
+- The `GET /v1/pages/{page}/html/events` SSE stream reaches the same terminal execution-failure state, carrying the same optional `execution_error` payload, so a subscribed client can stop and render the failure. This only applies when no HTML is cached for the page instance; with cached HTML available the stream keeps serving it.
+
+- The GitHub YAML config check now validates a notebook sidecar's run schedule at ingest time: the schedule is serialized exactly as it will be stored and its next occurrence is computed. A schedule that cannot be evaluated produces a failure annotation on the sidecar file instead of landing on `main` and breaking later in the scheduler.
+
+### Bug fixes
+
+- GitHub content reads during check-run setup (the `times-square.yaml` fetch, the git tree fetch, and notebook/sidecar blob fetches) now retry transient errors — network/timeout failures and GitHub 5xx responses — up to three times with exponential backoff and jitter, while non-transient errors fail fast. If retries are exhausted, the check run is concluded with an actionable `failure` annotation pointing at the file that could not be read, instead of dangling `in_progress`, and these transient blips no longer fire the Slack "worker exception" alert.
+
+- The shared `httpx.AsyncClient` used for all outbound requests now has an explicit 30-second default timeout (replacing httpx's implicit 5 seconds), configurable via `TS_HTTP_CLIENT_TIMEOUT`. Transient GitHub API slowness no longer trips `httpx.ReadTimeout` during check-run setup.
+
+- The `scheduled_page_run` and `replace_nbhtml` worker tasks now log a structured warning and continue when Noteburst reports a notebook execution failure, instead of raising and posting a generic "worker exception" alert to Slack; the stale Noteburst job record is cleaned up. A genuine contract violation (Noteburst reports success but returns no notebook) still raises loudly.
+
+- Per-notebook timeout annotations in the pull-request notebook-execution check now report the job's real runtime and state. The Noteburst status lookup in the timeout path was never awaited, so every timeout annotation showed a bare message with no runtime.
+
+- Fixed scheduled page execution for recurring schedules that terminate with a `count` rather than an `end` date. The timezone-normalizing validator on schedule-rule datetime fields is now `None`-safe, so the optional `end` field survives the storage round trip. Previously the persisted `"end": null` raised `AttributeError` on every `schedule_runs` cron tick and the page was never scheduled. Affected pages resume on the next tick; no data migration is required.
+
+- The run scheduler now treats a page whose stored recurrence rule set cannot be parsed or evaluated as a per-page configuration error: the page is skipped, all other pages are scheduled as usual, and a warning naming the page and reason is logged once per worker process (re-armed if the schedule heals) — instead of an error-level log and Sentry event on every five-minute tick. Genuinely unexpected errors are still logged as errors.
+
+### Other changes
+
+- GitHub check-run notebook-execution annotations now derive their titles and messages from the same shared execution-outcome formatter as the API's `execution_error` field, so the two cannot drift apart. An expired Noteburst result now reads "Notebook result unavailable" with a prompt to re-run (previously an uninformative message with a literal format placeholder), and a Noteburst response claiming success without a notebook now raises an error instead of being silently ignored.
+
 <a id='changelog-0.24.1'></a>
 ## 0.24.1 (2026-07-06)
 
