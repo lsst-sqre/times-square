@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from traitlets.config import Config
 
 from ..storage.noteburst import NoteburstJobResponseModel
+from .executionoutcome import NotebookExecutionFailure
 from .page import PageInstanceIdModel, PageInstanceModel
 
 __all__ = [
@@ -139,6 +140,7 @@ class NbHtmlStatusModel:
     nb_html_key: NbHtmlKey
     nb_html: NbHtmlModel | None
     page_instance: PageInstanceModel
+    execution_error: NotebookExecutionFailure | None = None
 
     @property
     def available(self) -> bool:
