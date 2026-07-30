@@ -3,10 +3,10 @@
 Two areas are covered:
 
 - graceful handling of transient GitHub errors during repository checkout;
-- the annotation text produced by
-  `NotebookExecutionsCheck.report_noteburst_completion`, which derives its
-  user-facing failure titles and messages from the shared execution-outcome
-  classifier (`timessquare.domain.executionoutcome`).
+- the annotations and recorded execution status produced by
+  `NotebookExecutionsCheck.report_noteburst_completion`, which derives both
+  from the shared execution-outcome classifier
+  (`timessquare.domain.executionoutcome`).
 """
 
 from __future__ import annotations
@@ -387,6 +387,9 @@ def test_report_completion_ipynb_error_with_success_false() -> None:
     annotation = check.annotations[0]
     assert annotation.title == "Notebook exception: ValueError"
     assert annotation.message == "boom"
+    # The cell error makes the execution unsuccessful even though the
+    # notebook itself is renderable.
+    assert check.notebook_executions[0].is_success is False
 
 
 def test_report_completion_renderable_with_success_false() -> None:
@@ -399,6 +402,9 @@ def test_report_completion_renderable_with_success_false() -> None:
         page_execution=_make_page_execution(), job_result=job_result
     )
     assert check.annotations == []
+    # Recorded success follows the classifier, so it agrees with the
+    # annotation-free treatment above.
+    assert check.notebook_executions[0].is_success is True
 
 
 def test_report_completion_contract_violation() -> None:
@@ -411,3 +417,5 @@ def test_report_completion_contract_violation() -> None:
         check.report_noteburst_completion(
             page_execution=_make_page_execution(), job_result=job_result
         )
+    # The execution is recorded as unsuccessful before the raise.
+    assert check.notebook_executions[0].is_success is False

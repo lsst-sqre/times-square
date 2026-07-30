@@ -581,18 +581,23 @@ class NotebookExecutionsCheck(GitHubCheck):
         if notebook_path is None:
             raise RuntimeError("Page execution has no notebook source path")
 
-        # Save execution information with runtime
+        # Classify once and let the outcome drive both the recorded execution
+        # status and the annotations. The check run and the API
+        # execution_error field cannot drift apart, and the status table
+        # cannot contradict the annotations.
+        outcome = classify_noteburst_outcome(job_result)
+
+        # A successful execution is one where the notebook rendered and no
+        # cell raised an exception.
         execution_info = NotebookExecutionInfo(
             path=notebook_path,
-            is_success=job_result.success is True
-            and job_result.ipynb_error is None,
+            is_success=(
+                outcome.kind is ExecutionOutcomeKind.renderable
+                and job_result.ipynb_error is None
+            ),
             runtime=job_result.runtime or None,
         )
         self.notebook_executions.append(execution_info)
-
-        # Branch on the shared classifier's outcome so the check run and the
-        # API execution_error field cannot drift apart.
-        outcome = classify_noteburst_outcome(job_result)
 
         if outcome.kind is ExecutionOutcomeKind.contract_violation:
             raise RuntimeError(outcome.contract_violation_message)
