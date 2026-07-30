@@ -3,17 +3,27 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 
-from pydantic import ValidationError
 from safir.arq import ArqQueue
 from structlog.stdlib import BoundLogger
 
 from timessquare.domain.page import PageModel
 from timessquare.domain.scheduledrun import ScheduledRun
+from timessquare.exceptions import ScheduleEvaluationError
 from timessquare.storage.page import PageStore
 from timessquare.storage.scheduledrunstore import ScheduledRunStore
 
 __all__ = ["RunSchedulerService"]
+
+SCHEDULE_EVALUATION_ERRORS = (ValueError, TypeError, AttributeError, KeyError)
+"""Exceptions from parsing or evaluating a stored rruleset that are treated
+as per-page configuration errors.
+
+`pydantic.ValidationError` is a `ValueError` subclass, so this covers both
+unparsable rrulesets and rrulesets that fail while dateutil computes the next
+occurrence.
+"""
 
 
 class RunSchedulerService:
@@ -23,6 +33,14 @@ class RunSchedulerService:
     ----------
     store
         The storage interface for scheduled runs.
+    """
+
+    _warned_schedule_pages: ClassVar[set[str]] = set()
+    """Names of pages already warned about for an un-evaluatable schedule.
+
+    This state is shared by every service instance in the process so that the
+    scheduler warns only once per page, rather than on every scheduling tick.
+    It is deliberately not persisted; resetting on restart is acceptable.
     """
 
     def __init__(
@@ -81,6 +99,8 @@ class RunSchedulerService:
                 )
                 if scheduled_run is not None:
                     new_scheduled_runs.append(scheduled_run)
+            except ScheduleEvaluationError as e:
+                self._warn_unevaluatable_schedule(page, e)
             except Exception:
                 self._logger.exception(
                     "Failed to schedule page execution",
@@ -90,26 +110,52 @@ class RunSchedulerService:
 
         return new_scheduled_runs
 
+    def _warn_unevaluatable_schedule(
+        self, page: PageModel, error: ScheduleEvaluationError
+    ) -> None:
+        """Warn once per process about a page whose schedule can't be used.
+
+        A page with a broken stored rruleset fails on every scheduling tick,
+        so this is logged at warning level, and only the first time the page
+        is seen, instead of as a per-tick error.
+        """
+        if page.name in self._warned_schedule_pages:
+            return
+        self._warned_schedule_pages.add(page.name)
+        self._logger.warning(
+            "Skipping page with an un-evaluatable run schedule",
+            page_name=page.name,
+            reason=error.reason,
+            schedule_rruleset=page.schedule_rruleset,
+        )
+
+    def _compute_next_run(
+        self, *, page: PageModel, now: datetime
+    ) -> datetime | None:
+        """Compute a page's next scheduled run time.
+
+        Raises
+        ------
+        ScheduleEvaluationError
+            Raised if the page's stored rruleset cannot be parsed or
+            evaluated.
+        """
+        try:
+            schedule = page.schedule
+            if schedule is None:
+                self._logger.warning(
+                    "Page has no run schedule, despite being expected to",
+                    page_name=page.name,
+                )
+                return None
+            return schedule.next(after=now)
+        except SCHEDULE_EVALUATION_ERRORS as e:
+            raise ScheduleEvaluationError(page.name, str(e)) from e
+
     async def _schedule_due_for_page(
         self, *, page: PageModel, now: datetime, check_window: timedelta
     ) -> ScheduledRun | None:
-        try:
-            schedule = page.schedule
-        except ValidationError:
-            self._logger.exception(
-                "Invalid schedule for page",
-                page_name=page.name,
-                schedule_rruleset=page.schedule_rruleset,
-            )
-            raise
-        if schedule is None:
-            self._logger.warning(
-                "Page has no run schedule, despite being expected to",
-                page_name=page.name,
-            )
-            return None
-
-        next_run = schedule.next(after=now)
+        next_run = self._compute_next_run(page=page, now=now)
         self._logger.debug(
             "Computed scheduled run for page",
             page_name=page.name,
