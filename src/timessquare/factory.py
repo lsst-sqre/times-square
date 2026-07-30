@@ -225,7 +225,10 @@ class Factory:
         """Create an NbExecutionFailureStore (Redis cache of terminal
         notebook execution failures).
         """
-        return NbExecutionFailureStore(self.redis)
+        return NbExecutionFailureStore(
+            self.redis,
+            default_lifetime=config.execution_failure_lifetime,
+        )
 
     def create_scheduled_run_store(self) -> ScheduledRunStore:
         """Create a ScheduledRunStore (Postgres storage of scheduled runs)."""

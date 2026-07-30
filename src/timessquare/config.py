@@ -212,6 +212,23 @@ class Config(BaseSettings):
         ),
     ] = 60
 
+    execution_failure_lifetime: Annotated[
+        int,
+        Field(
+            gt=0,
+            alias="TS_EXECUTION_FAILURE_LIFETIME",
+            description=(
+                "How long, in seconds, a terminal notebook execution failure "
+                "is cached."
+                "\n\n"
+                "While a failure is cached, Times Square reports the terminal "
+                "failure instead of requesting a new Noteburst execution, so "
+                "this also sets how long before a persistently failing "
+                "notebook is retried automatically."
+            ),
+        ),
+    ] = 600
+
     redis_queue_url: EnvRedisDsn = Field(
         alias="TS_REDIS_QUEUE_URL",
         description=("URL for the redis instance, used by the worker queue."),
