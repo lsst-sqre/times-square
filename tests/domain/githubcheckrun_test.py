@@ -1,8 +1,10 @@
 """Tests for the githubcheckrun domain.
 
-Two areas are covered:
+Three areas are covered:
 
 - graceful handling of transient GitHub errors during repository checkout;
+- ingest-time validation of a notebook sidecar's run schedule by the configs
+  check;
 - the annotations and recorded execution status produced by
   `NotebookExecutionsCheck.report_noteburst_completion`, which derives both
   from the shared execution-outcome classifier
@@ -28,6 +30,7 @@ from safir.github.models import (
 from safir.github.webhooks import GitHubCheckSuiteEventModel
 
 from timessquare.domain.githubcheckrun import (
+    SCHEDULE_EVALUATION_ERROR_TITLE,
     TRANSIENT_CHECKOUT_ERROR_MESSAGE,
     GitHubConfigsCheck,
     NotebookExecutionsCheck,
@@ -206,6 +209,97 @@ async def test_validate_repo_propagates_non_transient_error() -> None:
             repo=payload.repository,
             head_sha=payload.check_suite.head_sha,
         )
+
+
+UNEVALUATABLE_SCHEDULE_SIDECAR = """
+title: Broken schedule
+schedule:
+  - freq: monthly
+    weekday: friday
+    set_position: 0
+"""
+"""A sidecar that validates as YAML and against the sidecar schema, but whose
+schedule rule serializes to an rruleset dateutil refuses to build
+(``set_position`` is not range-checked by the sidecar schema).
+"""
+
+FROM_DATE_COUNT_SCHEDULE_SIDECAR = """
+title: Counted schedule
+schedule:
+  - start: 2026-01-01T12:00:00Z
+    freq: daily
+    count: 5
+"""
+"""A legitimate from-date/``count`` schedule. Its serialized form carries
+``"end": null``, which is the round-trip that used to break schedule
+evaluation, so it must not produce an annotation.
+"""
+
+
+@pytest.mark.asyncio
+async def test_validate_sidecar_annotates_unevaluatable_schedule() -> None:
+    """A sidecar whose schedule cannot be evaluated fails the configs check
+    with a failure annotation on the sidecar's path.
+    """
+    payload = _load_check_suite()
+    mock = MockGitHubCheckRunAPI(
+        check_run=_load_check_run(),
+        sidecar_content=UNEVALUATABLE_SCHEDULE_SIDECAR,
+    )
+    client = cast("GitHubAPI", mock)
+
+    check = await GitHubConfigsCheck.create_check_run_and_validate(
+        github_client=client,
+        repo=payload.repository,
+        head_sha=payload.check_suite.head_sha,
+    )
+    await check.submit_conclusion(github_client=client)
+
+    schedule_annotations = [
+        a
+        for a in check.annotations
+        if a.title == SCHEDULE_EVALUATION_ERROR_TITLE
+    ]
+    assert len(schedule_annotations) == 1
+    annotation = schedule_annotations[0]
+    assert annotation.path == "demo.yaml"
+    assert annotation.annotation_level == GitHubCheckRunAnnotationLevel.failure
+    # Assert on Times Square's own message, not on the underlying dateutil
+    # error wording, which is not a stable contract. The trailing detail is
+    # still checked for non-emptiness so the exception text keeps reaching
+    # the annotation.
+    message_prefix = (
+        "Times Square could not compute the next run from this schedule: "
+    )
+    assert annotation.message.startswith(message_prefix)
+    assert annotation.message.removeprefix(message_prefix).strip()
+
+    assert check.conclusion == GitHubCheckRunConclusion.failure
+    assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
+
+
+@pytest.mark.asyncio
+async def test_validate_sidecar_accepts_from_date_count_schedule() -> None:
+    """A valid from-date/``count`` schedule passes the configs check with no
+    annotation, so the ingest-time check raises no false failure.
+    """
+    payload = _load_check_suite()
+    mock = MockGitHubCheckRunAPI(
+        check_run=_load_check_run(),
+        sidecar_content=FROM_DATE_COUNT_SCHEDULE_SIDECAR,
+    )
+    client = cast("GitHubAPI", mock)
+
+    check = await GitHubConfigsCheck.create_check_run_and_validate(
+        github_client=client,
+        repo=payload.repository,
+        head_sha=payload.check_suite.head_sha,
+    )
+    await check.submit_conclusion(github_client=client)
+
+    assert check.annotations == []
+    assert check.conclusion == GitHubCheckRunConclusion.success
+    assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.success
 
 
 def _base_response(**kwargs: object) -> NoteburstJobResponseModel:

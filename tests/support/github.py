@@ -135,6 +135,18 @@ CHECK_RUN_GIT_TREE: dict[str, Any] = {
 """
 
 
+def _blob(content: bytes) -> dict[str, Any]:
+    """Build a GitHub git blob response body carrying ``content``."""
+    encoded = base64.b64encode(content).decode()
+    return {
+        "content": encoded,
+        "encoding": "base64",
+        "url": "https://api.github.com/repos/x/y/git/blobs/abc123",
+        "sha": "abc123",
+        "size": len(encoded),
+    }
+
+
 class MockGitHubCheckRunAPI(MockGitHubAPI):
     """A concrete `MockGitHubAPI` for exercising the GitHub check-run flow.
 
@@ -150,9 +162,11 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
     When ``contents_error`` is not set, the Contents GET returns a valid,
     empty ``times-square.yaml`` blob so the checkout succeeds. When
     ``tree_error`` is not set, the git tree GET returns `CHECK_RUN_GIT_TREE`,
-    so the check reaches the notebook-loading blob GETs. Those blob GETs are
-    only meaningful with ``blob_error`` set; there is no canned notebook
-    content behind them.
+    so the check reaches the notebook-loading blob GETs. Pass
+    ``sidecar_content`` to serve that YAML as the body of every git blob GET,
+    which is what the configs check reads as the notebook's sidecar file;
+    without it there is no canned content behind those GETs and they are only
+    meaningful with ``blob_error`` set.
     """
 
     def __init__(
@@ -162,6 +176,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         contents_error: BaseException | None = None,
         tree_error: BaseException | None = None,
         blob_error: BaseException | None = None,
+        sidecar_content: str | None = None,
         oauth_token: str | None = None,
         cache: gh_abc.CACHE_TYPE | None = None,
         base_url: str = sansio.DOMAIN,
@@ -173,6 +188,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         self._contents_error = contents_error
         self._tree_error = tree_error
         self._blob_error = blob_error
+        self._sidecar_content = sidecar_content
         self.requests: list[tuple[str, str]] = []
         self.patched: list[dict[str, Any]] = []
 
@@ -211,21 +227,20 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         bodies of PATCH requests (the in-progress and conclusion updates).
 
         The ``times-square.yaml`` Contents GET instead returns a valid,
-        empty settings-file blob so a checkout can succeed, and the recursive
-        git tree GET returns `CHECK_RUN_GIT_TREE`.
+        empty settings-file blob so a checkout can succeed, the recursive
+        git tree GET returns `CHECK_RUN_GIT_TREE`, and the git blob GETs
+        return ``sidecar_content`` when it was provided.
         """
         if method == "GET" and "times-square.yaml" in url:
-            content = base64.b64encode(b'root: ""\n').decode()
-            blob = {
-                "content": content,
-                "encoding": "base64",
-                "url": "https://api.github.com/repos/x/y/git/blobs/abc123",
-                "sha": "abc123",
-                "size": len(content),
-            }
-            return 200, blob, {}
+            return 200, _blob(b'root: ""\n'), {}
         if method == "GET" and "git/trees" in url:
             return 200, CHECK_RUN_GIT_TREE, {}
+        if (
+            method == "GET"
+            and "git/blobs" in url
+            and self._sidecar_content is not None
+        ):
+            return 200, _blob(self._sidecar_content.encode()), {}
         if method == "PATCH" and request_json is not None:
             self.patched.append(request_json)
         return 200, self._check_run, {}
