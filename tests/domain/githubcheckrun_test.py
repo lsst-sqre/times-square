@@ -264,7 +264,15 @@ async def test_validate_sidecar_annotates_unevaluatable_schedule() -> None:
     annotation = schedule_annotations[0]
     assert annotation.path == "demo.yaml"
     assert annotation.annotation_level == GitHubCheckRunAnnotationLevel.failure
-    assert "bysetpos" in annotation.message
+    # Assert on Times Square's own message, not on the underlying dateutil
+    # error wording, which is not a stable contract. The trailing detail is
+    # still checked for non-emptiness so the exception text keeps reaching
+    # the annotation.
+    message_prefix = (
+        "Times Square could not compute the next run from this schedule: "
+    )
+    assert annotation.message.startswith(message_prefix)
+    assert annotation.message.removeprefix(message_prefix).strip()
 
     assert check.conclusion == GitHubCheckRunConclusion.failure
     assert mock.patched[-1]["conclusion"] == GitHubCheckRunConclusion.failure
