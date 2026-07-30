@@ -93,6 +93,23 @@ def _failed_job() -> Response:
     )
 
 
+def _successful_job(ipynb: str) -> Response:
+    return Response(
+        200,
+        json={
+            "job_id": "xyz",
+            "kernel_name": "",
+            "enqueue_time": "2022-03-15T04:12:00Z",
+            "status": "complete",
+            "self_url": JOB_URL,
+            "start_time": "2022-03-15T04:13:00Z",
+            "finish_time": "2022-03-15T04:13:10Z",
+            "success": True,
+            "ipynb": ipynb,
+        },
+    )
+
+
 @pytest.mark.asyncio
 async def test_terminal_failure_deletes_job_and_guards_reexecution(
     page_service: PageService, respx_mock: respx.Router
@@ -367,6 +384,66 @@ async def test_events_normal_has_null_execution_error(
         page_service, name=page.name, query_params={"A": 2}
     )
     assert payload["execution_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_events_stale_html_survives_failed_background_refresh(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """While stale HTML is cached, a background refresh that fails does not
+    turn the SSE stream terminal: the stream keeps reporting the cached HTML,
+    and failure handling is left to the background worker that owns the
+    refresh.
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+
+    # Render and cache HTML for the page instance.
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_successful_job(ipynb))
+    status = await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert status.available is True
+
+    # A background refresh (as from soft_delete_html) puts a new job in flight
+    # while the stale HTML stays cached...
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.request_noteburst_execution(page_instance)
+
+    # ...and that refresh job completes as a terminal failure.
+    respx_mock.get(JOB_URL).mock(return_value=_failed_job())
+
+    payload = await _first_event_payload(
+        page_service, name=page.name, query_params={"A": 2}
+    )
+    assert payload["execution_error"] is None
+    assert payload["html_url"] is not None
+    assert payload["html_hash"] is not None
+
+    # No failure marker was cached, and the refresh job's record survives for
+    # the worker that owns it.
+    assert (
+        await page_service._execution_failure_store.get_instance(
+            page_instance.id
+        )
+        is None
+    )
+    assert (
+        await page_service._job_store.get_instance(page_instance.id)
+        is not None
+    )
 
 
 @pytest.mark.asyncio

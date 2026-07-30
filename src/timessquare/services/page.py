@@ -708,17 +708,27 @@ class PageService:
     ) -> NotebookExecutionFailure | None:
         """Resolve a terminal execution failure for one SSE events iteration.
 
-        Classifies a completed Noteburst job; on execution failure performs the
-        same cleanup as the interactive path (log a structured warning, cache
-        the failure marker, and delete the stale job record). When there is no
-        job in flight and no HTML is available, falls back to a previously
-        cached failure marker so the stream keeps reporting the terminal
-        failure after the stale job record is deleted.
+        Mirrors the gating of the interactive path: the failure machinery is
+        only consulted when no HTML is cached for the page instance. While
+        cached HTML is available — as during a background refresh of a
+        soft-deleted render — the stream reports that HTML and never goes
+        terminal, leaving failure handling of the refresh to the background
+        worker that owns it.
+
+        With no HTML cached, classifies a completed Noteburst job; on execution
+        failure performs the same cleanup as the interactive path (log a
+        structured warning, cache the failure marker, and delete the stale job
+        record). When there is additionally no job in flight, falls back to a
+        previously cached failure marker so the stream keeps reporting the
+        terminal failure after the stale job record is deleted.
 
         As on the interactive path, a live job record always wins over a cached
         failure marker: a marker written by a concurrent poll of a superseded
         job must not hide an execution that is still in flight.
         """
+        if nbhtml is not None:
+            return None
+
         execution_error: NotebookExecutionFailure | None = None
         if (
             noteburst_data is not None
@@ -729,7 +739,7 @@ class PageService:
                 noteburst_response=noteburst_data,
             )
 
-        if execution_error is None and job is None and nbhtml is None:
+        if execution_error is None and job is None:
             execution_error = await self._execution_failure_store.get_instance(
                 page_instance.id
             )
