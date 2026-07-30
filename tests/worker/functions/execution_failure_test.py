@@ -210,3 +210,27 @@ async def test_replace_nbhtml_execution_failure_logs_and_skips(
 
     assert result == "Done"
     worker_ctx["slack"].post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_replace_nbhtml_contract_violation_posts_slack(
+    worker_ctx: dict[str, Any], respx_mock: respx.Router
+) -> None:
+    """A genuine contract violation still raises and posts a Slack message."""
+    page_name = await _create_demo_page(worker_ctx["process_context"])
+
+    respx_mock.get(JOB_URL).mock(return_value=_contract_violation_response())
+
+    noteburst_job = NoteburstJobModel(
+        date_submitted=datetime(2022, 3, 15, 4, 12, tzinfo=UTC),
+        job_url=JOB_URL,  # type: ignore[arg-type]
+    )
+    with pytest.raises(RuntimeError):
+        await replace_nbhtml(
+            worker_ctx,
+            page_name=page_name,
+            parameter_values={},
+            noteburst_job=noteburst_job,
+        )
+
+    worker_ctx["slack"].post.assert_called_once()
