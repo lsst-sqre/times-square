@@ -352,6 +352,24 @@ def test_report_completion_no_error_field() -> None:
     assert "unknown reason" in annotation.message
 
 
+def test_report_completion_result_unavailable() -> None:
+    """An expired arq result (``success is None``) is a terminal execution
+    failure annotated with the classifier's result-unavailable wording.
+    """
+    check = _make_check()
+    job_result = _base_response(success=None, ipynb=None)
+    check.report_noteburst_completion(
+        page_execution=_make_page_execution(), job_result=job_result
+    )
+    assert len(check.annotations) == 1
+    annotation = check.annotations[0]
+    assert annotation.title == "Notebook result unavailable"
+    # Standardized wording from the shared formatter.
+    assert "no longer available" in annotation.message
+    assert annotation.annotation_level == GitHubCheckRunAnnotationLevel.failure
+    assert check.notebook_executions[0].is_success is False
+
+
 def test_report_completion_ipynb_error_with_success_false() -> None:
     """A notebook is present, so the outcome is renderable and the cell
     exception is annotated regardless of the ``success`` flag.
