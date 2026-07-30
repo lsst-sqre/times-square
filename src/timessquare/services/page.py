@@ -37,6 +37,7 @@ from ..storage.nbexecutionfailurestore import NbExecutionFailureStore
 from ..storage.nbhtmlcache import NbHtmlCacheStore
 from ..storage.noteburst import (
     NoteburstApi,
+    NoteburstJobModel,
     NoteburstJobResponseModel,
     NoteburstJobStatus,
 )
@@ -367,20 +368,32 @@ class PageService:
         # noteburst job.
         execution_error: NotebookExecutionFailure | None = None
         if nbhtml is None:
-            # A cached terminal failure short-circuits re-execution so that a
-            # persistently broken notebook does not trigger a fresh Noteburst
-            # execution on every poll.
-            execution_error = await self._execution_failure_store.get_instance(
-                page_instance.id
-            )
-            if execution_error is None:
+            job = await self._job_store.get_instance(page_instance.id)
+            if job is not None:
+                # A live job record always wins over a cached failure: a
+                # failure marker written by a concurrent poll of a superseded
+                # job must not hide the execution that is still in flight.
                 (
                     nbhtml,
                     execution_error,
                 ) = await self._get_html_from_noteburst_job(
                     page_instance=page_instance,
                     display_settings=html_key.display_settings,
+                    job=job,
                 )
+            else:
+                # With no job in flight, a cached terminal failure
+                # short-circuits re-execution so that a persistently broken
+                # notebook does not trigger a fresh Noteburst execution on
+                # every poll.
+                execution_error = (
+                    await self._execution_failure_store.get_instance(
+                        page_instance.id
+                    )
+                )
+                if execution_error is None:
+                    self._logger.debug("No existing noteburst job available")
+                    await self.request_noteburst_execution(page_instance)
 
         return NbHtmlStatusModel(
             nb_html=nbhtml,
@@ -419,10 +432,11 @@ class PageService:
         *,
         page_instance: PageInstanceModel,
         display_settings: NbDisplaySettings,
+        job: NoteburstJobModel,
     ) -> tuple[NbHtmlModel | None, NotebookExecutionFailure | None]:
         """Convert a noteburst job for a given page and parameter values into
         HTML (caching that HTML as well), and triggering a new noteburst job if
-        the job was not found.
+        noteburst lost the job.
 
         Parameters
         ----------
@@ -432,6 +446,8 @@ class PageService:
             A display parameter passed to `NbHtml.create_from_noteburst_result`
             that indicates whether the returned HTML should include code input
             cells.
+        job : `NoteburstJobModel`
+            The job record from the noteburst job store.
 
         Returns
         -------
@@ -440,15 +456,6 @@ class PageService:
             is not presently available) and a `NotebookExecutionFailure` (or
             `None` if the notebook did not terminally fail to execute).
         """
-        # Is there an existing job in the noteburst job store?
-        job = await self._job_store.get_instance(page_instance.id)
-        if not job:
-            self._logger.debug("No existing noteburst job available")
-            # A record of a noteburst job is not available. Send a request
-            # to noteburst.
-            await self.request_noteburst_execution(page_instance)
-            return None, None
-
         r = await self.noteburst_api.get_job(str(job.job_url))
 
         if r.status_code == 404:
