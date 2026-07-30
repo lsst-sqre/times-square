@@ -109,6 +109,23 @@ class PageJinjaError(Exception):
         )
 
 
+class ScheduleEvaluationError(Exception):
+    """A page's stored run schedule could not be parsed or evaluated.
+
+    This is a per-page configuration error rather than an internal error: the
+    run scheduler skips the page and warns about it once per process, instead
+    of raising (and alerting) on every scheduling tick.
+    """
+
+    def __init__(self, page_name: str, reason: str) -> None:
+        """Create an exception naming the page and the underlying reason."""
+        super().__init__(
+            f"Cannot evaluate the run schedule for page {page_name}: {reason}"
+        )
+        self.page_name = page_name
+        self.reason = reason
+
+
 class ParameterSchemaValidationError(TimesSquareClientError):
     """Error related to a parameter."""
 
