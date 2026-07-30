@@ -75,6 +75,23 @@ def _contract_violation_noteburst_response() -> NoteburstJobResponseModel:
     )
 
 
+def _successful_noteburst_response(ipynb: str) -> NoteburstJobResponseModel:
+    """Return a completed Noteburst response carrying an executed notebook."""
+    return NoteburstJobResponseModel.model_validate(
+        {
+            "job_id": "xyz",
+            "kernel_name": "",
+            "enqueue_time": "2022-03-15T04:12:00Z",
+            "status": "complete",
+            "self_url": JOB_URL,
+            "start_time": "2022-03-15T04:13:00Z",
+            "finish_time": "2022-03-15T04:13:10Z",
+            "success": True,
+            "ipynb": ipynb,
+        }
+    )
+
+
 @pytest_asyncio.fixture
 async def page_service() -> AsyncGenerator[BackgroundPageService]:
     """Return a BackgroundPageService."""
@@ -216,6 +233,39 @@ async def test_update_nbhtml_execution_failure_logs_and_skips(
 
     # The stale job record was cleaned up.
     assert await page_service._job_store.get_instance(page_instance.id) is None
+
+
+@pytest.mark.asyncio
+async def test_update_nbhtml_renders_html_on_success(
+    page_service: BackgroundPageService,
+) -> None:
+    """A renderable Noteburst response is rendered into the HTML cache."""
+    ipynb_path = Path(__file__).parent.parent / "data" / "demo.ipynb"
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb_path.read_text(),
+        title="Demo",
+        uploader_username="testuser",
+    )
+    await page_service.add_page_to_store(page)
+
+    page_instance = PageInstanceModel(page=page, values={})
+
+    await page_service.update_nbhtml(
+        page_name=page.name,
+        parameter_values={},
+        noteburst_response=_successful_noteburst_response(
+            page_instance.render_ipynb()
+        ),
+    )
+
+    for display_settings in NbDisplaySettings.create_settings_matrix():
+        html_key = NbHtmlKey(
+            display_settings=display_settings,
+            page_instance_id=page_instance.id,
+        )
+        assert (
+            await page_service._html_store.get_instance(html_key) is not None
+        )
 
 
 @pytest.mark.asyncio
