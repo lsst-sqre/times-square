@@ -152,3 +152,51 @@ async def test_unevaluatable_schedule_warns_not_errors(
     assert len(warnings) == 1
     assert warnings[0]["page_name"] == "broken"
     assert "tzinfo" in warnings[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_warning_rearms_when_schedule_heals() -> None:
+    """A page that is fixed and then breaks again warns a second time."""
+    now = datetime.now(tz=UTC).replace(second=0, microsecond=0)
+    broken = _make_page("flaky", BROKEN_RRULESET)
+    healthy = _make_page(
+        "flaky", _rruleset_for_date(now + timedelta(minutes=5))
+    )
+
+    with capture_logs() as logs:
+        for pages in ([broken], [healthy], [broken]):
+            service = _make_service(pages)
+            await service.schedule_due_runs(check_window=CHECK_WINDOW)
+
+    assert _errors(logs) == []
+    warnings = _warnings(logs)
+    assert len(warnings) == 2
+    assert [warning["page_name"] for warning in warnings] == [
+        "flaky",
+        "flaky",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_warning_reason_names_the_exception_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The warning's reason includes the exception class, which is the only
+    diagnostic for failures whose message is uninformative on its own.
+    """
+
+    def _raise(self: RunSchedule, after: datetime | None) -> None:
+        raise KeyError("freq")
+
+    monkeypatch.setattr(RunSchedule, "next", _raise)
+
+    now = datetime.now(tz=UTC).replace(second=0, microsecond=0)
+    pages = [_make_page("broken", _rruleset_for_date(now))]
+    service = _make_service(pages)
+
+    with capture_logs() as logs:
+        await service.schedule_due_runs(check_window=CHECK_WINDOW)
+
+    warnings = _warnings(logs)
+    assert len(warnings) == 1
+    assert warnings[0]["reason"] == "KeyError: 'freq'"

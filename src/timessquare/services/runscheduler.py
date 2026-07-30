@@ -40,7 +40,9 @@ class RunSchedulerService:
 
     This state is shared by every service instance in the process so that the
     scheduler warns only once per page, rather than on every scheduling tick.
-    It is deliberately not persisted; resetting on restart is acceptable.
+    A page is dropped from this set once its schedule evaluates successfully
+    again, so a later breakage is warned about afresh. It is deliberately not
+    persisted; resetting on restart is acceptable.
     """
 
     def __init__(
@@ -147,10 +149,17 @@ class RunSchedulerService:
                     "Page has no run schedule, despite being expected to",
                     page_name=page.name,
                 )
-                return None
-            return schedule.next(after=now)
+                next_run = None
+            else:
+                next_run = schedule.next(after=now)
         except SCHEDULE_EVALUATION_ERRORS as e:
-            raise ScheduleEvaluationError(page.name, str(e)) from e
+            reason = f"{type(e).__name__}: {e}"
+            raise ScheduleEvaluationError(page.name, reason) from e
+        # The page's schedule is usable, so re-arm its warning: if the
+        # schedule breaks again later, that breakage is logged rather than
+        # silently deduplicated against the earlier one.
+        self._warned_schedule_pages.discard(page.name)
+        return next_run
 
     async def _schedule_due_for_page(
         self, *, page: PageModel, now: datetime, check_window: timedelta
