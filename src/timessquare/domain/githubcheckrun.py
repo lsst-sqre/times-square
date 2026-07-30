@@ -37,6 +37,7 @@ from .githubcheckout import (
     RepositoryTree,
 )
 from .page import PageExecutionInfo, PageModel
+from .schedule import RunSchedule
 
 TRANSIENT_CHECKOUT_ERROR_MESSAGE = (
     "Times Square could not read the repository's contents from GitHub "
@@ -44,6 +45,10 @@ TRANSIENT_CHECKOUT_ERROR_MESSAGE = (
 )
 """Actionable message shown when a repository checkout fails because of a
 transient GitHub error that outlasted the retry budget."""
+
+SCHEDULE_EVALUATION_ERROR_TITLE = "Unevaluatable schedule"
+"""Annotation title used when a sidecar's schedule validates against the
+schema but cannot be evaluated once serialized."""
 
 
 @dataclass(kw_only=True)
@@ -400,8 +405,9 @@ class GitHubConfigsCheck(GitHubCheck):
             )
         )
         sidecar_blob = GitHubBlobModel.model_validate(data)
+        sidecar: NotebookSidecarFile | None = None
         try:
-            NotebookSidecarFile.parse_yaml(sidecar_blob.decode())
+            sidecar = NotebookSidecarFile.parse_yaml(sidecar_blob.decode())
         except ValidationError as e:
             annotations = Annotation.from_validation_error(
                 path=notebook_ref.sidecar_path, error=e
@@ -412,7 +418,55 @@ class GitHubConfigsCheck(GitHubCheck):
                 path=notebook_ref.sidecar_path, error=e
             )
             self.annotations.extend(annotations)
+        if sidecar is not None:
+            self.validate_schedule(
+                sidecar=sidecar, path=notebook_ref.sidecar_path
+            )
         self.sidecar_files_checked.append(notebook_ref.sidecar_path)
+
+    def validate_schedule(
+        self, *, sidecar: NotebookSidecarFile, path: str
+    ) -> None:
+        """Validate a sidecar's run schedule by exercising it the way it will
+        be stored and evaluated, adding a failure annotation if it raises.
+
+        The sidecar schema validates individual rule fields, but a rule set
+        that satisfies the schema can still serialize to an rruleset that
+        dateutil refuses to build or evaluate. Catching that here keeps an
+        un-runnable schedule from being ingested.
+
+        Parameters
+        ----------
+        sidecar
+            The parsed sidecar file.
+        path
+            Repository path of the sidecar file, used as the annotation's
+            path.
+        """
+        run_schedule = sidecar.run_schedule
+        if run_schedule is None:
+            return
+
+        # Evaluate the schedule as if it were enabled: ``schedule_enabled`` is
+        # a runtime toggle, and RunSchedule.next short-circuits when it is
+        # off. A schedule that cannot be evaluated is a defect whether or not
+        # it is currently switched on.
+        probe = RunSchedule(run_schedule.schedule_json, enabled=True)
+        try:
+            probe.next(None)
+        except Exception as e:
+            self.annotations.append(
+                Annotation(
+                    path=path,
+                    start_line=1,
+                    message=(
+                        "Times Square could not compute the next run from "
+                        f"this schedule: {e}"
+                    ),
+                    title=SCHEDULE_EVALUATION_ERROR_TITLE,
+                    annotation_level=GitHubCheckRunAnnotationLevel.failure,
+                )
+            )
 
     @property
     def conclusion(self) -> GitHubCheckRunConclusion:
