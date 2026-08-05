@@ -76,6 +76,16 @@ class EventsPollResult:
     move and the stream keeps polling at its base interval.
     """
 
+    error_from_marker: bool
+    """Whether the payload's execution error came from the cached failure
+    marker rather than from live classification of a Noteburst job.
+
+    The marker fallback only fires once the job record a failure was classified
+    from has been deleted, so a marker-derived error restates a failure the
+    stream has already reported, with the execution's dates and status nulled
+    out.
+    """
+
 
 class PageService:
     """A service manager for parameterized notebook pages.
@@ -811,7 +821,8 @@ class PageService:
         -------
         EventsPollResult
             The payload describing the current state of the page instance,
-            along with whether a Noteburst job record backed it.
+            along with whether a Noteburst job record backed it and whether any
+            execution error came from the cached failure marker.
         """
         job = await self._job_store.get_instance(page_instance.id)
         noteburst_data: NoteburstJobResponseModel | None = None
@@ -844,12 +855,16 @@ class PageService:
                 execution_error=execution_error,
             ),
             job_exists=job is not None,
+            # The marker fallback in _resolve_events_execution_error only fires
+            # when no job record exists; live classification requires
+            # noteburst_data, which is only fetched when one does.
+            error_from_marker=job is None and execution_error is not None,
         )
 
     @staticmethod
     def _is_new_events_payload(
         *,
-        payload: HtmlEventsModel,
+        poll: EventsPollResult,
         last_payload: HtmlEventsModel | None,
     ) -> bool:
         """Determine whether an events payload is new relative to the last one
@@ -859,17 +874,20 @@ class PageService:
         an initial snapshot of the page instance's state. After that a payload
         is new when its serialization differs from the last one emitted.
 
-        A terminal execution failure is reported once. Once the failure is
-        emitted, the job record it came from is deleted, so the next poll
-        rebuilds the same failure from the cached marker with the execution's
-        dates and status nulled out. That is a strictly less informative
-        restatement of a state the client already has, so a payload repeating
-        the last emitted ``execution_error`` is not a new one.
+        The one exception is the restatement of a terminal execution failure by
+        the cached failure marker. Once a failure is emitted, the job record it
+        was classified from is deleted, so the next poll rebuilds the same
+        failure from the marker with the execution's dates and status nulled
+        out. That is a strictly less informative restatement of a state the
+        client already has, so a marker-derived payload repeating the last
+        emitted ``execution_error`` is not a new one. A failure classified from
+        a live job is never suppressed this way, so a re-execution that fails
+        identically is still reported, with the dates of the new execution.
 
         Parameters
         ----------
-        payload
-            The payload built from the page instance's current state.
+        poll
+            The result of the poll that built the payload.
         last_payload
             The last payload emitted on this stream, or `None` if the stream
             has not emitted anything yet.
@@ -879,10 +897,11 @@ class PageService:
         bool
             `True` if the payload should be emitted.
         """
+        payload = poll.payload
         if last_payload is None:
             return True
         if (
-            payload.execution_error is not None
+            poll.error_from_marker
             and payload.execution_error == last_payload.execution_error
         ):
             return False
@@ -999,7 +1018,7 @@ class PageService:
                         html_base_url=html_base_url,
                     )
                     is_new = self._is_new_events_payload(
-                        payload=poll.payload, last_payload=last_payload
+                        poll=poll, last_payload=last_payload
                     )
                     if is_new:
                         self._logger.debug(

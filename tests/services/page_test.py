@@ -118,17 +118,27 @@ def _in_progress_job() -> Response:
     )
 
 
-def _failed_job() -> Response:
+def _failed_job(
+    *,
+    enqueue_time: str = "2022-03-15T04:12:00Z",
+    start_time: str = "2022-03-15T04:13:00Z",
+    finish_time: str = "2022-03-15T04:13:10Z",
+) -> Response:
+    """Build a job-status response for a job that failed with a timeout.
+
+    The execution's timestamps are overridable so that a test can simulate a
+    re-execution that fails the same way at a later time.
+    """
     return Response(
         200,
         json={
             "job_id": "xyz",
             "kernel_name": "",
-            "enqueue_time": "2022-03-15T04:12:00Z",
+            "enqueue_time": enqueue_time,
             "status": "complete",
             "self_url": JOB_URL,
-            "start_time": "2022-03-15T04:13:00Z",
-            "finish_time": "2022-03-15T04:13:10Z",
+            "start_time": start_time,
+            "finish_time": finish_time,
             "success": False,
             "ipynb": None,
             "timeout": 30.0,
@@ -976,6 +986,80 @@ async def test_events_terminal_failure_emits_once_and_stays_open(
         rerun = await _await_watched_event(watcher)
         assert rerun["execution_status"] == "queued"
         assert rerun["execution_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_events_reexecution_failing_identically_is_reported(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """A re-execution that fails with the same error within a single poll gap
+    is reported, even though the stream never observes the intervening queued
+    state: only the cached failure marker's restatement of an already-reported
+    failure is suppressed.
+    """
+    page = await _create_demo_page(page_service)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+
+    async with _events_stream(
+        page_service, name=page.name, query_params={"A": 2}
+    ) as stream:
+        await _next_event(stream)
+
+        # The first execution fails terminally, which is reported once.
+        job_route.mock(return_value=_failed_job())
+        failed = await _next_event(stream)
+        assert failed["execution_error"]["code"] == "timeout"
+        assert failed["date_started"] is not None
+
+        # The marker restatement of that failure is not re-emitted.
+        watcher = _watch_for_event(stream)
+        await _assert_quiet(watcher)
+
+        # A re-execution is queued and fails identically before the next poll,
+        # so that poll goes straight from a live job record to the same
+        # failure classified afresh. Mock the new outcome before storing the
+        # job record so that no poll can see the record alongside the old one.
+        job_route.mock(
+            return_value=_failed_job(
+                enqueue_time="2022-03-15T05:12:00Z",
+                start_time="2022-03-15T05:13:00Z",
+                finish_time="2022-03-15T05:13:20Z",
+            )
+        )
+        await page_service._job_store.store_job(
+            job=NoteburstJobModel(
+                date_submitted=datetime.now(tz=UTC),
+                job_url=AnyHttpUrl(JOB_URL),
+            ),
+            page_id=page_instance.id,
+        )
+
+        # The identical failure of the new execution is reported, with the new
+        # execution's dates rather than the marker's nulls.
+        refailed = await _await_watched_event(watcher)
+        assert refailed["execution_error"] == failed["execution_error"]
+        assert refailed["execution_status"] == "complete"
+        assert refailed["date_started"] is not None
+        assert refailed["date_started"] != failed["date_started"]
+        assert refailed["date_finished"] is not None
+        assert refailed["execution_duration"] == 20.0
+
+        # The new failure is itself reported only once.
+        watcher = _watch_for_event(stream)
+        await _assert_quiet(watcher)
+        await _cancel_watcher(watcher)
+        assert (
+            await page_service._job_store.get_instance(page_instance.id)
+            is None
+        )
 
 
 @pytest.mark.asyncio
