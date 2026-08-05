@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -13,6 +15,7 @@ import pytest_asyncio
 import respx
 import structlog
 from httpx import Response
+from pydantic import AnyHttpUrl
 from safir.database import (
     create_database_engine,
     initialize_database,
@@ -31,7 +34,7 @@ from timessquare.domain.page import PageInstanceModel, PageModel
 from timessquare.domain.ssemodels import HtmlEventsModel
 from timessquare.factory import ProcessContext, WorkerFactory
 from timessquare.services.page import PageService
-from timessquare.storage.noteburst import NoteburstJobStatus
+from timessquare.storage.noteburst import NoteburstJobModel, NoteburstJobStatus
 
 JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
 HTML_BASE_URL = "https://example.com/times-square/api/v1/pages/demo/html"
@@ -88,6 +91,21 @@ def _queued_job() -> Response:
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "queued",
             "self_url": JOB_URL,
+        },
+    )
+
+
+def _in_progress_job() -> Response:
+    """Build a job-status response for a job that is executing."""
+    return Response(
+        200,
+        json={
+            "job_id": "xyz",
+            "kernel_name": "",
+            "enqueue_time": "2022-03-15T04:12:00Z",
+            "status": "in_progress",
+            "self_url": JOB_URL,
+            "start_time": "2022-03-15T04:13:00Z",
         },
     )
 
@@ -288,6 +306,16 @@ async def test_live_job_takes_precedence_over_cached_failure(
     assert post_route.call_count == posts_after_rerun
 
 
+def _decode_sse(chunk: bytes) -> dict[str, Any]:
+    """Decode the JSON payload carried by one encoded SSE event."""
+    data_line = next(
+        line
+        for line in chunk.decode().splitlines()
+        if line.startswith("data:")
+    )
+    return json.loads(data_line[len("data:") :].strip())
+
+
 async def _first_event_payload(
     page_service: PageService,
     *,
@@ -309,12 +337,7 @@ async def _first_event_payload(
         first = await anext(iterator)
     finally:
         await iterator.aclose()
-    data_line = next(
-        line
-        for line in first.decode().splitlines()
-        if line.startswith("data:")
-    )
-    return json.loads(data_line[len("data:") :].strip())
+    return _decode_sse(first)
 
 
 @pytest.mark.asyncio
@@ -666,3 +689,214 @@ async def test_build_events_payload_terminal_failure(
         )
         is not None
     )
+
+
+QUIET_WINDOW = 0.2
+"""Seconds to watch a subscribed stream for an event that must not arrive."""
+
+EVENT_TIMEOUT = 5.0
+"""Seconds to wait for an event that must arrive."""
+
+
+@pytest.fixture
+def fast_events_poll(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shrink the events stream's poll interval so that a quiet window of a
+    fraction of a second still covers many polls.
+    """
+    monkeypatch.setattr("timessquare.services.page.EVENTS_POLL_INTERVAL", 0.01)
+
+
+@asynccontextmanager
+async def _events_stream(
+    page_service: PageService,
+    *,
+    name: str,
+    query_params: dict[str, Any],
+) -> AsyncIterator[AsyncGenerator[bytes]]:
+    """Subscribe to a page's SSE events stream for the duration of the
+    context, closing the stream on exit.
+    """
+    iterator = cast(
+        "AsyncGenerator[bytes]",
+        await page_service.get_html_events_iter(
+            name=name,
+            query_params=query_params,
+            html_base_url=HTML_BASE_URL,
+        ),
+    )
+    try:
+        yield iterator
+    finally:
+        await iterator.aclose()
+
+
+async def _next_event(iterator: AsyncGenerator[bytes]) -> dict[str, Any]:
+    """Wait for the stream's next event and return its decoded payload."""
+    chunk = await asyncio.wait_for(anext(iterator), EVENT_TIMEOUT)
+    return _decode_sse(chunk)
+
+
+def _watch_for_event(iterator: AsyncGenerator[bytes]) -> asyncio.Task[bytes]:
+    """Start waiting for the stream's next event without blocking, letting the
+    stream keep polling in the background.
+    """
+    return asyncio.create_task(anext(iterator))
+
+
+async def _assert_quiet(watcher: asyncio.Task[bytes]) -> None:
+    """Assert that no event arrives on a watched stream while the page
+    instance's state is unchanged.
+    """
+    await asyncio.sleep(QUIET_WINDOW)
+    assert not watcher.done()
+
+
+async def _await_watched_event(watcher: asyncio.Task[bytes]) -> dict[str, Any]:
+    """Wait for a watched stream's pending event and return its payload."""
+    return _decode_sse(await asyncio.wait_for(watcher, EVENT_TIMEOUT))
+
+
+async def _cancel_watcher(watcher: asyncio.Task[bytes]) -> None:
+    """Stop watching a stream for an event that never arrived."""
+    watcher.cancel()
+    with suppress(asyncio.CancelledError):
+        await watcher
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("fast_events_poll")
+async def test_events_initial_snapshot_then_silence(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """Subscribing to a page with no job in flight and no cached HTML yields
+    exactly one initial all-null event, and nothing further while the page
+    instance's state is unchanged.
+    """
+    page = await _create_demo_page(page_service)
+
+    async with _events_stream(
+        page_service, name=page.name, query_params={"A": 2}
+    ) as stream:
+        payload = await _next_event(stream)
+        assert payload["execution_status"] is None
+        assert payload["date_submitted"] is None
+        assert payload["date_started"] is None
+        assert payload["date_finished"] is None
+        assert payload["execution_duration"] is None
+        assert payload["html_hash"] is None
+        assert payload["execution_error"] is None
+        assert payload["html_url"] == HTML_BASE_URL
+
+        watcher = _watch_for_event(stream)
+        await _assert_quiet(watcher)
+        await _cancel_watcher(watcher)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("fast_events_poll")
+async def test_events_emits_once_per_state_change(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """Each execution state transition produces exactly one event, while the
+    identical polls between transitions produce none.
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = await _create_demo_page(page_service)
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+
+    async with _events_stream(
+        page_service, name=page.name, query_params={"A": 2}
+    ) as stream:
+        queued = await _next_event(stream)
+        assert queued["execution_status"] == "queued"
+
+        # The stream keeps polling the unchanged job without emitting.
+        watcher = _watch_for_event(stream)
+        polls_before = job_route.call_count
+        await _assert_quiet(watcher)
+        assert job_route.call_count > polls_before
+
+        # The transition to in_progress produces the pending event.
+        job_route.mock(return_value=_in_progress_job())
+        in_progress = await _await_watched_event(watcher)
+        assert in_progress["execution_status"] == "in_progress"
+        assert in_progress["date_started"] is not None
+        assert in_progress["date_finished"] is None
+
+        # ...and so does the transition to complete.
+        job_route.mock(return_value=_successful_job(ipynb))
+        complete = await _next_event(stream)
+        assert complete["execution_status"] == "complete"
+        assert complete["date_finished"] is not None
+        assert complete["execution_duration"] == 10.0
+        assert complete["execution_error"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("fast_events_poll")
+async def test_events_terminal_failure_emits_once_and_stays_open(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """A terminal execution failure produces exactly one event carrying
+    execution_error, with the same cleanup as the interactive path, and the
+    stream stays open so a later re-execution is observed without the client
+    resubscribing.
+    """
+    page = await _create_demo_page(page_service)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+
+    async with _events_stream(
+        page_service, name=page.name, query_params={"A": 2}
+    ) as stream:
+        queued = await _next_event(stream)
+        assert queued["execution_error"] is None
+
+        # Noteburst reports a terminal failure.
+        job_route.mock(return_value=_failed_job())
+        failed = await _next_event(stream)
+        assert failed["execution_error"] is not None
+        assert failed["execution_error"]["code"] == "timeout"
+
+        # Same cleanup as the interactive path.
+        assert (
+            await page_service._job_store.get_instance(page_instance.id)
+            is None
+        )
+        assert (
+            await page_service._execution_failure_store.get_instance(
+                page_instance.id
+            )
+            is not None
+        )
+
+        # The terminal failure is reported once, not on every later poll.
+        watcher = _watch_for_event(stream)
+        await _assert_quiet(watcher)
+
+        # The stream is still open, so a re-execution is reported on it.
+        job_route.mock(return_value=_queued_job())
+        await page_service._job_store.store_job(
+            job=NoteburstJobModel(
+                date_submitted=datetime.now(tz=UTC),
+                job_url=AnyHttpUrl(JOB_URL),
+            ),
+            page_id=page_instance.id,
+        )
+        rerun = await _await_watched_event(watcher)
+        assert rerun["execution_status"] == "queued"
+        assert rerun["execution_error"] is None

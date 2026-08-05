@@ -468,7 +468,24 @@ async def get_page_html_events(
     page: Annotated[str, page_path_parameter],
     context: Annotated[RequestContext, Depends(context_dependency)],
 ) -> EventSourceResponse:
-    """Subscribe to an event stream for a page's execution and rendering."""
+    """Subscribe to an event stream for a page's execution and rendering.
+
+    The stream sends one event as soon as it is opened, reporting the current
+    execution and rendering state of the page instance. That initial event is
+    sent even when nothing has happened yet, in which case every execution
+    field is null.
+
+    After the initial event, an event is sent only when that state changes.
+    Unchanged state is never restated, so a client that is up to date receives
+    no data until the execution or rendering state moves; a gap between events
+    means "nothing has changed", not a stalled stream. The connection is kept
+    alive by the SSE comment pings (`: ping`) sent every 15 seconds.
+
+    A terminal execution failure is reported once, in an event carrying
+    `execution_error`. The server never closes the stream: it stays open after
+    a terminal failure, so a later re-execution of the page instance is
+    reported on the same stream without resubscribing.
+    """
     context.logger.debug("Subscribing to page events")
     page_service = context.factory.create_page_service()
     html_base_url = context.request.url_for("get_page_html", page=page)

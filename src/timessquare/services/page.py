@@ -44,6 +44,11 @@ from ..storage.noteburst import (
 from ..storage.noteburstjobstore import NoteburstJobStore
 from ..storage.page import PageStore
 
+EVENTS_POLL_INTERVAL = 1.0
+"""Seconds between polls of a page instance's execution and rendering state
+by the HTML events stream (`PageService.get_html_events_iter`).
+"""
+
 
 class PageService:
     """A service manager for parameterized notebook pages.
@@ -810,6 +815,48 @@ class PageService:
             execution_error=execution_error,
         )
 
+    @staticmethod
+    def _is_new_events_payload(
+        *,
+        payload: HtmlEventsModel,
+        last_payload: HtmlEventsModel | None,
+    ) -> bool:
+        """Determine whether an events payload is new relative to the last one
+        emitted on the stream, and therefore worth sending.
+
+        The first payload of a stream is always new, so every subscriber gets
+        an initial snapshot of the page instance's state. After that a payload
+        is new when its serialization differs from the last one emitted.
+
+        A terminal execution failure is reported once. Once the failure is
+        emitted, the job record it came from is deleted, so the next poll
+        rebuilds the same failure from the cached marker with the execution's
+        dates and status nulled out. That is a strictly less informative
+        restatement of a state the client already has, so a payload repeating
+        the last emitted ``execution_error`` is not a new one.
+
+        Parameters
+        ----------
+        payload
+            The payload built from the page instance's current state.
+        last_payload
+            The last payload emitted on this stream, or `None` if the stream
+            has not emitted anything yet.
+
+        Returns
+        -------
+        bool
+            `True` if the payload should be emitted.
+        """
+        if last_payload is None:
+            return True
+        if (
+            payload.execution_error is not None
+            and payload.execution_error == last_payload.execution_error
+        ):
+            return False
+        return payload.model_dump_json() != last_payload.model_dump_json()
+
     async def get_html_events_iter(
         self,
         name: str,
@@ -818,6 +865,16 @@ class PageService:
     ) -> AsyncIterator[bytes]:
         """Get an iterator providing an event stream for the HTML rendering
         for a page instance.
+
+        The stream emits one initial event as soon as the client subscribes,
+        reporting whatever the current state is — including the all-null state
+        of a page instance with no execution in flight and no cached HTML.
+        After that it polls the page instance's state and emits an event only
+        when the payload has changed, so a client that is up to date receives
+        nothing until the state moves. The stream is never closed by the
+        server: after a terminal execution failure it stays open and reports a
+        later re-execution without the client resubscribing. Keep-alive is
+        left to the SSE transport's comment pings.
         """
         page = await self.get_page(name)
         page_instance = PageInstanceModel(page=page, values=dict(query_params))
@@ -829,6 +886,7 @@ class PageService:
         )
 
         async def iterator() -> AsyncIterator[bytes]:
+            last_payload: HtmlEventsModel | None = None
             try:
                 while True:
                     payload = await self._build_events_payload(
@@ -837,12 +895,16 @@ class PageService:
                         query_params=query_params,
                         html_base_url=html_base_url,
                     )
-                    self._logger.debug(
-                        "Built payload in events loop", payload=payload
-                    )
-                    yield payload.to_sse().encode()
+                    if self._is_new_events_payload(
+                        payload=payload, last_payload=last_payload
+                    ):
+                        self._logger.debug(
+                            "Emitting payload in events loop", payload=payload
+                        )
+                        last_payload = payload
+                        yield payload.to_sse().encode()
 
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(EVENTS_POLL_INTERVAL)
             except asyncio.CancelledError:
                 self._logger.debug("HTML events disconnected from client")
                 # cleanup as necessary
