@@ -766,7 +766,30 @@ MAX_IDLE_POLLS = 20
 
 Doubling from `BACKOFF_BASE_INTERVAL` exhausts the window in about nine polls,
 whereas a stream pinned to the base interval would poll
-``QUIET_WINDOW / BACKOFF_BASE_INTERVAL`` (200) times.
+``QUIET_WINDOW / BACKOFF_BASE_INTERVAL`` (200) times at most. Real polls are
+slower than that theoretical maximum, which only makes a stream's poll count
+smaller, so this upper bound holds however loaded the runner is.
+"""
+
+MAX_BACKED_OFF_POLLS = 2
+"""Most polls a stream whose interval stayed at `BACKOFF_MAX_INTERVAL` can make
+in a quiet window.
+
+`BACKOFF_MAX_INTERVAL` is `QUIET_WINDOW`, so such a stream polls once per
+window at most, plus one more if a poll lands on the window's edge.
+"""
+
+MIN_RESET_POLLS = 5
+"""Fewest polls a stream that returned to `BACKOFF_BASE_INTERVAL` must make in
+a quiet window for the reset to be proven.
+
+The bound only has to separate a reset stream from one still polling at
+`BACKOFF_MAX_INTERVAL`, which manages `MAX_BACKED_OFF_POLLS` polls at most, so
+it is deliberately far below the ``QUIET_WINDOW / BACKOFF_BASE_INTERVAL`` (200)
+polls the base interval allows in theory. It leaves each poll
+``QUIET_WINDOW / MIN_RESET_POLLS`` (40 ms) for its Redis round trips — orders
+of magnitude more than they take — so a loaded runner does not turn the
+assertion into a flake.
 """
 
 
@@ -1142,15 +1165,17 @@ async def test_events_backoff_resets_when_a_job_appears(
         assert queued["execution_status"] == "queued"
 
         # ...and while that job is in flight the stream polls at the base
-        # interval again.
+        # interval again, many times over in a window that a stream still
+        # backed off to `BACKOFF_MAX_INTERVAL` would barely poll in at all.
         watcher = _watch_for_event(stream)
         polls.clear()
         await asyncio.sleep(QUIET_WINDOW)
         in_flight_polls = len(polls)
+        assert not watcher.done()
         await _cancel_watcher(watcher)
 
     assert idle_polls <= MAX_IDLE_POLLS
-    assert in_flight_polls > 2 * MAX_IDLE_POLLS
+    assert in_flight_polls >= MIN_RESET_POLLS
 
 
 @pytest.mark.asyncio
