@@ -26,11 +26,15 @@ from timessquare.domain.executionoutcome import (
     NotebookExecutionErrorCode,
     NotebookExecutionFailure,
 )
+from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
 from timessquare.domain.page import PageInstanceModel, PageModel
+from timessquare.domain.ssemodels import HtmlEventsModel
 from timessquare.factory import ProcessContext, WorkerFactory
 from timessquare.services.page import PageService
+from timessquare.storage.noteburst import NoteburstJobStatus
 
 JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
+HTML_BASE_URL = "https://example.com/times-square/api/v1/pages/demo/html"
 
 
 @pytest_asyncio.fixture
@@ -68,6 +72,20 @@ def _queued_post() -> Response:
             "job_id": "xyz",
             "kernel_name": "",
             "enqueue_time": datetime.now(tz=UTC).isoformat(),
+            "status": "queued",
+            "self_url": JOB_URL,
+        },
+    )
+
+
+def _queued_job() -> Response:
+    """Build a job-status response for a job that is still queued."""
+    return Response(
+        200,
+        json={
+            "job_id": "xyz",
+            "kernel_name": "",
+            "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "queued",
             "self_url": JOB_URL,
         },
@@ -284,9 +302,7 @@ async def _first_event_payload(
         await page_service.get_html_events_iter(
             name=name,
             query_params=query_params,
-            html_base_url=(
-                "https://example.com/times-square/api/v1/pages/demo/html"
-            ),
+            html_base_url=HTML_BASE_URL,
         ),
     )
     try:
@@ -493,5 +509,160 @@ async def test_events_live_job_takes_precedence_over_cached_failure(
     # The in-flight job record is untouched.
     assert (
         await page_service._job_store.get_instance(page_instance.id)
+        is not None
+    )
+
+
+async def _create_demo_page(page_service: PageService) -> PageModel:
+    """Add the demo notebook to the page store and return its page model."""
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = PageModel.create_from_api_upload(
+        ipynb=ipynb, title="Demo", uploader_username="testuser"
+    )
+    await page_service.add_page_to_store(page)
+    return page
+
+
+async def _build_payload(
+    page_service: PageService,
+    *,
+    page: PageModel,
+    query_params: dict[str, Any],
+) -> HtmlEventsModel:
+    """Build one events payload directly through the service helper."""
+    page_instance = PageInstanceModel(page=page, values=dict(query_params))
+    html_key = NbHtmlKey(
+        display_settings=NbDisplaySettings.from_url_params(query_params),
+        page_instance_id=page_instance.id,
+    )
+    return await page_service._build_events_payload(
+        page_instance=page_instance,
+        html_key=html_key,
+        query_params=query_params,
+        html_base_url=HTML_BASE_URL,
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_events_payload_no_state(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """With no job in flight and no cached HTML, the payload reports an
+    all-null state and the bare HTML URL.
+    """
+    page = await _create_demo_page(page_service)
+
+    payload = await _build_payload(
+        page_service, page=page, query_params={"A": 2}
+    )
+
+    assert payload.execution_status is None
+    assert payload.date_submitted is None
+    assert payload.date_started is None
+    assert payload.date_finished is None
+    assert payload.execution_duration is None
+    assert payload.html_hash is None
+    assert payload.execution_error is None
+    assert str(payload.html_url) == HTML_BASE_URL
+
+
+@pytest.mark.asyncio
+async def test_build_events_payload_in_flight_job(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """With a Noteburst job in flight, the payload reports the job's status
+    and submission time and no HTML.
+    """
+    page = await _create_demo_page(page_service)
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_queued_job())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+
+    payload = await _build_payload(
+        page_service, page=page, query_params={"A": 2}
+    )
+
+    assert payload.execution_status == NoteburstJobStatus.queued
+    assert payload.date_submitted is not None
+    assert payload.date_finished is None
+    assert payload.execution_duration is None
+    assert payload.html_hash is None
+    assert payload.execution_error is None
+
+
+@pytest.mark.asyncio
+async def test_build_events_payload_cached_html(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """With HTML cached for the page instance, the payload reports a complete
+    execution and the HTML's hash and URL.
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = await _create_demo_page(page_service)
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_successful_job(ipynb))
+    status = await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    assert status.available is True
+
+    payload = await _build_payload(
+        page_service, page=page, query_params={"A": 2}
+    )
+
+    assert payload.execution_status == NoteburstJobStatus.complete
+    assert payload.date_started is not None
+    assert payload.date_finished is not None
+    assert payload.execution_duration is not None
+    assert payload.execution_duration.total_seconds() == 10.0
+    assert payload.html_hash is not None
+    assert str(payload.html_url).startswith(HTML_BASE_URL)
+    assert "ts_hide_code" in str(payload.html_url)
+    assert payload.execution_error is None
+
+
+@pytest.mark.asyncio
+async def test_build_events_payload_terminal_failure(
+    page_service: PageService, respx_mock: respx.Router
+) -> None:
+    """When Noteburst reports a terminal failure, the payload carries the
+    execution error and the stale job record is cleaned up.
+    """
+    page = await _create_demo_page(page_service)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    await page_service.get_html_and_status(
+        name=page.name, query_params={"A": 2}
+    )
+    respx_mock.get(JOB_URL).mock(return_value=_failed_job())
+
+    payload = await _build_payload(
+        page_service, page=page, query_params={"A": 2}
+    )
+
+    assert payload.execution_error is not None
+    assert payload.execution_error.code == "timeout"
+    assert payload.html_hash is None
+    assert await page_service._job_store.get_instance(page_instance.id) is None
+    assert (
+        await page_service._execution_failure_store.get_instance(
+            page_instance.id
+        )
         is not None
     )

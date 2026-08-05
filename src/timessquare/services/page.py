@@ -745,6 +745,71 @@ class PageService:
             )
         return execution_error
 
+    async def _build_events_payload(
+        self,
+        *,
+        page_instance: PageInstanceModel,
+        html_key: NbHtmlKey,
+        query_params: Mapping[str, Any],
+        html_base_url: str,
+    ) -> HtmlEventsModel:
+        """Build one SSE events payload from the current execution and
+        rendering state of a page instance.
+
+        Gathers the state the events stream reports: the Noteburst job record
+        for the page instance (and, if one exists, its current state from
+        Noteburst), the cached HTML for the requested display settings, and any
+        terminal execution failure resolved by
+        `_resolve_events_execution_error`.
+
+        Parameters
+        ----------
+        page_instance
+            The page instance the events stream is reporting on.
+        html_key
+            The cache key for the HTML rendering, which combines the page
+            instance with the requested display settings.
+        query_params
+            The query parameters of the events request, used to build the HTML
+            URL when no HTML is cached yet.
+        html_base_url
+            The base URL of the page instance's HTML endpoint.
+
+        Returns
+        -------
+        HtmlEventsModel
+            The payload describing the current state of the page instance.
+        """
+        job = await self._job_store.get_instance(page_instance.id)
+        noteburst_data: NoteburstJobResponseModel | None = None
+        if job:
+            self._logger.debug(
+                "Got job in events loop", job_url=str(job.job_url)
+            )
+            noteburst_response = await self.noteburst_api.get_job(
+                str(job.job_url)
+            )
+            if noteburst_response.data:
+                noteburst_data = noteburst_response.data
+
+        nbhtml = await self._html_store.get_instance(html_key)
+
+        execution_error = await self._resolve_events_execution_error(
+            page_instance=page_instance,
+            job=job,
+            noteburst_data=noteburst_data,
+            nbhtml=nbhtml,
+        )
+
+        return HtmlEventsModel.create(
+            page_instance=page_instance,
+            noteburst_job=noteburst_data,
+            nbhtml=nbhtml,
+            request_query_params=query_params,
+            html_base_url=html_base_url,
+            execution_error=execution_error,
+        )
+
     async def get_html_events_iter(
         self,
         name: str,
@@ -766,38 +831,11 @@ class PageService:
         async def iterator() -> AsyncIterator[bytes]:
             try:
                 while True:
-                    job = await self._job_store.get_instance(page_instance.id)
-                    noteburst_data: NoteburstJobResponseModel | None = None
-                    # model for html status
-                    if job:
-                        self._logger.debug(
-                            "Got job in events loop", job_url=str(job.job_url)
-                        )
-                        noteburst_url = str(job.job_url)
-                        noteburst_response = await self.noteburst_api.get_job(
-                            noteburst_url
-                        )
-                        if noteburst_response.data:
-                            noteburst_data = noteburst_response.data
-
-                    nbhtml = await self._html_store.get_instance(html_key)
-
-                    execution_error = (
-                        await self._resolve_events_execution_error(
-                            page_instance=page_instance,
-                            job=job,
-                            noteburst_data=noteburst_data,
-                            nbhtml=nbhtml,
-                        )
-                    )
-
-                    payload = HtmlEventsModel.create(
+                    payload = await self._build_events_payload(
                         page_instance=page_instance,
-                        noteburst_job=noteburst_data,
-                        nbhtml=nbhtml,
-                        request_query_params=query_params,
+                        html_key=html_key,
+                        query_params=query_params,
                         html_base_url=html_base_url,
-                        execution_error=execution_error,
                     )
                     self._logger.debug(
                         "Built payload in events loop", payload=payload
