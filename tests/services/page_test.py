@@ -889,6 +889,7 @@ async def test_events_emits_once_per_state_change(
     """
     ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
     page = await _create_demo_page(page_service)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
 
     respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
         return_value=_queued_post()
@@ -917,13 +918,20 @@ async def test_events_emits_once_per_state_change(
         assert in_progress["date_started"] is not None
         assert in_progress["date_finished"] is None
 
-        # ...and so does the transition to complete.
+        # ...and so does the transition to complete, which the stream itself
+        # finishes by rendering the HTML and clearing the job record.
         job_route.mock(return_value=_successful_job(ipynb))
         complete = await _next_event(stream)
         assert complete["execution_status"] == "complete"
         assert complete["date_finished"] is not None
         assert complete["execution_duration"] == 10.0
         assert complete["execution_error"] is None
+        assert complete["html_hash"] is not None
+        assert complete["html_url"].startswith(HTML_BASE_URL)
+        assert (
+            await page_service._job_store.get_instance(page_instance.id)
+            is None
+        )
 
 
 @pytest.mark.asyncio
@@ -1143,3 +1151,79 @@ async def test_events_backoff_resets_when_a_job_appears(
 
     assert idle_polls <= MAX_IDLE_POLLS
     assert in_flight_polls > 2 * MAX_IDLE_POLLS
+
+
+@pytest.mark.asyncio
+async def test_events_successful_completion_renders_html_and_backs_off(
+    page_service: PageService,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stream that observes a successful completion renders and caches the
+    HTML itself, so the subscriber gets the html_hash without any client
+    requesting the HTML endpoint, and the settled stream then backs off.
+    """
+    ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
+    page = await _create_demo_page(page_service)
+    query_params: dict[str, Any] = {"A": 2}
+    page_instance = PageInstanceModel(page=page, values=query_params)
+    html_key = NbHtmlKey(
+        display_settings=NbDisplaySettings.from_url_params(query_params),
+        page_instance_id=page_instance.id,
+    )
+
+    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
+        return_value=_queued_post()
+    )
+    job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
+    await page_service.get_html_and_status(
+        name=page.name, query_params=query_params
+    )
+
+    async with _events_stream(
+        page_service,
+        name=page.name,
+        query_params=query_params,
+        base_interval=BACKOFF_BASE_INTERVAL,
+        max_interval=BACKOFF_MAX_INTERVAL,
+    ) as stream:
+        queued = await _next_event(stream)
+        assert queued["execution_status"] == "queued"
+        assert queued["html_hash"] is None
+
+        # The execution completes successfully while only the stream is
+        # watching, and the stream reports the rendered HTML.
+        job_route.mock(return_value=_successful_job(ipynb))
+        complete = await _next_event(stream)
+        assert complete["execution_status"] == "complete"
+        assert complete["execution_error"] is None
+        assert complete["html_hash"] is not None
+        assert complete["html_url"].startswith(HTML_BASE_URL)
+
+        # The stream finished the job the way the interactive path does.
+        assert (
+            await page_service._job_store.get_instance(page_instance.id)
+            is None
+        )
+        assert (
+            await page_service._html_store.get_instance(html_key) is not None
+        )
+
+        # With the job record cleared, the next poll re-derives the execution's
+        # dates from the cached HTML, which settles the payload. This is the
+        # same follow-up event a completion observed through the interactive
+        # path produces.
+        settled = await _next_event(stream)
+        assert settled["execution_status"] == "complete"
+        assert settled["html_hash"] == complete["html_hash"]
+
+        # With the page instance settled, the stream goes quiet and backs off.
+        watcher = _watch_for_event(stream)
+        polls = _count_polls(page_service, monkeypatch)
+        await asyncio.sleep(QUIET_WINDOW)
+        idle_polls = len(polls)
+        assert not watcher.done()
+        await _cancel_watcher(watcher)
+
+    assert idle_polls > 0
+    assert idle_polls <= MAX_IDLE_POLLS

@@ -481,6 +481,11 @@ async def get_page_html_events(
     means "nothing has changed", not a stalled stream. The connection is kept
     alive by the SSE comment pings (`: ping`) sent every 15 seconds.
 
+    When an execution completes successfully, the stream renders and caches the
+    page instance's HTML itself, then reports it in an event carrying
+    `html_hash` and `html_url`. A subscriber therefore learns that the HTML is
+    ready without any client requesting the HTML endpoint.
+
     A terminal execution failure is reported once, in an event carrying
     `execution_error`. The server never closes the stream: it stays open after
     a terminal failure, so a later re-execution of the page instance is

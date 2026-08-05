@@ -804,6 +804,14 @@ class PageService:
         terminal execution failure resolved by
         `_resolve_events_execution_error`.
 
+        A poll that observes a successfully completed execution with no HTML
+        cached yet finishes that execution itself: it renders and caches the
+        display-settings matrix and deletes the job record, exactly as the
+        interactive HTML endpoint does. The payload it returns therefore
+        reports the freshly rendered HTML, so a subscriber learns the
+        ``html_hash`` and ``html_url`` of a completed execution without any
+        client requesting the HTML endpoint.
+
         Parameters
         ----------
         page_instance
@@ -844,6 +852,28 @@ class PageService:
             noteburst_data=noteburst_data,
             nbhtml=nbhtml,
         )
+
+        if (
+            nbhtml is None
+            and execution_error is None
+            and noteburst_data is not None
+            and noteburst_data.status == NoteburstJobStatus.complete
+        ):
+            # The completed job is renderable: _resolve_events_execution_error
+            # already classified it and found neither a failure nor a contract
+            # violation. Finish the execution the way the interactive path
+            # does, rendering and caching the whole display-settings matrix and
+            # deleting the job record, so that a page instance whose only
+            # observer is this stream still gets its HTML. Racing the
+            # interactive path here is benign; the render tolerates a job
+            # record that has already been deleted.
+            html_renders = (
+                await self.render_nbhtml_matrix_from_noteburst_response(
+                    page_instance=page_instance,
+                    noteburst_response=noteburst_data,
+                )
+            )
+            nbhtml = html_renders[html_key.display_settings]
 
         return EventsPollResult(
             payload=HtmlEventsModel.create(
@@ -967,6 +997,12 @@ class PageService:
         server: after a terminal execution failure it stays open and reports a
         later re-execution without the client resubscribing. Keep-alive is
         left to the SSE transport's comment pings.
+
+        The stream also completes the executions it observes. When a poll finds
+        a successfully completed Noteburst job whose HTML has not been rendered
+        yet, it renders and caches that HTML and clears the job record, so the
+        subscriber gets an event carrying the ``html_hash`` and ``html_url``
+        without any client requesting the HTML endpoint.
 
         Polling adapts to the page instance. While an execution is in flight,
         or the state just changed, the stream polls at ``base_poll_interval``.
