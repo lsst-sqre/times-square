@@ -30,10 +30,18 @@ from timessquare.domain.executionoutcome import (
     NotebookExecutionFailure,
 )
 from timessquare.domain.nbhtml import NbDisplaySettings, NbHtmlKey
-from timessquare.domain.page import PageInstanceModel, PageModel
+from timessquare.domain.page import (
+    PageInstanceIdProtocol,
+    PageInstanceModel,
+    PageModel,
+)
 from timessquare.domain.ssemodels import HtmlEventsModel
 from timessquare.factory import ProcessContext, WorkerFactory
-from timessquare.services.page import PageService
+from timessquare.services.page import (
+    EVENTS_POLL_BASE_INTERVAL,
+    EVENTS_POLL_MAX_INTERVAL,
+    PageService,
+)
 from timessquare.storage.noteburst import NoteburstJobModel, NoteburstJobStatus
 
 JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
@@ -558,12 +566,13 @@ async def _build_payload(
         display_settings=NbDisplaySettings.from_url_params(query_params),
         page_instance_id=page_instance.id,
     )
-    return await page_service._build_events_payload(
+    poll = await page_service._build_events_payload(
         page_instance=page_instance,
         html_key=html_key,
         query_params=query_params,
         html_base_url=HTML_BASE_URL,
     )
+    return poll.payload
 
 
 @pytest.mark.asyncio
@@ -691,6 +700,39 @@ async def test_build_events_payload_terminal_failure(
     )
 
 
+def test_events_poll_interval_backs_off_when_idle() -> None:
+    """While a subscribed stream is idle, the poll interval doubles after each
+    poll, starting at the base interval and capped at the maximum interval.
+    """
+    intervals = [EVENTS_POLL_BASE_INTERVAL]
+    for _ in range(4):
+        intervals.append(
+            PageService._next_events_poll_interval(
+                interval=intervals[-1],
+                is_idle=True,
+                base_interval=EVENTS_POLL_BASE_INTERVAL,
+                max_interval=EVENTS_POLL_MAX_INTERVAL,
+            )
+        )
+
+    assert intervals == [1.0, 2.0, 4.0, 8.0, 10.0]
+
+
+def test_events_poll_interval_resets_when_not_idle() -> None:
+    """A poll that is not idle — a job record exists, or the payload changed —
+    returns the interval to the base interval however far it had backed off.
+    """
+    assert (
+        PageService._next_events_poll_interval(
+            interval=EVENTS_POLL_MAX_INTERVAL,
+            is_idle=False,
+            base_interval=EVENTS_POLL_BASE_INTERVAL,
+            max_interval=EVENTS_POLL_MAX_INTERVAL,
+        )
+        == EVENTS_POLL_BASE_INTERVAL
+    )
+
+
 QUIET_WINDOW = 0.2
 """Seconds to watch a subscribed stream for an event that must not arrive."""
 
@@ -698,12 +740,24 @@ EVENT_TIMEOUT = 5.0
 """Seconds to wait for an event that must arrive."""
 
 
-@pytest.fixture
-def fast_events_poll(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Shrink the events stream's poll interval so that a quiet window of a
-    fraction of a second still covers many polls.
-    """
-    monkeypatch.setattr("timessquare.services.page.EVENTS_POLL_INTERVAL", 0.01)
+FAST_POLL_INTERVAL = 0.01
+"""Poll interval injected into streams whose behavior does not depend on the
+backoff, so that a quiet window of a fraction of a second covers many polls.
+"""
+
+BACKOFF_BASE_INTERVAL = 0.001
+"""Base poll interval injected into streams that exercise the backoff."""
+
+BACKOFF_MAX_INTERVAL = QUIET_WINDOW
+"""Maximum poll interval injected into streams that exercise the backoff."""
+
+MAX_IDLE_POLLS = 20
+"""Most polls a backed-off stream can make in a quiet window.
+
+Doubling from `BACKOFF_BASE_INTERVAL` exhausts the window in about nine polls,
+whereas a stream pinned to the base interval would poll
+``QUIET_WINDOW / BACKOFF_BASE_INTERVAL`` (200) times.
+"""
 
 
 @asynccontextmanager
@@ -712,6 +766,8 @@ async def _events_stream(
     *,
     name: str,
     query_params: dict[str, Any],
+    base_interval: float = FAST_POLL_INTERVAL,
+    max_interval: float = FAST_POLL_INTERVAL,
 ) -> AsyncIterator[AsyncGenerator[bytes]]:
     """Subscribe to a page's SSE events stream for the duration of the
     context, closing the stream on exit.
@@ -722,12 +778,35 @@ async def _events_stream(
             name=name,
             query_params=query_params,
             html_base_url=HTML_BASE_URL,
+            base_poll_interval=base_interval,
+            max_poll_interval=max_interval,
         ),
     )
     try:
         yield iterator
     finally:
         await iterator.aclose()
+
+
+def _count_polls(
+    page_service: PageService, monkeypatch: pytest.MonkeyPatch
+) -> list[str]:
+    """Record the events loop's polls by spying on the job-store lookup that
+    starts every poll, returning the list the polls are recorded in.
+    """
+    polls: list[str] = []
+    get_instance = page_service._job_store.get_instance
+
+    async def counting_get_instance(
+        page_id: PageInstanceIdProtocol,
+    ) -> NoteburstJobModel | None:
+        polls.append(page_id.cache_key)
+        return await get_instance(page_id)
+
+    monkeypatch.setattr(
+        page_service._job_store, "get_instance", counting_get_instance
+    )
+    return polls
 
 
 async def _next_event(iterator: AsyncGenerator[bytes]) -> dict[str, Any]:
@@ -764,7 +843,6 @@ async def _cancel_watcher(watcher: asyncio.Task[bytes]) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("fast_events_poll")
 async def test_events_initial_snapshot_then_silence(
     page_service: PageService, respx_mock: respx.Router
 ) -> None:
@@ -793,7 +871,6 @@ async def test_events_initial_snapshot_then_silence(
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("fast_events_poll")
 async def test_events_emits_once_per_state_change(
     page_service: PageService, respx_mock: respx.Router
 ) -> None:
@@ -840,7 +917,6 @@ async def test_events_emits_once_per_state_change(
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("fast_events_poll")
 async def test_events_terminal_failure_emits_once_and_stays_open(
     page_service: PageService, respx_mock: respx.Router
 ) -> None:
@@ -900,3 +976,86 @@ async def test_events_terminal_failure_emits_once_and_stays_open(
         rerun = await _await_watched_event(watcher)
         assert rerun["execution_status"] == "queued"
         assert rerun["execution_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_events_idle_stream_backs_off(
+    page_service: PageService,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An idle subscription polls the page instance's state progressively less
+    often, instead of once per base interval for as long as it stays open.
+    """
+    page = await _create_demo_page(page_service)
+
+    async with _events_stream(
+        page_service,
+        name=page.name,
+        query_params={"A": 2},
+        base_interval=BACKOFF_BASE_INTERVAL,
+        max_interval=BACKOFF_MAX_INTERVAL,
+    ) as stream:
+        await _next_event(stream)
+
+        watcher = _watch_for_event(stream)
+        polls = _count_polls(page_service, monkeypatch)
+        await asyncio.sleep(QUIET_WINDOW)
+        idle_polls = len(polls)
+        await _cancel_watcher(watcher)
+
+    assert idle_polls > 0
+    assert idle_polls <= MAX_IDLE_POLLS
+
+
+@pytest.mark.asyncio
+async def test_events_backoff_resets_when_a_job_appears(
+    page_service: PageService,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A backed-off idle stream returns to the base poll interval once a
+    Noteburst job record exists for the page instance, so an execution is
+    reported promptly however long the stream idled first.
+    """
+    page = await _create_demo_page(page_service)
+    page_instance = PageInstanceModel(page=page, values={"A": 2})
+    respx_mock.get(JOB_URL).mock(return_value=_queued_job())
+
+    async with _events_stream(
+        page_service,
+        name=page.name,
+        query_params={"A": 2},
+        base_interval=BACKOFF_BASE_INTERVAL,
+        max_interval=BACKOFF_MAX_INTERVAL,
+    ) as stream:
+        await _next_event(stream)
+
+        # The idle stream backs off...
+        watcher = _watch_for_event(stream)
+        polls = _count_polls(page_service, monkeypatch)
+        await asyncio.sleep(QUIET_WINDOW)
+        idle_polls = len(polls)
+
+        # ...until an execution is queued for the page instance, which the
+        # stream reports...
+        await page_service._job_store.store_job(
+            job=NoteburstJobModel(
+                date_submitted=datetime.now(tz=UTC),
+                job_url=AnyHttpUrl(JOB_URL),
+            ),
+            page_id=page_instance.id,
+        )
+        queued = await _await_watched_event(watcher)
+        assert queued["execution_status"] == "queued"
+
+        # ...and while that job is in flight the stream polls at the base
+        # interval again.
+        watcher = _watch_for_event(stream)
+        polls.clear()
+        await asyncio.sleep(QUIET_WINDOW)
+        in_flight_polls = len(polls)
+        await _cancel_watcher(watcher)
+
+    assert idle_polls <= MAX_IDLE_POLLS
+    assert in_flight_polls > 2 * MAX_IDLE_POLLS

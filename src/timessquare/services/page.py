@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -44,10 +44,37 @@ from ..storage.noteburst import (
 from ..storage.noteburstjobstore import NoteburstJobStore
 from ..storage.page import PageStore
 
-EVENTS_POLL_INTERVAL = 1.0
-"""Seconds between polls of a page instance's execution and rendering state
-by the HTML events stream (`PageService.get_html_events_iter`).
+EVENTS_POLL_BASE_INTERVAL = 1.0
+"""Seconds between polls of a page instance's execution and rendering state by
+the HTML events stream (`PageService.get_html_events_iter`) while that state is
+moving: a Noteburst job record exists, or the last poll changed the payload.
 """
+
+EVENTS_POLL_MAX_INTERVAL = 10.0
+"""Maximum seconds between polls of a page instance's execution and rendering
+state by the HTML events stream (`PageService.get_html_events_iter`).
+
+An idle subscription — no Noteburst job record, and an unchanged payload —
+backs off towards this interval so that a long-lived stream on a settled page
+instance costs a fraction of the Redis lookups a fixed base interval would.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class EventsPollResult:
+    """The result of one poll of a page instance's execution and rendering
+    state by the HTML events stream.
+    """
+
+    payload: HtmlEventsModel
+    """The payload describing the state the poll found."""
+
+    job_exists: bool
+    """Whether a Noteburst job record existed for the page instance.
+
+    A job record means an execution is in flight, so the state is expected to
+    move and the stream keeps polling at its base interval.
+    """
 
 
 class PageService:
@@ -757,7 +784,7 @@ class PageService:
         html_key: NbHtmlKey,
         query_params: Mapping[str, Any],
         html_base_url: str,
-    ) -> HtmlEventsModel:
+    ) -> EventsPollResult:
         """Build one SSE events payload from the current execution and
         rendering state of a page instance.
 
@@ -782,8 +809,9 @@ class PageService:
 
         Returns
         -------
-        HtmlEventsModel
-            The payload describing the current state of the page instance.
+        EventsPollResult
+            The payload describing the current state of the page instance,
+            along with whether a Noteburst job record backed it.
         """
         job = await self._job_store.get_instance(page_instance.id)
         noteburst_data: NoteburstJobResponseModel | None = None
@@ -806,13 +834,16 @@ class PageService:
             nbhtml=nbhtml,
         )
 
-        return HtmlEventsModel.create(
-            page_instance=page_instance,
-            noteburst_job=noteburst_data,
-            nbhtml=nbhtml,
-            request_query_params=query_params,
-            html_base_url=html_base_url,
-            execution_error=execution_error,
+        return EventsPollResult(
+            payload=HtmlEventsModel.create(
+                page_instance=page_instance,
+                noteburst_job=noteburst_data,
+                nbhtml=nbhtml,
+                request_query_params=query_params,
+                html_base_url=html_base_url,
+                execution_error=execution_error,
+            ),
+            job_exists=job is not None,
         )
 
     @staticmethod
@@ -857,11 +888,53 @@ class PageService:
             return False
         return payload.model_dump_json() != last_payload.model_dump_json()
 
+    @staticmethod
+    def _next_events_poll_interval(
+        *,
+        interval: float,
+        is_idle: bool,
+        base_interval: float,
+        max_interval: float,
+    ) -> float:
+        """Compute the interval to wait before the events stream's next poll of
+        a page instance's execution and rendering state.
+
+        A poll is idle when nothing is driving the page instance's state: no
+        Noteburst job record exists for it, and the poll did not change the
+        payload. Each consecutive idle poll doubles the interval, up to
+        ``max_interval``, so that a subscription to a settled page instance
+        stops costing a Redis lookup per second. Any poll that is not idle
+        resets the interval to ``base_interval``, so a client sees a state
+        change within a second of it happening.
+
+        Parameters
+        ----------
+        interval
+            The interval waited before the poll that just completed.
+        is_idle
+            Whether the poll that just completed was idle.
+        base_interval
+            The interval to poll at while the state is moving.
+        max_interval
+            The longest interval an idle stream backs off to.
+
+        Returns
+        -------
+        float
+            The number of seconds to wait before the next poll.
+        """
+        if not is_idle:
+            return base_interval
+        return min(interval * 2.0, max_interval)
+
     async def get_html_events_iter(
         self,
         name: str,
         query_params: Mapping[str, Any],
         html_base_url: str,
+        *,
+        base_poll_interval: float = EVENTS_POLL_BASE_INTERVAL,
+        max_poll_interval: float = EVENTS_POLL_MAX_INTERVAL,
     ) -> AsyncIterator[bytes]:
         """Get an iterator providing an event stream for the HTML rendering
         for a page instance.
@@ -875,6 +948,35 @@ class PageService:
         server: after a terminal execution failure it stays open and reports a
         later re-execution without the client resubscribing. Keep-alive is
         left to the SSE transport's comment pings.
+
+        Polling adapts to the page instance. While an execution is in flight,
+        or the state just changed, the stream polls at ``base_poll_interval``.
+        Once it goes idle each consecutive unchanged poll doubles the interval,
+        up to ``max_poll_interval``, so an idle subscription stops costing a
+        set of Redis lookups every second; the first poll that finds a job
+        record or a changed payload resets the interval.
+
+        Parameters
+        ----------
+        name
+            The name of the page.
+        query_params
+            The query parameters of the events request, which carry the page
+            instance's parameter values and display settings.
+        html_base_url
+            The base URL of the page instance's HTML endpoint.
+        base_poll_interval
+            Seconds between polls while the page instance's state is moving.
+            Overridable for testing; operationally this is
+            `EVENTS_POLL_BASE_INTERVAL`.
+        max_poll_interval
+            The longest interval an idle stream backs off to. Overridable for
+            testing; operationally this is `EVENTS_POLL_MAX_INTERVAL`.
+
+        Returns
+        -------
+        collections.abc.AsyncIterator
+            An iterator over the stream's encoded server-sent events.
         """
         page = await self.get_page(name)
         page_instance = PageInstanceModel(page=page, values=dict(query_params))
@@ -887,24 +989,40 @@ class PageService:
 
         async def iterator() -> AsyncIterator[bytes]:
             last_payload: HtmlEventsModel | None = None
+            interval = base_poll_interval
             try:
                 while True:
-                    payload = await self._build_events_payload(
+                    poll = await self._build_events_payload(
                         page_instance=page_instance,
                         html_key=html_key,
                         query_params=query_params,
                         html_base_url=html_base_url,
                     )
-                    if self._is_new_events_payload(
-                        payload=payload, last_payload=last_payload
-                    ):
+                    is_new = self._is_new_events_payload(
+                        payload=poll.payload, last_payload=last_payload
+                    )
+                    if is_new:
                         self._logger.debug(
-                            "Emitting payload in events loop", payload=payload
+                            "Emitting payload in events loop",
+                            payload=poll.payload,
                         )
-                        last_payload = payload
-                        yield payload.to_sse().encode()
+                        last_payload = poll.payload
+                        yield poll.payload.to_sse().encode()
 
-                    await asyncio.sleep(EVENTS_POLL_INTERVAL)
+                    previous_interval = interval
+                    interval = self._next_events_poll_interval(
+                        interval=interval,
+                        is_idle=not (is_new or poll.job_exists),
+                        base_interval=base_poll_interval,
+                        max_interval=max_poll_interval,
+                    )
+                    if interval != previous_interval:
+                        self._logger.debug(
+                            "Changed events poll interval",
+                            interval=interval,
+                            previous_interval=previous_interval,
+                        )
+                    await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 self._logger.debug("HTML events disconnected from client")
                 # cleanup as necessary
