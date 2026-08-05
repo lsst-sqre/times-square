@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -43,6 +43,48 @@ from ..storage.noteburst import (
 )
 from ..storage.noteburstjobstore import NoteburstJobStore
 from ..storage.page import PageStore
+
+EVENTS_POLL_BASE_INTERVAL = 1.0
+"""Seconds between polls of a page instance's execution and rendering state by
+the HTML events stream (`PageService.get_html_events_iter`) while that state is
+moving: a Noteburst job record exists, or the last poll changed the payload.
+"""
+
+EVENTS_POLL_MAX_INTERVAL = 10.0
+"""Maximum seconds between polls of a page instance's execution and rendering
+state by the HTML events stream (`PageService.get_html_events_iter`).
+
+An idle subscription — no Noteburst job record, and an unchanged payload —
+backs off towards this interval so that a long-lived stream on a settled page
+instance costs a fraction of the Redis lookups a fixed base interval would.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class EventsPollResult:
+    """The result of one poll of a page instance's execution and rendering
+    state by the HTML events stream.
+    """
+
+    payload: HtmlEventsModel
+    """The payload describing the state the poll found."""
+
+    job_exists: bool
+    """Whether a Noteburst job record existed for the page instance.
+
+    A job record means an execution is in flight, so the state is expected to
+    move and the stream keeps polling at its base interval.
+    """
+
+    error_from_marker: bool
+    """Whether the payload's execution error came from the cached failure
+    marker rather than from live classification of a Noteburst job.
+
+    The marker fallback only fires once the job record a failure was classified
+    from has been deleted, so a marker-derived error restates a failure the
+    stream has already reported, with the execution's dates and status nulled
+    out.
+    """
 
 
 class PageService:
@@ -745,14 +787,251 @@ class PageService:
             )
         return execution_error
 
+    async def _build_events_payload(
+        self,
+        *,
+        page_instance: PageInstanceModel,
+        html_key: NbHtmlKey,
+        query_params: Mapping[str, Any],
+        html_base_url: str,
+    ) -> EventsPollResult:
+        """Build one SSE events payload from the current execution and
+        rendering state of a page instance.
+
+        Gathers the state the events stream reports: the Noteburst job record
+        for the page instance (and, if one exists, its current state from
+        Noteburst), the cached HTML for the requested display settings, and any
+        terminal execution failure resolved by
+        `_resolve_events_execution_error`.
+
+        A poll that observes a successfully completed execution with no HTML
+        cached yet finishes that execution itself: it renders and caches the
+        display-settings matrix and deletes the job record, exactly as the
+        interactive HTML endpoint does. The payload it returns therefore
+        reports the freshly rendered HTML, so a subscriber learns the
+        ``html_hash`` and ``html_url`` of a completed execution without any
+        client requesting the HTML endpoint.
+
+        Parameters
+        ----------
+        page_instance
+            The page instance the events stream is reporting on.
+        html_key
+            The cache key for the HTML rendering, which combines the page
+            instance with the requested display settings.
+        query_params
+            The query parameters of the events request, used to build the HTML
+            URL when no HTML is cached yet.
+        html_base_url
+            The base URL of the page instance's HTML endpoint.
+
+        Returns
+        -------
+        EventsPollResult
+            The payload describing the current state of the page instance,
+            along with whether a Noteburst job record backed it and whether any
+            execution error came from the cached failure marker.
+        """
+        job = await self._job_store.get_instance(page_instance.id)
+        noteburst_data: NoteburstJobResponseModel | None = None
+        if job:
+            self._logger.debug(
+                "Got job in events loop", job_url=str(job.job_url)
+            )
+            noteburst_response = await self.noteburst_api.get_job(
+                str(job.job_url)
+            )
+            if noteburst_response.data:
+                noteburst_data = noteburst_response.data
+
+        nbhtml = await self._html_store.get_instance(html_key)
+
+        execution_error = await self._resolve_events_execution_error(
+            page_instance=page_instance,
+            job=job,
+            noteburst_data=noteburst_data,
+            nbhtml=nbhtml,
+        )
+
+        if (
+            nbhtml is None
+            and execution_error is None
+            and noteburst_data is not None
+            and noteburst_data.status == NoteburstJobStatus.complete
+        ):
+            # The completed job is renderable: _resolve_events_execution_error
+            # already classified it and found neither a failure nor a contract
+            # violation. Finish the execution the way the interactive path
+            # does, rendering and caching the whole display-settings matrix and
+            # deleting the job record, so that a page instance whose only
+            # observer is this stream still gets its HTML. Racing the
+            # interactive path here is benign; the render tolerates a job
+            # record that has already been deleted.
+            html_renders = (
+                await self.render_nbhtml_matrix_from_noteburst_response(
+                    page_instance=page_instance,
+                    noteburst_response=noteburst_data,
+                )
+            )
+            nbhtml = html_renders[html_key.display_settings]
+
+        return EventsPollResult(
+            payload=HtmlEventsModel.create(
+                page_instance=page_instance,
+                noteburst_job=noteburst_data,
+                nbhtml=nbhtml,
+                request_query_params=query_params,
+                html_base_url=html_base_url,
+                execution_error=execution_error,
+            ),
+            job_exists=job is not None,
+            # The marker fallback in _resolve_events_execution_error only fires
+            # when no job record exists; live classification requires
+            # noteburst_data, which is only fetched when one does.
+            error_from_marker=job is None and execution_error is not None,
+        )
+
+    @staticmethod
+    def _is_new_events_payload(
+        *,
+        poll: EventsPollResult,
+        last_payload: HtmlEventsModel | None,
+    ) -> bool:
+        """Determine whether an events payload is new relative to the last one
+        emitted on the stream, and therefore worth sending.
+
+        The first payload of a stream is always new, so every subscriber gets
+        an initial snapshot of the page instance's state. After that a payload
+        is new when its serialization differs from the last one emitted.
+
+        The one exception is the restatement of a terminal execution failure by
+        the cached failure marker. Once a failure is emitted, the job record it
+        was classified from is deleted, so the next poll rebuilds the same
+        failure from the marker with the execution's dates and status nulled
+        out. That is a strictly less informative restatement of a state the
+        client already has, so a marker-derived payload repeating the last
+        emitted ``execution_error`` is not a new one. A failure classified from
+        a live job is never suppressed this way, so a re-execution that fails
+        identically is still reported, with the dates of the new execution.
+
+        Parameters
+        ----------
+        poll
+            The result of the poll that built the payload.
+        last_payload
+            The last payload emitted on this stream, or `None` if the stream
+            has not emitted anything yet.
+
+        Returns
+        -------
+        bool
+            `True` if the payload should be emitted.
+        """
+        payload = poll.payload
+        if last_payload is None:
+            return True
+        if (
+            poll.error_from_marker
+            and payload.execution_error == last_payload.execution_error
+        ):
+            return False
+        return payload.model_dump_json() != last_payload.model_dump_json()
+
+    @staticmethod
+    def _next_events_poll_interval(
+        *,
+        interval: float,
+        is_idle: bool,
+        base_interval: float,
+        max_interval: float,
+    ) -> float:
+        """Compute the interval to wait before the events stream's next poll of
+        a page instance's execution and rendering state.
+
+        A poll is idle when nothing is driving the page instance's state: no
+        Noteburst job record exists for it, and the poll did not change the
+        payload. Each consecutive idle poll doubles the interval, up to
+        ``max_interval``, so that a subscription to a settled page instance
+        stops costing a Redis lookup per second. Any poll that is not idle
+        resets the interval to ``base_interval``, so a client sees a state
+        change within a second of it happening.
+
+        Parameters
+        ----------
+        interval
+            The interval waited before the poll that just completed.
+        is_idle
+            Whether the poll that just completed was idle.
+        base_interval
+            The interval to poll at while the state is moving.
+        max_interval
+            The longest interval an idle stream backs off to.
+
+        Returns
+        -------
+        float
+            The number of seconds to wait before the next poll.
+        """
+        if not is_idle:
+            return base_interval
+        return min(interval * 2.0, max_interval)
+
     async def get_html_events_iter(
         self,
         name: str,
         query_params: Mapping[str, Any],
         html_base_url: str,
+        *,
+        base_poll_interval: float = EVENTS_POLL_BASE_INTERVAL,
+        max_poll_interval: float = EVENTS_POLL_MAX_INTERVAL,
     ) -> AsyncIterator[bytes]:
         """Get an iterator providing an event stream for the HTML rendering
         for a page instance.
+
+        The stream emits one initial event as soon as the client subscribes,
+        reporting whatever the current state is — including the all-null state
+        of a page instance with no execution in flight and no cached HTML.
+        After that it polls the page instance's state and emits an event only
+        when the payload has changed, so a client that is up to date receives
+        nothing until the state moves. The stream is never closed by the
+        server: after a terminal execution failure it stays open and reports a
+        later re-execution without the client resubscribing. Keep-alive is
+        left to the SSE transport's comment pings.
+
+        The stream also completes the executions it observes. When a poll finds
+        a successfully completed Noteburst job whose HTML has not been rendered
+        yet, it renders and caches that HTML and clears the job record, so the
+        subscriber gets an event carrying the ``html_hash`` and ``html_url``
+        without any client requesting the HTML endpoint.
+
+        Polling adapts to the page instance. While an execution is in flight,
+        or the state just changed, the stream polls at ``base_poll_interval``.
+        Once it goes idle each consecutive unchanged poll doubles the interval,
+        up to ``max_poll_interval``, so an idle subscription stops costing a
+        set of Redis lookups every second; the first poll that finds a job
+        record or a changed payload resets the interval.
+
+        Parameters
+        ----------
+        name
+            The name of the page.
+        query_params
+            The query parameters of the events request, which carry the page
+            instance's parameter values and display settings.
+        html_base_url
+            The base URL of the page instance's HTML endpoint.
+        base_poll_interval
+            Seconds between polls while the page instance's state is moving.
+            Overridable for testing; operationally this is
+            `EVENTS_POLL_BASE_INTERVAL`.
+        max_poll_interval
+            The longest interval an idle stream backs off to. Overridable for
+            testing; operationally this is `EVENTS_POLL_MAX_INTERVAL`.
+
+        Returns
+        -------
+        collections.abc.AsyncIterator
+            An iterator over the stream's encoded server-sent events.
         """
         page = await self.get_page(name)
         page_instance = PageInstanceModel(page=page, values=dict(query_params))
@@ -764,47 +1043,41 @@ class PageService:
         )
 
         async def iterator() -> AsyncIterator[bytes]:
+            last_payload: HtmlEventsModel | None = None
+            interval = base_poll_interval
             try:
                 while True:
-                    job = await self._job_store.get_instance(page_instance.id)
-                    noteburst_data: NoteburstJobResponseModel | None = None
-                    # model for html status
-                    if job:
-                        self._logger.debug(
-                            "Got job in events loop", job_url=str(job.job_url)
-                        )
-                        noteburst_url = str(job.job_url)
-                        noteburst_response = await self.noteburst_api.get_job(
-                            noteburst_url
-                        )
-                        if noteburst_response.data:
-                            noteburst_data = noteburst_response.data
-
-                    nbhtml = await self._html_store.get_instance(html_key)
-
-                    execution_error = (
-                        await self._resolve_events_execution_error(
-                            page_instance=page_instance,
-                            job=job,
-                            noteburst_data=noteburst_data,
-                            nbhtml=nbhtml,
-                        )
-                    )
-
-                    payload = HtmlEventsModel.create(
+                    poll = await self._build_events_payload(
                         page_instance=page_instance,
-                        noteburst_job=noteburst_data,
-                        nbhtml=nbhtml,
-                        request_query_params=query_params,
+                        html_key=html_key,
+                        query_params=query_params,
                         html_base_url=html_base_url,
-                        execution_error=execution_error,
                     )
-                    self._logger.debug(
-                        "Built payload in events loop", payload=payload
+                    is_new = self._is_new_events_payload(
+                        poll=poll, last_payload=last_payload
                     )
-                    yield payload.to_sse().encode()
+                    if is_new:
+                        self._logger.debug(
+                            "Emitting payload in events loop",
+                            payload=poll.payload,
+                        )
+                        last_payload = poll.payload
+                        yield poll.payload.to_sse().encode()
 
-                    await asyncio.sleep(1)
+                    previous_interval = interval
+                    interval = self._next_events_poll_interval(
+                        interval=interval,
+                        is_idle=not (is_new or poll.job_exists),
+                        base_interval=base_poll_interval,
+                        max_interval=max_poll_interval,
+                    )
+                    if interval != previous_interval:
+                        self._logger.debug(
+                            "Changed events poll interval",
+                            interval=interval,
+                            previous_interval=previous_interval,
+                        )
+                    await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 self._logger.debug("HTML events disconnected from client")
                 # cleanup as necessary
