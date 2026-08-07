@@ -22,6 +22,7 @@ __all__ = [
     "MockGitHubRepoSyncAPI",
     "github_repository_payload",
     "mock_github_app_repository",
+    "mock_github_repository_by_id",
 ]
 
 DATA = Path(__file__).parent.parent / "data"
@@ -374,6 +375,43 @@ def mock_github_app_repository(
         )
     )
     respx_mock.get(f"https://api.github.com/repos/{owner}/{repo}").mock(
+        return_value=Response(
+            200,
+            json=github_repository_payload(
+                owner=owner,
+                repo=repo,
+                repository_id=repository_id,
+                owner_id=owner_id,
+            ),
+        )
+    )
+
+
+def mock_github_repository_by_id(
+    respx_mock: respx.Router,
+    *,
+    repository_id: int,
+    installation_id: int,
+    owner: str,
+    repo: str,
+    owner_id: int,
+) -> None:
+    """Route the two GitHub App calls that re-read one repository by its
+    numeric ID: the installation's access token, and the repository resource
+    itself, which answers under whatever names the repository carries now.
+    """
+    respx_mock.post(
+        "https://api.github.com/app/installations/"
+        f"{installation_id}/access_tokens"
+    ).mock(
+        return_value=Response(
+            201,
+            json={"token": "installation-token", "expires_at": "2100-01-01"},
+        )
+    )
+    respx_mock.get(
+        f"https://api.github.com/repositories/{repository_id}"
+    ).mock(
         return_value=Response(
             200,
             json=github_repository_payload(

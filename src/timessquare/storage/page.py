@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from safir.database import datetime_from_db, datetime_to_db
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,34 @@ from timessquare.domain.githubtree import (
 )
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
 from timessquare.domain.pageparameters import PageParameters
+
+__all__ = ["PageStore", "StoredGitHubRepository"]
+
+
+@dataclass(frozen=True, slots=True)
+class StoredGitHubRepository:
+    """The GitHub identity that a repository's pages are stored under.
+
+    This is the shape of one row of the reconciliation work list: enough to
+    re-fetch the repository from the GitHub API by ID, and enough to tell
+    whether the names Times Square serves the repository's pages under have
+    drifted from the names GitHub answers with.
+    """
+
+    repository_id: int
+    """GitHub's stable numeric ID for the repository."""
+
+    owner: str
+    """The owner login the pages are stored under."""
+
+    name: str
+    """The repository name the pages are stored under."""
+
+    owner_id: int | None
+    """GitHub's stable numeric ID for the owner, if it was ever recorded."""
+
+    installation_id: int
+    """The Times Square GitHub App installation covering the repository."""
 
 
 class PageStore:
@@ -462,6 +492,64 @@ class PageStore:
             statement, execution_options={"synchronize_session": False}
         )
         return [row[0] for row in result.all()]
+
+    async def list_github_repository_identities(
+        self,
+    ) -> list[StoredGitHubRepository]:
+        """List the distinct GitHub repositories behind Times Square's live
+        pages, as the identities those pages are stored under.
+
+        This is the work list for the daily name reconciliation: each entry
+        costs one round trip to the GitHub API, and the names in it are what
+        the reconciliation compares GitHub's answer against.
+
+        Only pages that carry both a repository ID and an installation ID are
+        included, because those are what the reconciliation needs to re-fetch
+        a repository by ID as the App installation that can see it. Pages
+        that predate ID capture are the ``backfill-github-ids`` command's job,
+        not the cron's. Soft-deleted pages and pull-request preview pages are
+        excluded as well: they serve nothing, so drift in their stored names
+        costs an API call for no benefit. The bulk updates that heal drift are
+        keyed on the repository ID alone, so those pages are healed anyway
+        whenever a live sibling page puts their repository on this list.
+
+        Returns
+        -------
+        list of StoredGitHubRepository
+            One entry per distinct stored identity, ordered by owner and then
+            repository name. A repository whose pages disagree about its
+            names — a partial heal — appears once per variant, which is
+            harmless: healing the first variant heals the rest by ID, leaving
+            the others as no-ops.
+        """
+        statement = (
+            select(
+                SqlPage.github_repository_id,
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                SqlPage.github_owner_id,
+                SqlPage.github_installation_id,
+            )
+            .where(SqlPage.github_repository_id.is_not(None))
+            .where(SqlPage.github_installation_id.is_not(None))
+            .where(SqlPage.github_owner.is_not(None))
+            .where(SqlPage.github_repo.is_not(None))
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
+            .distinct()
+            .order_by(SqlPage.github_owner, SqlPage.github_repo)
+        )
+        result = await self._session.execute(statement)
+        return [
+            StoredGitHubRepository(
+                repository_id=row[0],
+                owner=row[1],
+                name=row[2],
+                owner_id=row[3],
+                installation_id=row[4],
+            )
+            for row in result.all()
+        ]
 
     async def count_pages_missing_github_ids(
         self,

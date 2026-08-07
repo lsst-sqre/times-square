@@ -22,6 +22,7 @@ from .config import config
 from .services.backgroundpage import BackgroundPageService
 from .services.githubcheckrun import GitHubCheckRunService
 from .services.githubidbackfill import GitHubIdBackfillService
+from .services.githubnamereconcile import GitHubNameReconciliationService
 from .services.githubrepo import GitHubRepoService
 from .services.page import PageService
 from .services.runscheduler import RunSchedulerService
@@ -321,6 +322,18 @@ class Factory:
         IDs of pages that predate ID capture.
         """
         return GitHubIdBackfillService(
+            page_store=self.create_page_store(),
+            github_client_factory=self.create_github_client_factory(),
+            logger=self._logger,
+        )
+
+    def create_github_name_reconciliation_service(
+        self,
+    ) -> GitHubNameReconciliationService:
+        """Create a GitHubNameReconciliationService for healing drift between
+        the GitHub names stored on pages and the names GitHub answers with.
+        """
+        return GitHubNameReconciliationService(
             page_store=self.create_page_store(),
             github_client_factory=self.create_github_client_factory(),
             logger=self._logger,

@@ -78,3 +78,24 @@ Then read the report from the job's logs:
    kubectl logs -n times-square job/times-square-backfill-github-ids
 
 Delete the job once the report looks right.
+
+Daily name reconciliation
+=========================
+
+Once a page carries its repository's numeric ID, Times Square keeps its stored names current on its own.
+A daily ``reconcile_github_names`` cron in the worker re-reads every repository behind a live page from the GitHub API — by its numeric ID, which no rename or transfer changes — and rewrites the stored owner and repository names whenever they disagree with GitHub's answer.
+That heals renames that happened while Times Square was down, or whose webhook delivery failed, without waiting for the repository's next push.
+Like the rename webhooks, it is a pure name flip: nothing is re-synced from GitHub and no notebook is re-executed.
+
+The cron logs one summary line per run:
+
+.. code-block:: text
+
+   Reconciled GitHub repository names  repositories_checked=12 repositories_healed=1
+   repositories_skipped=0 repositories_failed=1 pages_updated=7
+
+A repository counted in ``repositories_failed`` is one the GitHub App could not read, logged with the status code GitHub returned.
+Its pages are always left exactly as they are: a deleted repository, an uninstalled app, and a transient authentication failure are indistinguishable from here, and only the webhooks can tell them apart.
+``repositories_skipped`` counts repositories whose current owner is no longer in :envvar:`TS_GITHUB_ORGS`; their names are reported rather than healed, so that pages are never moved into an organization Times Square does not sync from.
+
+Pages that have no numeric IDs yet are not reconciled — that is what the backfill above is for.

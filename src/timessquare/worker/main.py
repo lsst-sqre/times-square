@@ -28,6 +28,7 @@ from .functions import (
     org_renamed,
     ping,
     pull_request_sync,
+    reconcile_github_names,
     replace_nbhtml,
     repo_added,
     repo_push,
@@ -177,6 +178,14 @@ class WorkerSettings:
             cleanup_scheduled_runs,
             hour=11,  # every day at 6 AM EST = 11 AM UTC
             timeout=60.0,
+            unique=True,  # only one worker should run this job at a time
+        ),
+        arq.cron(
+            reconcile_github_names,
+            hour=12,  # every day at 7 AM EST = 12 PM UTC
+            # One GitHub round trip per repository behind a live page, so the
+            # runtime scales with the number of synced repositories.
+            timeout=300.0,
             unique=True,  # only one worker should run this job at a time
         ),
     ]

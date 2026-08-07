@@ -20,7 +20,7 @@ from timessquare.config import config
 from timessquare.dbschema import Base
 from timessquare.domain.page import PageModel
 from timessquare.domain.pageparameters import PageParameters
-from timessquare.storage.page import PageStore
+from timessquare.storage.page import PageStore, StoredGitHubRepository
 
 
 @pytest_asyncio.fixture
@@ -557,3 +557,74 @@ async def test_backfill_github_ids(session: AsyncSession) -> None:
     assert filled.github_repository_id == 1
     assert filled.github_owner_id == 2
     assert filled.github_installation_id == 3
+
+
+@pytest.mark.asyncio
+async def test_list_github_repository_identities(
+    session: AsyncSession,
+) -> None:
+    """The reconciliation work list is one entry per distinct repository,
+    carrying the names and IDs the repository's pages are stored under.
+    """
+    store = PageStore(session=session)
+    store.add(
+        _page("first", repository_id=42, owner_id=7, installation_id=1234)
+    )
+    store.add(
+        _page("second", repository_id=42, owner_id=7, installation_id=1234)
+    )
+    store.add(
+        _page(
+            "other",
+            repo="other-repo",
+            repository_id=99,
+            owner_id=7,
+            installation_id=1234,
+        )
+    )
+    await session.commit()
+
+    identities = await store.list_github_repository_identities()
+
+    assert identities == [
+        StoredGitHubRepository(
+            repository_id=99,
+            owner="lsst-sqre",
+            name="other-repo",
+            owner_id=7,
+            installation_id=1234,
+        ),
+        StoredGitHubRepository(
+            repository_id=42,
+            owner="lsst-sqre",
+            name="times-square-demo",
+            owner_id=7,
+            installation_id=1234,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_github_repository_identities_excludes_unreachable(
+    session: AsyncSession,
+) -> None:
+    """Pages that cannot drive a GitHub API request — no repository ID, no
+    installation ID — and pages that no longer serve are left off the work
+    list.
+    """
+    store = PageStore(session=session)
+    store.add(_page("unbackfilled"))
+    store.add(_page("no-installation", repo="orphan", repository_id=42))
+    deleted = _page(
+        "retired", repo="retired", repository_id=43, installation_id=1234
+    )
+    deleted.date_deleted = datetime.now(UTC)
+    store.add(deleted)
+    preview = _page(
+        "preview", repo="preview", repository_id=44, installation_id=1234
+    )
+    preview.github_commit = "a" * 40
+    store.add(preview)
+    await session.commit()
+
+    assert await store.list_github_repository_identities() == []

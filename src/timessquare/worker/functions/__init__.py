@@ -5,6 +5,7 @@ from .create_rerequested_check_run import create_rerequested_check_run
 from .org_renamed import org_renamed
 from .ping import ping
 from .pull_request_sync import pull_request_sync
+from .reconcile_github_names import reconcile_github_names
 from .replace_nbhtml import replace_nbhtml
 from .repo_added import repo_added
 from .repo_push import repo_push
@@ -22,6 +23,7 @@ __all__ = [
     "org_renamed",
     "ping",
     "pull_request_sync",
+    "reconcile_github_names",
     "replace_nbhtml",
     "repo_added",
     "repo_push",
