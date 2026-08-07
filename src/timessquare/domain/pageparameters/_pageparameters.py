@@ -165,8 +165,12 @@ class PageParameters(Mapping):
 
         Parameters must be valid Python variable names, which means they must
         start with a letter and contain only letters, numbers and underscores.
-        They also cannot be Python keywords.
+        They also cannot be Python keywords. The ``ts_`` prefix is reserved
+        for Times Square viewer controls (which the Squareone frontend strips
+        from notebook parameters), so parameter names may not start with it.
         """
+        if name.startswith("ts_"):
+            raise ParameterNameValidationError.for_reserved_prefix(name)
         if (
             str.isidentifier(name)
             and not keyword.iskeyword(name)
