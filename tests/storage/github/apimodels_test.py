@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from timessquare.storage.github.apimodels import (
+    GitHubOrganizationRenamedEventModel,
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
     GitHubRepositoryTransferredEventModel,
@@ -84,6 +85,25 @@ def test_repository_transferred_event_from_organization() -> None:
     event = GitHubRepositoryTransferredEventModel.model_validate(payload)
 
     assert event.old_owner_login == "lsst-sitcom"
+
+
+def test_organization_renamed_event() -> None:
+    """Test that the organization rename event exposes both the new login and
+    the login the organization's pages are stored under, along with the
+    rename-proof numeric owner ID.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/organization_renamed.json"
+    )
+    event = GitHubOrganizationRenamedEventModel.model_validate_json(
+        json_path.read_text()
+    )
+
+    assert event.old_login == "lsst-sqre"
+    assert event.new_login == "lsst-so"
+    assert event.organization.login == "lsst-so"
+    assert event.organization.id == 30830384
+    assert event.installation.id == 1234
 
 
 def test_recursive_git_tree_model_rsp_broadcast() -> None:

@@ -415,6 +415,38 @@ class PageService:
             repository_id=repository_id,
         )
 
+    async def rename_github_owner(
+        self, *, old_login: str, new_login: str, owner_id: int
+    ) -> list[str]:
+        """Flip the stored owner login on every page belonging to a GitHub
+        organization or user.
+
+        This is a pure name flip. Renaming an organization does not change any
+        repository's content, and the HTML cache is keyed on each page's own
+        name slug rather than on the owner login, so neither the notebooks nor
+        the cached renders are touched.
+
+        Parameters
+        ----------
+        old_login
+            The login the pages are stored under, used to match pages that
+            have no owner ID recorded yet.
+        new_login
+            The login to store.
+        owner_id
+            GitHub's stable numeric ID for the owner. Pages are matched on
+            this rename-proof ID, falling back to ``old_login`` only for pages
+            that have no ID recorded yet.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were renamed.
+        """
+        return await self._page_store.rename_owner(
+            old_login=old_login, new_login=new_login, owner_id=owner_id
+        )
+
     async def transfer_github_repository(
         self,
         *,

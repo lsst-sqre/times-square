@@ -350,6 +350,55 @@ class PageStore:
         )
         return [row[0] for row in result.all()]
 
+    async def rename_owner(
+        self, *, old_login: str, new_login: str, owner_id: int
+    ) -> list[str]:
+        """Flip the stored owner login on every page of a GitHub owner in a
+        single statement.
+
+        This is a pure name flip: no other column is touched, so the pages'
+        notebooks, parameters, and cached renders are all left alone.
+
+        Parameters
+        ----------
+        old_login : str
+            The login the pages are stored under. Only used by the name-keyed
+            fallback.
+        new_login : str
+            The login to store.
+        owner_id : int
+            GitHub's stable numeric ID for the owner. Pages are matched on
+            this ID — which survives renames — unioned with a match on
+            ``old_login`` restricted to pages that have no owner ID recorded
+            yet.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were renamed. Pages
+            already stored under ``new_login`` are not matched, so a
+            redelivered webhook reports an empty list.
+        """
+        statement = (
+            update(SqlPage)
+            .where(
+                or_(
+                    SqlPage.github_owner_id == owner_id,
+                    and_(
+                        SqlPage.github_owner_id.is_(None),
+                        SqlPage.github_owner == old_login,
+                    ),
+                )
+            )
+            .where(SqlPage.github_owner != new_login)
+            .values(github_owner=new_login)
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
+
     async def transfer_repository(
         self,
         *,

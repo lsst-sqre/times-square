@@ -79,9 +79,13 @@ The GitHub App needs to subscribe to the following events:
 
 - Check Run
 - Check Suite
+- Organization
 - Push
 - Pull request
 - Repository
+
+The **Organization** event lets Times Square follow an organization rename.
+Because :envvar:`TS_GITHUB_ORGS` names organizations by their login, update it to the organization's new login after such a rename; Times Square logs a warning to that effect when it processes the rename.
 
 .. _github-app-secrets:
 

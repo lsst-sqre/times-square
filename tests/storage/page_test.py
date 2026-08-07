@@ -407,3 +407,67 @@ async def test_rename_repository_is_idempotent(session: AsyncSession) -> None:
     await session.commit()
 
     assert renamed == []
+
+
+@pytest.mark.asyncio
+async def test_rename_owner_by_id(session: AsyncSession) -> None:
+    """An owner rename keyed on the stable owner ID flips every one of the
+    owner's pages, whatever login they are currently stored under.
+    """
+    store = PageStore(session=session)
+    store.add(_page("stale", owner="ancient-org", owner_id=7))
+    store.add(_page("current", owner="lsst-sitcom", owner_id=7))
+    store.add(_page("elsewhere", owner="other-org", owner_id=99))
+    await session.commit()
+
+    renamed = await store.rename_owner(
+        old_login="lsst-sitcom", new_login="lsst-so", owner_id=7
+    )
+    await session.commit()
+
+    assert sorted(renamed) == ["current", "stale"]
+    for name in ("stale", "current"):
+        page = await store.get(name)
+        assert page is not None
+        assert page.github_owner == "lsst-so"
+    untouched = await store.get("elsewhere")
+    assert untouched is not None
+    assert untouched.github_owner == "other-org"
+
+
+@pytest.mark.asyncio
+async def test_rename_owner_null_id_fallback(session: AsyncSession) -> None:
+    """Pages that predate owner-ID capture are renamed through the old login,
+    and the fallback is ID-gated so another owner's pages are left alone.
+    """
+    store = PageStore(session=session)
+    store.add(_page("unbackfilled", owner="lsst-sitcom"))
+    store.add(_page("impostor", owner="lsst-sitcom", owner_id=99))
+    await session.commit()
+
+    renamed = await store.rename_owner(
+        old_login="lsst-sitcom", new_login="lsst-so", owner_id=7
+    )
+    await session.commit()
+
+    assert renamed == ["unbackfilled"]
+    impostor = await store.get("impostor")
+    assert impostor is not None
+    assert impostor.github_owner == "lsst-sitcom"
+
+
+@pytest.mark.asyncio
+async def test_rename_owner_is_idempotent(session: AsyncSession) -> None:
+    """A redelivered organization rename webhook reports no affected pages,
+    because pages already stored under the new login are not matched.
+    """
+    store = PageStore(session=session)
+    store.add(_page("healed", owner="lsst-so", owner_id=7))
+    await session.commit()
+
+    renamed = await store.rename_owner(
+        old_login="lsst-sitcom", new_login="lsst-so", owner_id=7
+    )
+    await session.commit()
+
+    assert renamed == []

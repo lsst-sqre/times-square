@@ -18,6 +18,9 @@ from safir.github.webhooks import (
 )
 
 __all__ = [
+    "GitHubOrganizationLoginChangeModel",
+    "GitHubOrganizationRenameChangesModel",
+    "GitHubOrganizationRenamedEventModel",
     "GitHubPushEventWithIdModel",
     "GitHubRepoOwnerWithIdModel",
     "GitHubRepositoryChangesModel",
@@ -271,6 +274,74 @@ class GitHubRepositoryTransferredEventModel(BaseModel):
         matching on it risks catching another repository's pages.
         """
         return self.changes.owner.previous.login
+
+
+class GitHubOrganizationLoginChangeModel(BaseModel):
+    """The ``changes.login`` object of an ``organization`` (renamed) webhook
+    payload.
+    """
+
+    previous: Annotated[
+        str,
+        Field(
+            alias="from",
+            description="The organization's login before the rename.",
+        ),
+    ]
+
+
+class GitHubOrganizationRenameChangesModel(BaseModel):
+    """The ``changes`` object of an ``organization`` (renamed) webhook
+    payload.
+    """
+
+    login: Annotated[
+        GitHubOrganizationLoginChangeModel,
+        Field(description="The organization login's previous value."),
+    ]
+
+
+class GitHubOrganizationRenamedEventModel(BaseModel):
+    """An ``organization`` (renamed) webhook payload.
+
+    https://docs.github.com/en/webhooks/webhook-events-and-payloads#organization
+
+    The ``organization`` field already carries the new login; the old login —
+    the login Times Square's pages are still stored under — is only available
+    from ``changes.login.from``.
+    """
+
+    changes: Annotated[
+        GitHubOrganizationRenameChangesModel,
+        Field(description="The fields that changed in this event."),
+    ]
+
+    organization: Annotated[
+        GitHubRepoOwnerWithIdModel,
+        Field(
+            description=(
+                "The renamed organization, under its new login, including "
+                "its numeric ID. An organization payload carries the same "
+                "``login`` and ``id`` fields as a repository owner, so the "
+                "owner model parses it too."
+            )
+        ),
+    ]
+
+    installation: Annotated[
+        GitHubAppInstallationModel,
+        Field(description="Information about the GitHub App installation."),
+    ]
+
+    @property
+    def old_login(self) -> str:
+        """The organization's login before the rename."""
+        return self.changes.login.previous
+
+    @property
+    def new_login(self) -> str:
+        """The organization's login after the rename."""
+        return self.organization.login
 
 
 class GitTreeMode(StrEnum):
