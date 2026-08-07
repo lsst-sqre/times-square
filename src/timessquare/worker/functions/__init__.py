@@ -8,6 +8,7 @@ from .replace_nbhtml import replace_nbhtml
 from .repo_added import repo_added
 from .repo_push import repo_push
 from .repo_removed import repo_removed
+from .repo_renamed import repo_renamed
 from .schedule_runs import schedule_runs
 from .scheduled_page_run import scheduled_page_run
 
@@ -22,6 +23,7 @@ __all__ = [
     "repo_added",
     "repo_push",
     "repo_removed",
+    "repo_renamed",
     "schedule_runs",
     "scheduled_page_run",
 ]

@@ -196,3 +196,74 @@ async def test_list_conflicting_repository_ids_ignores_deleted(
     )
 
     assert conflicts == []
+
+
+@pytest.mark.asyncio
+async def test_rename_repository_by_id(session: AsyncSession) -> None:
+    """A rename keyed on the stable repository ID flips every one of the
+    repository's pages, whatever name they are currently stored under.
+    """
+    store = PageStore(session=session)
+    store.add(_page("stale", repo="ancient-name", repository_id=42))
+    store.add(_page("current", repo="old-name", repository_id=42))
+    await session.commit()
+
+    renamed = await store.rename_repository(
+        owner="lsst-sqre",
+        old_name="old-name",
+        new_name="new-name",
+        repository_id=42,
+    )
+    await session.commit()
+
+    assert sorted(renamed) == ["current", "stale"]
+    for name in ("stale", "current"):
+        page = await store.get(name)
+        assert page is not None
+        assert page.github_repo == "new-name"
+
+
+@pytest.mark.asyncio
+async def test_rename_repository_null_id_fallback(
+    session: AsyncSession,
+) -> None:
+    """Pages that predate ID capture are renamed through the old name, and
+    the fallback is ID-gated so another repository's pages are left alone.
+    """
+    store = PageStore(session=session)
+    store.add(_page("unbackfilled", repo="old-name"))
+    store.add(_page("impostor", repo="old-name", repository_id=99))
+    await session.commit()
+
+    renamed = await store.rename_repository(
+        owner="lsst-sqre",
+        old_name="old-name",
+        new_name="new-name",
+        repository_id=42,
+    )
+    await session.commit()
+
+    assert renamed == ["unbackfilled"]
+    impostor = await store.get("impostor")
+    assert impostor is not None
+    assert impostor.github_repo == "old-name"
+
+
+@pytest.mark.asyncio
+async def test_rename_repository_is_idempotent(session: AsyncSession) -> None:
+    """A redelivered rename webhook reports no affected pages, because pages
+    already stored under the new name are not matched.
+    """
+    store = PageStore(session=session)
+    store.add(_page("healed", repo="new-name", repository_id=42))
+    await session.commit()
+
+    renamed = await store.rename_repository(
+        owner="lsst-sqre",
+        old_name="old-name",
+        new_name="new-name",
+        repository_id=42,
+    )
+    await session.commit()
+
+    assert renamed == []

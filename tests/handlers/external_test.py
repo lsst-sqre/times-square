@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 import structlog
 from gidgethub.routing import Router
@@ -12,11 +15,17 @@ from safir.arq import MockArqQueue
 from safir.github import GitHubAppClientFactory
 from structlog.stdlib import BoundLogger
 
+from tests.support.arq import RecordingArqQueue
 from tests.support.github import SAMPLE_PRIVATE_KEY, MockGitHubAPI
 from timessquare.config import config
 from timessquare.handlers.external.githubwebhooks import (
     filter_installation_owner,
 )
+from timessquare.handlers.external.githubwebhooks import (
+    router as webhook_router,
+)
+
+DATA = Path(__file__).parent / ".." / "data" / "github_webhooks"
 
 
 @pytest.mark.asyncio
@@ -101,3 +110,74 @@ async def test_filter_installation_owner(
     mock_github_client.set_response({"account": {"login": "foo"}})
     await router.dispatch(event, logger, MockArqQueue(), mock_client_factory)
     assert called is False
+
+
+def _client_factory_for_owner(
+    mocker: MockerFixture, http_client: AsyncClient, owner: str
+) -> GitHubAppClientFactory:
+    """Build a client factory whose installation lookup resolves to ``owner``,
+    which is what ``filter_installation_owner`` gates events on.
+    """
+
+    class OwnerGitHubAPI(MockGitHubAPI):
+        def create_response(
+            self, method: str, url: str, request_json: dict | None
+        ) -> tuple[int, dict, dict]:
+            return 200, {"account": {"login": owner}}, {}
+
+    factory = GitHubAppClientFactory(
+        id=1234,
+        key=SAMPLE_PRIVATE_KEY,
+        name="lsst-sqre/times-square",
+        http_client=http_client,
+    )
+    mocker.patch.object(
+        factory, "create_anonymous_client"
+    ).return_value = OwnerGitHubAPI()
+    return factory
+
+
+@pytest.mark.asyncio
+async def test_handle_repository_renamed(
+    mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """A ``repository`` (renamed) webhook enqueues a ``repo_renamed`` task
+    carrying the parsed payload.
+    """
+    payload = json.loads((DATA / "repository_renamed.json").read_text())
+    event = Event(payload, event="repository", delivery_id="1234")
+    arq_queue = RecordingArqQueue()
+
+    await webhook_router.dispatch(
+        event,
+        structlog.get_logger(__name__),
+        arq_queue,
+        _client_factory_for_owner(mocker, http_client, "lsst-sqre"),
+    )
+
+    assert len(arq_queue.calls) == 1
+    task_name, task_kwargs = arq_queue.calls[0]
+    assert task_name == "repo_renamed"
+    enqueued = task_kwargs["payload"]
+    assert enqueued.old_repo_name == "Hello-World"
+    assert enqueued.repository.name == "Hello-World-Renamed"
+    assert enqueued.repository.id == 186853002
+
+
+@pytest.mark.asyncio
+async def test_handle_repository_renamed_unaccepted_org(
+    mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """A rename from an organization outside the allowlist is ignored."""
+    payload = json.loads((DATA / "repository_renamed.json").read_text())
+    event = Event(payload, event="repository", delivery_id="1234")
+    arq_queue = RecordingArqQueue()
+
+    await webhook_router.dispatch(
+        event,
+        structlog.get_logger(__name__),
+        arq_queue,
+        _client_factory_for_owner(mocker, http_client, "not-accepted"),
+    )
+
+    assert arq_queue.calls == []

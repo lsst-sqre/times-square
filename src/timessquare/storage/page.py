@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from safir.database import datetime_from_db, datetime_to_db
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.page import SqlPage
@@ -256,6 +256,65 @@ class PageStore:
         )
         result = await self._session.execute(statement)
         return sorted(row[0] for row in result.all())
+
+    async def rename_repository(
+        self,
+        *,
+        owner: str,
+        old_name: str,
+        new_name: str,
+        repository_id: int | None = None,
+    ) -> list[str]:
+        """Flip the stored repository name on every page of a GitHub
+        repository in a single statement.
+
+        This is a pure name flip: no other column is touched, so the pages'
+        notebooks, parameters, and cached renders are all left alone.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner. Only used by the
+            name-keyed fallback.
+        old_name : str
+            The repository name the pages are stored under. Only used by the
+            name-keyed fallback.
+        new_name : str
+            The repository name to store.
+        repository_id : int, optional
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this ID — which survives renames — unioned with a
+            match on ``owner``/``old_name`` restricted to pages that have no
+            ID recorded yet.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were renamed. Pages
+            already stored under ``new_name`` are not matched, so a
+            redelivered webhook reports an empty list.
+        """
+        name_match = and_(
+            SqlPage.github_owner == owner, SqlPage.github_repo == old_name
+        )
+        if repository_id is None:
+            repository_match = name_match
+        else:
+            repository_match = or_(
+                SqlPage.github_repository_id == repository_id,
+                and_(SqlPage.github_repository_id.is_(None), name_match),
+            )
+        statement = (
+            update(SqlPage)
+            .where(repository_match)
+            .where(SqlPage.github_repo != new_name)
+            .values(github_repo=new_name)
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
 
     def _rehydrate_page_from_sql(self, sql_page: SqlPage) -> PageModel:
         """Create a page domain model from the SQL result."""

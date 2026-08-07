@@ -373,6 +373,48 @@ class PageService:
         page.date_deleted = datetime.now(UTC)
         await self.update_page_in_store(page)
 
+    async def rename_github_repository(
+        self,
+        *,
+        owner: str,
+        old_name: str,
+        new_name: str,
+        repository_id: int | None = None,
+    ) -> list[str]:
+        """Flip the stored repository name on every page of a GitHub
+        repository.
+
+        This is a pure name flip. A rename does not change the repository's
+        content, and the HTML cache is keyed on each page's own name slug
+        rather than on the repository name, so neither the notebooks nor the
+        cached renders are touched.
+
+        Parameters
+        ----------
+        owner
+            The login name of the repository owner.
+        old_name
+            The repository name the pages are stored under, used to match
+            pages that have no repository ID recorded yet.
+        new_name
+            The repository name to store.
+        repository_id
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this rename-proof ID, falling back to the names
+            only for pages that have no ID recorded yet.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were renamed.
+        """
+        return await self._page_store.rename_repository(
+            owner=owner,
+            old_name=old_name,
+            new_name=new_name,
+            repository_id=repository_id,
+        )
+
     async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
         """Soft delete all pages backed by a specific GitHub repository."""
         for page in await self.get_pages_for_repo(owner=owner, name=name):

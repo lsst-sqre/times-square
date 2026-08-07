@@ -12,11 +12,18 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl
 from safir.github.models import GitHubRepoOwnerModel, GitHubRepositoryModel
-from safir.github.webhooks import GitHubPushEventModel
+from safir.github.webhooks import (
+    GitHubAppInstallationModel,
+    GitHubPushEventModel,
+)
 
 __all__ = [
     "GitHubPushEventWithIdModel",
     "GitHubRepoOwnerWithIdModel",
+    "GitHubRepositoryChangesModel",
+    "GitHubRepositoryNameChangeModel",
+    "GitHubRepositoryRenameChangesModel",
+    "GitHubRepositoryRenamedEventModel",
     "GitHubRepositoryWithIdModel",
     "GitTreeItem",
     "GitTreeMode",
@@ -86,6 +93,78 @@ class GitHubPushEventWithIdModel(GitHubPushEventModel):
             )
         ),
     ]
+
+
+class GitHubRepositoryNameChangeModel(BaseModel):
+    """The ``changes.repository.name`` object of a ``repository`` (renamed)
+    webhook payload.
+    """
+
+    previous: Annotated[
+        str,
+        Field(
+            alias="from",
+            description="The repository's name before the rename.",
+        ),
+    ]
+
+
+class GitHubRepositoryChangesModel(BaseModel):
+    """The ``changes.repository`` object of a ``repository`` (renamed)
+    webhook payload.
+    """
+
+    name: Annotated[
+        GitHubRepositoryNameChangeModel,
+        Field(description="The repository name's previous value."),
+    ]
+
+
+class GitHubRepositoryRenameChangesModel(BaseModel):
+    """The ``changes`` object of a ``repository`` (renamed) webhook
+    payload.
+    """
+
+    repository: Annotated[
+        GitHubRepositoryChangesModel,
+        Field(description="The repository fields that changed."),
+    ]
+
+
+class GitHubRepositoryRenamedEventModel(BaseModel):
+    """A ``repository`` (renamed) webhook payload.
+
+    https://docs.github.com/en/webhooks/webhook-events-and-payloads#repository
+
+    The ``repository`` field already carries the new name; the old name — the
+    name Times Square's pages are still stored under — is only available from
+    ``changes.repository.name.from``.
+    """
+
+    changes: Annotated[
+        GitHubRepositoryRenameChangesModel,
+        Field(description="The fields that changed in this event."),
+    ]
+
+    repository: Annotated[
+        GitHubRepositoryWithIdModel,
+        Field(
+            description=(
+                "The renamed repository, under its new name, including "
+                "numeric IDs."
+            )
+        ),
+    ]
+
+    installation: Annotated[
+        GitHubAppInstallationModel,
+        Field(description="Information about the GitHub App installation."),
+    ]
+
+    @property
+    def old_repo_name(self) -> str:
+        """The repository's name before the rename."""
+        return self.changes.repository.name.previous
 
 
 class GitTreeMode(StrEnum):

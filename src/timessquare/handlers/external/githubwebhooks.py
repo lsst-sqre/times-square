@@ -22,7 +22,10 @@ from safir.github.webhooks import (
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
-from timessquare.storage.github.apimodels import GitHubPushEventWithIdModel
+from timessquare.storage.github.apimodels import (
+    GitHubPushEventWithIdModel,
+    GitHubRepositoryRenamedEventModel,
+)
 
 __all__ = [
     "handle_check_run_created",
@@ -38,6 +41,7 @@ __all__ = [
     "handle_push_event",
     "handle_repositories_added",
     "handle_repositories_removed",
+    "handle_repository_renamed",
     "router",
 ]
 
@@ -335,6 +339,42 @@ async def handle_push_event(
     # Only process push events for the default branch
     if payload.ref == f"refs/heads/{payload.repository.default_branch}":
         await arq_queue.enqueue("repo_push", payload=payload)
+
+
+@router.register("repository", action="renamed")
+@filter_installation_owner
+async def handle_repository_renamed(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Handle the ``repository`` (renamed) webhook event from GitHub.
+
+    Renaming a repository does not change its content, so this only queues a
+    task that flips the repository name stored on the repository's pages.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    payload = GitHubRepositoryRenamedEventModel.model_validate(event.data)
+
+    logger.info(
+        "GitHub repository renamed event",
+        github_owner=payload.repository.owner.login,
+        old_github_repo=payload.old_repo_name,
+        github_repo=payload.repository.name,
+        github_repository_id=payload.repository.id,
+    )
+
+    await arq_queue.enqueue("repo_renamed", payload=payload)
 
 
 @router.register("pull_request", action="opened")

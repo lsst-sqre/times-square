@@ -7,6 +7,7 @@ from pathlib import Path
 
 from timessquare.storage.github.apimodels import (
     GitHubPushEventWithIdModel,
+    GitHubRepositoryRenamedEventModel,
     GitTreeMode,
     RecursiveGitTreeModel,
 )
@@ -27,6 +28,25 @@ def test_push_event_carries_numeric_ids() -> None:
     assert event.repository.owner.id == 21031067
     assert event.repository.owner.login == "Codertocat"
     assert event.installation.id == 456
+
+
+def test_repository_renamed_event() -> None:
+    """Test that the repository rename event exposes both the new name and
+    the name the repository is stored under.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/repository_renamed.json"
+    )
+    event = GitHubRepositoryRenamedEventModel.model_validate_json(
+        json_path.read_text()
+    )
+
+    assert event.old_repo_name == "Hello-World"
+    assert event.repository.name == "Hello-World-Renamed"
+    assert event.repository.id == 186853002
+    assert event.repository.owner.login == "Codertocat"
+    assert event.repository.owner.id == 21031067
+    assert event.installation.id == 1234
 
 
 def test_recursive_git_tree_model_rsp_broadcast() -> None:
