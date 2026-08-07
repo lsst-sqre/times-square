@@ -22,6 +22,7 @@ from safir.database import (
 )
 from safir.dependencies.db_session import db_session_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog.testing import capture_logs
 
 from timessquare.config import config
 from timessquare.dbschema import Base
@@ -138,7 +139,13 @@ def _mock_noteburst(respx_mock: respx.Router) -> None:
     )
 
 
-def _existing_page(name: str, *, owner: str, repo: str) -> PageModel:
+def _existing_page(
+    name: str,
+    *,
+    owner: str,
+    repo: str,
+    repository_id: int | None = REPOSITORY_ID,
+) -> PageModel:
     """Build a page that already matches the synced notebook's content."""
     sidecar = NotebookSidecarFile.parse_yaml(
         (DATA / "times-square-demo" / "demo.yaml").read_text()
@@ -151,7 +158,7 @@ def _existing_page(name: str, *, owner: str, repo: str) -> PageModel:
         date_added=datetime.now(UTC),
         github_owner=owner,
         github_repo=repo,
-        github_repository_id=REPOSITORY_ID,
+        github_repository_id=repository_id,
         repository_path_prefix="",
         repository_display_path_prefix="",
         repository_path_stem="demo",
@@ -216,6 +223,45 @@ async def test_sync_heals_drifted_names(
     assert page.github_owner_id == OWNER_ID
     assert page.github_installation_id == INSTALLATION_ID
     assert [p.name for p in pages] == ["renamed"]
+
+
+@pytest.mark.asyncio
+async def test_sync_skipped_when_names_belong_to_another_repository(
+    harness: RepoSyncHarness, respx_mock: respx.Router
+) -> None:
+    """A push whose owner/repo names are still held by a different
+    repository ID is skipped with a warning, so a recycled repository name
+    cannot collide with the older repository's pages.
+
+    Noteburst is deliberately left unmocked: a skipped sync must not create
+    or execute any page.
+    """
+    async with harness.session.begin():
+        await harness.page_service.add_page_to_store(
+            _existing_page(
+                "squatter",
+                owner="Codertocat",
+                repo="Hello-World",
+                repository_id=REPOSITORY_ID + 1,
+            )
+        )
+
+    repo_service = harness.repo_service(_github_client())
+    with capture_logs() as logs:
+        async with harness.session.begin():
+            await repo_service.sync_from_push(_push_payload())
+
+    async with harness.session.begin():
+        pages = await harness.page_service.get_pages_for_repo(
+            owner="Codertocat", name="Hello-World"
+        )
+
+    assert [page.name for page in pages] == ["squatter"]
+    assert pages[0].github_repository_id == REPOSITORY_ID + 1
+    warnings = [log for log in logs if log["log_level"] == "warning"]
+    assert len(warnings) == 1
+    assert warnings[0]["conflicting_repository_ids"] == [REPOSITORY_ID + 1]
+    assert warnings[0]["github_repository_id"] == REPOSITORY_ID
 
 
 @pytest.mark.asyncio

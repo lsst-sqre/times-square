@@ -225,7 +225,14 @@ class GitHubRepoService:
         repository, owner, and installation IDs, plus the owner and repository
         name strings — so that a rename Times Square missed (because it was
         offline, or because the webhook never arrived) heals on the next push.
+
+        The sync is skipped entirely if the checkout's owner/repository names
+        are still held by a *different* repository ID; see
+        `_names_held_by_other_repository`.
         """
+        if await self._names_held_by_other_repository(checkout):
+            return
+
         existing_pages: dict[str, PageModel] = {}
         for page in await self._page_service.get_pages_for_repo(
             owner=checkout.owner_name,
@@ -315,6 +322,48 @@ class GitHubRepoService:
         for deleted_path in deleted_paths:
             page = existing_pages[deleted_path]
             await self._page_service.soft_delete_page(page)
+
+    async def _names_held_by_other_repository(
+        self, checkout: GitHubRepositoryCheckout
+    ) -> bool:
+        """Report whether the checkout's owner/repository names are still
+        held by pages belonging to a different GitHub repository, logging a
+        warning when they are.
+
+        This is the stale-name guard. GitHub frees a repository's name the
+        moment it is renamed or transferred, so a *different* repository can
+        take it over before Times Square learns about the rename. Syncing
+        then would give the new repository's pages the same display paths as
+        the old repository's, and the name-keyed public routes could not tell
+        them apart. Skipping is safe: the rename webhook (or the daily
+        reconciliation) heals the older pages' names, after which this
+        repository syncs cleanly.
+
+        A checkout with no repository ID (built from a payload that omits it)
+        cannot be checked and is always allowed through.
+        """
+        if checkout.repository_id is None:
+            return False
+
+        page_service = self._page_service
+        conflicting_ids = await page_service.get_conflicting_repository_ids(
+            owner=checkout.owner_name,
+            name=checkout.name,
+            repository_id=checkout.repository_id,
+        )
+        if not conflicting_ids:
+            return False
+
+        self._logger.warning(
+            "Skipping GitHub repository sync: another repository's pages are "
+            "still stored under this owner/repo name. The other repository "
+            "was likely renamed or transferred while Times Square was not "
+            "watching.",
+            full_name=checkout.full_name,
+            github_repository_id=checkout.repository_id,
+            conflicting_repository_ids=conflicting_ids,
+        )
+        return True
 
     async def _refresh_github_identity(
         self,

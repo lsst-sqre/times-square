@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pytest
 import structlog
+from gidgethub.httpx import GitHubAPI
 from httpx import Timeout
 from safir.database import create_database_engine
+from safir.github import GitHubAppClientFactory
 
 from timessquare.config import Config, config
 from timessquare.domain.executionoutcome import (
@@ -78,3 +80,50 @@ async def test_execution_failure_store_lifetime(
         ttl = await factory.redis.ttl(f"execution-failure/{page_id.cache_key}")
         assert 0 < ttl <= 42
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_repo_service_authenticates_by_installation_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A GitHubRepoService built from a webhook payload's installation ID
+    authenticates as that installation directly, rather than resolving the
+    installation from owner/repo name strings that a rename invalidates.
+    """
+    monkeypatch.setattr(config, "github_app_id", 12345)
+
+    installation_ids: list[int] = []
+
+    async def _by_id(
+        self: GitHubAppClientFactory, installation_id: int
+    ) -> GitHubAPI:
+        installation_ids.append(installation_id)
+        return self.create_anonymous_client()
+
+    async def _by_name(
+        self: GitHubAppClientFactory, owner: str, repo: str
+    ) -> GitHubAPI:
+        raise AssertionError(
+            "The installation must not be resolved by repository name."
+        )
+
+    monkeypatch.setattr(
+        GitHubAppClientFactory, "create_installation_client", _by_id
+    )
+    monkeypatch.setattr(
+        GitHubAppClientFactory, "create_installation_client_for_repo", _by_name
+    )
+
+    logger = structlog.get_logger(config.logger_name)
+    engine = create_database_engine(
+        config.database_url, config.database_password.get_secret_value()
+    )
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
+        await factory.create_github_repo_service_for_installation(
+            installation_id=4242
+        )
+    await engine.dispose()
+
+    assert installation_ids == [4242]

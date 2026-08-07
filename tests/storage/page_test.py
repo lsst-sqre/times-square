@@ -136,3 +136,63 @@ async def test_list_pages_for_repository_by_id(
     )
 
     assert sorted(page.name for page in pages) == ["stale", "unbackfilled"]
+
+
+@pytest.mark.asyncio
+async def test_list_pages_for_repository_name_fallback_is_id_gated(
+    session: AsyncSession,
+) -> None:
+    """The name fallback only reaches un-backfilled rows: a row carrying a
+    different repository ID under the same owner/repo names belongs to a
+    different repository and is left alone.
+    """
+    store = PageStore(session=session)
+    store.add(_page("unbackfilled"))
+    store.add(_page("impostor", repository_id=99))
+    await session.commit()
+
+    pages = await store.list_pages_for_repository(
+        owner="lsst-sqre", name="times-square-demo", repository_id=42
+    )
+
+    assert [page.name for page in pages] == ["unbackfilled"]
+
+
+@pytest.mark.asyncio
+async def test_list_conflicting_repository_ids(session: AsyncSession) -> None:
+    """Pages holding an owner/repo name pair on behalf of a different
+    repository ID are reported; the repository's own pages and
+    un-backfilled pages are not.
+    """
+    store = PageStore(session=session)
+    store.add(_page("own", repository_id=42))
+    store.add(_page("unbackfilled"))
+    store.add(_page("impostor", repository_id=99))
+    store.add(_page("elsewhere", repo="other-name", repository_id=101))
+    await session.commit()
+
+    conflicts = await store.list_conflicting_repository_ids(
+        owner="lsst-sqre", name="times-square-demo", repository_id=42
+    )
+
+    assert conflicts == [99]
+
+
+@pytest.mark.asyncio
+async def test_list_conflicting_repository_ids_ignores_deleted(
+    session: AsyncSession,
+) -> None:
+    """Soft-deleted pages do not conflict, so a repository name freed up by
+    an uninstall can be reused by a new repository.
+    """
+    store = PageStore(session=session)
+    deleted = _page("retired", repository_id=99)
+    deleted.date_deleted = datetime.now(UTC)
+    store.add(deleted)
+    await session.commit()
+
+    conflicts = await store.list_conflicting_repository_ids(
+        owner="lsst-sqre", name="times-square-demo", repository_id=42
+    )
+
+    assert conflicts == []

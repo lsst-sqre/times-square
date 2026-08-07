@@ -216,6 +216,47 @@ class PageStore:
             for sql_page in result.scalars()
         ]
 
+    async def list_conflicting_repository_ids(
+        self, *, owner: str, name: str, repository_id: int
+    ) -> list[int]:
+        """List the repository IDs of pages that hold an owner/repository
+        name pair on behalf of some *other* GitHub repository.
+
+        A non-empty result means the ``owner/name`` strings are stale: they
+        still point at pages belonging to a repository that has since been
+        renamed or transferred, and a repository that now answers to those
+        names would collide with them on display paths.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner.
+        name : str
+            The repository name.
+        repository_id : int
+            GitHub's stable numeric ID for the repository claiming the names.
+
+        Returns
+        -------
+        list of int
+            The distinct, sorted repository IDs of conflicting pages. Pages
+            belonging to ``repository_id`` itself, pages with no ID recorded
+            yet, soft-deleted pages, and pull-request preview pages are all
+            excluded.
+        """
+        statement = (
+            select(SqlPage.github_repository_id)
+            .where(SqlPage.github_owner == owner)
+            .where(SqlPage.github_repo == name)
+            .where(SqlPage.github_repository_id.is_not(None))
+            .where(SqlPage.github_repository_id != repository_id)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
+            .distinct()
+        )
+        result = await self._session.execute(statement)
+        return sorted(row[0] for row in result.all())
+
     def _rehydrate_page_from_sql(self, sql_page: SqlPage) -> PageModel:
         """Create a page domain model from the SQL result."""
         parameters = PageParameters.create_and_validate(sql_page.parameters)

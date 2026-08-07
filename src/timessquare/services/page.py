@@ -278,6 +278,33 @@ class PageService:
             repository_id=repository_id,
         )
 
+    async def get_conflicting_repository_ids(
+        self, *, owner: str, name: str, repository_id: int
+    ) -> list[int]:
+        """Get the IDs of other GitHub repositories whose pages are stored
+        under this owner/repository name pair.
+
+        Parameters
+        ----------
+        owner
+            The login name of the repository owner.
+        name
+            The repository name.
+        repository_id
+            GitHub's stable numeric ID for the repository claiming the names.
+
+        Returns
+        -------
+        list of int
+            The distinct repository IDs of conflicting pages, empty when the
+            names are free. A non-empty result means the stored names are
+            stale — they still belong to a repository that was renamed or
+            transferred away.
+        """
+        return await self._page_store.list_conflicting_repository_ids(
+            owner=owner, name=name, repository_id=repository_id
+        )
+
     async def get_github_tree(self) -> list[GitHubNode]:
         """Get the tree of GitHub-backed pages."""
         return await self._page_store.get_github_tree()
