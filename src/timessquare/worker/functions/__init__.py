@@ -2,12 +2,16 @@ from .cleanup_scheduled_runs import cleanup_scheduled_runs
 from .compute_check_run import compute_check_run
 from .create_check_run import create_check_run
 from .create_rerequested_check_run import create_rerequested_check_run
+from .org_renamed import org_renamed
 from .ping import ping
 from .pull_request_sync import pull_request_sync
+from .reconcile_github_names import reconcile_github_names
 from .replace_nbhtml import replace_nbhtml
 from .repo_added import repo_added
 from .repo_push import repo_push
 from .repo_removed import repo_removed
+from .repo_renamed import repo_renamed
+from .repo_transferred import repo_transferred
 from .schedule_runs import schedule_runs
 from .scheduled_page_run import scheduled_page_run
 
@@ -16,12 +20,16 @@ __all__ = [
     "compute_check_run",
     "create_check_run",
     "create_rerequested_check_run",
+    "org_renamed",
     "ping",
     "pull_request_sync",
+    "reconcile_github_names",
     "replace_nbhtml",
     "repo_added",
     "repo_push",
     "repo_removed",
+    "repo_renamed",
+    "repo_transferred",
     "schedule_runs",
     "scheduled_page_run",
 ]

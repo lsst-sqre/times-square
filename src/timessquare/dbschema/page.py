@@ -6,7 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, Unicode, UnicodeText
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Integer,
+    Unicode,
+    UnicodeText,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -103,6 +111,31 @@ class SqlPage(Base):
 
     github_repo: Mapped[str | None] = mapped_column(UnicodeText)
     """The GitHub repository name for GitHub-backed pages."""
+
+    github_repository_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True
+    )
+    """The stable numeric GitHub ID of the repository for GitHub-backed pages.
+
+    Unlike ``github_repo``, this identifier survives repository renames and
+    transfers, so it is the primary key for sync-path lookups. It is nullable
+    because it is backfilled at runtime for pages created before Times Square
+    started capturing it.
+    """
+
+    github_owner_id: Mapped[int | None] = mapped_column(BigInteger)
+    """The stable numeric GitHub ID of the repository owner (user or
+    organization) for GitHub-backed pages.
+
+    Nullable for the same reason as ``github_repository_id``.
+    """
+
+    github_installation_id: Mapped[int | None] = mapped_column(BigInteger)
+    """The numeric ID of the Times Square GitHub App installation that last
+    synced this page.
+
+    Nullable for the same reason as ``github_repository_id``.
+    """
 
     github_commit: Mapped[str | None] = mapped_column(Unicode(40))
     """The SHA of the commit this page corresponds to; only used for pages

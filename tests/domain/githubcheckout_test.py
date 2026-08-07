@@ -15,7 +15,10 @@ from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryTree,
 )
-from timessquare.storage.github.apimodels import RecursiveGitTreeModel
+from timessquare.storage.github.apimodels import (
+    GitHubRepositoryWithIdModel,
+    RecursiveGitTreeModel,
+)
 from timessquare.storage.github.settingsfiles import RepositorySettingsFile
 
 
@@ -130,3 +133,59 @@ async def test_recursive_git_tree_find_notebooks() -> None:
     settings2 = RepositorySettingsFile(ignore=["matplotlib/*"])
     notebook_refs2 = list(repo_tree.find_notebooks(settings2))
     assert len(notebook_refs2) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_captures_github_ids(
+    github_client: GitHubAPI, respx_mock: respx.Router
+) -> None:
+    """Test that GitHubRepositoryCheckout.create() captures the stable
+    numeric GitHub IDs when the repository payload carries them.
+    """
+    settings_blob = json.loads(
+        Path(__file__)
+        .parent.joinpath("../data/times-square-demo/settings-blob.json")
+        .read_text()
+    )
+    respx_mock.get(
+        "https://api.github.com/repos/lsst-sqre/times-square-demo/contents/"
+        "times-square.yaml?ref=abc123"
+    ).mock(return_value=Response(200, json=settings_blob))
+
+    repo = GitHubRepositoryWithIdModel.model_validate(
+        {
+            "id": 4242,
+            "name": "times-square-demo",
+            "full_name": "lsst-sqre/times-square-demo",
+            "owner": {"login": "lsst-sqre", "id": 99},
+            "default_branch": "main",
+            "html_url": "https://github.com/lsst-sqre/times-square-demo",
+            "branches_url": (
+                "https://api.github.com/repos/lsst-sqre/times-square-demo/"
+                "branches{/branch}"
+            ),
+            "contents_url": (
+                "https://api.github.com/repos/lsst-sqre/times-square-demo/"
+                "contents/{+path}"
+            ),
+            "trees_url": (
+                "https://api.github.com/repos/lsst-sqre/times-square-demo/"
+                "git/trees{/sha}"
+            ),
+            "blobs_url": (
+                "https://api.github.com/repos/lsst-sqre/times-square-demo/"
+                "git/blobs{/sha}"
+            ),
+        }
+    )
+
+    checkout = await GitHubRepositoryCheckout.create(
+        github_client=github_client,
+        repo=repo,
+        head_sha="abc123",
+        installation_id=7,
+    )
+
+    assert checkout.repository_id == 4242
+    assert checkout.owner_id == 99
+    assert checkout.installation_id == 7

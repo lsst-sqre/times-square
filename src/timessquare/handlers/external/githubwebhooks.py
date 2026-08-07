@@ -18,11 +18,16 @@ from safir.github.webhooks import (
     GitHubCheckRunEventModel,
     GitHubCheckSuiteEventModel,
     GitHubPullRequestEventModel,
-    GitHubPushEventModel,
 )
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
+from timessquare.storage.github.apimodels import (
+    GitHubOrganizationRenamedEventModel,
+    GitHubPushEventWithIdModel,
+    GitHubRepositoryRenamedEventModel,
+    GitHubRepositoryTransferredEventModel,
+)
 
 __all__ = [
     "handle_check_run_created",
@@ -32,12 +37,15 @@ __all__ = [
     "handle_installation_deleted",
     "handle_installation_suspend",
     "handle_installation_unsuspend",
+    "handle_organization_renamed",
     "handle_ping",
     "handle_pr_opened",
     "handle_pr_sync",
     "handle_push_event",
     "handle_repositories_added",
     "handle_repositories_removed",
+    "handle_repository_renamed",
+    "handle_repository_transferred",
     "router",
 ]
 
@@ -330,11 +338,146 @@ async def handle_push_event(
     )
 
     # Parse webhook payload
-    payload = GitHubPushEventModel.model_validate(event.data)
+    payload = GitHubPushEventWithIdModel.model_validate(event.data)
 
     # Only process push events for the default branch
     if payload.ref == f"refs/heads/{payload.repository.default_branch}":
         await arq_queue.enqueue("repo_push", payload=payload)
+
+
+@router.register("repository", action="renamed")
+@filter_installation_owner
+async def handle_repository_renamed(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Handle the ``repository`` (renamed) webhook event from GitHub.
+
+    Renaming a repository does not change its content, so this only queues a
+    task that flips the repository name stored on the repository's pages.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    payload = GitHubRepositoryRenamedEventModel.model_validate(event.data)
+
+    logger.info(
+        "GitHub repository renamed event",
+        github_owner=payload.repository.owner.login,
+        old_github_repo=payload.old_repo_name,
+        github_repo=payload.repository.name,
+        github_repository_id=payload.repository.id,
+    )
+
+    await arq_queue.enqueue("repo_renamed", payload=payload)
+
+
+@router.register("repository", action="transferred")
+async def handle_repository_transferred(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Handle the ``repository`` (transferred) webhook event from GitHub.
+
+    Transferring a repository does not change its content, so this only
+    queues a task that updates the owner and repository name stored on the
+    repository's pages — or, if the new owner is not one Times Square syncs
+    from, soft-deletes them.
+
+    Unlike the other repository handlers this is deliberately *not* gated on
+    `~timessquare.config.Config.accepted_github_orgs`: a repository
+    transferred out of an accepted org is precisely the case whose pages have
+    to be retired, and gating here would drop that event. The task decides
+    which of the two outcomes applies, and no-ops when it turns out Times
+    Square has no pages for the repository.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    payload = GitHubRepositoryTransferredEventModel.model_validate(event.data)
+
+    logger.info(
+        "GitHub repository transferred event",
+        old_github_owner=payload.old_owner_login,
+        github_owner=payload.repository.owner.login,
+        github_repo=payload.repository.name,
+        github_repository_id=payload.repository.id,
+    )
+
+    await arq_queue.enqueue("repo_transferred", payload=payload)
+
+
+@router.register("organization", action="renamed")
+async def handle_organization_renamed(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Handle the ``organization`` (renamed) webhook event from GitHub.
+
+    Renaming an organization does not change any repository's content, so this
+    only queues a task that flips the owner login stored on the organization's
+    pages.
+
+    `~timessquare.config.Config.accepted_github_orgs` is keyed on login names,
+    so gating this event on the *new* login alone would drop the very event
+    that heals the rename: when an organization is renamed, the allowlist
+    still names it by its old login. The event is therefore accepted when
+    *either* login is allowlisted, and the task warns the operator to update
+    ``TS_GITHUB_ORGS``.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    payload = GitHubOrganizationRenamedEventModel.model_validate(event.data)
+
+    accepted_orgs = config.accepted_github_orgs
+    if (
+        payload.old_login not in accepted_orgs
+        and payload.new_login not in accepted_orgs
+    ):
+        logger.debug(
+            "Ignoring GitHub organization renamed event for unaccepted org",
+            old_github_owner=payload.old_login,
+            github_owner=payload.new_login,
+            accepted_orgs=accepted_orgs,
+        )
+        return
+
+    logger.info(
+        "GitHub organization renamed event",
+        old_github_owner=payload.old_login,
+        github_owner=payload.new_login,
+        github_owner_id=payload.organization.id,
+    )
+
+    await arq_queue.enqueue("org_renamed", payload=payload)
 
 
 @router.register("pull_request", action="opened")

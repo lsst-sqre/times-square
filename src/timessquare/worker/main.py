@@ -25,12 +25,16 @@ from .functions import (
     compute_check_run,
     create_check_run,
     create_rerequested_check_run,
+    org_renamed,
     ping,
     pull_request_sync,
+    reconcile_github_names,
     replace_nbhtml,
     repo_added,
     repo_push,
     repo_removed,
+    repo_renamed,
+    repo_transferred,
     schedule_runs,
     scheduled_page_run,
 )
@@ -143,6 +147,9 @@ class WorkerSettings:
         repo_push,
         repo_added,
         repo_removed,
+        repo_renamed,
+        repo_transferred,
+        org_renamed,
         pull_request_sync,
         compute_check_run,
         # Make the check run timeouts slightly longer than the configured
@@ -167,10 +174,23 @@ class WorkerSettings:
             timeout=60.0,
             unique=True,  # only one worker should run this job at a time
         ),
+        # arq treats an unset cron field as a wildcard, so every daily job
+        # below must pin `minute` as well as `hour`; `hour=11` on its own
+        # fires every minute from 11:00 to 11:59.
         arq.cron(
             cleanup_scheduled_runs,
             hour=11,  # every day at 6 AM EST = 11 AM UTC
+            minute=0,
             timeout=60.0,
+            unique=True,  # only one worker should run this job at a time
+        ),
+        arq.cron(
+            reconcile_github_names,
+            hour=12,  # every day at 7 AM EST = 12 PM UTC
+            minute=0,
+            # One GitHub round trip per repository behind a live page, so the
+            # runtime scales with the number of synced repositories.
+            timeout=300.0,
             unique=True,  # only one worker should run this job at a time
         ),
     ]

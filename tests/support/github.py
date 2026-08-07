@@ -6,17 +6,26 @@ import base64
 import json
 from collections.abc import Mapping
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 import gidgethub.abc as gh_abc
+import respx
 from gidgethub import sansio
+from httpx import Response
 
 __all__ = [
     "CHECK_RUN_GIT_TREE",
     "SAMPLE_PRIVATE_KEY",
     "MockGitHubAPI",
     "MockGitHubCheckRunAPI",
+    "MockGitHubRepoSyncAPI",
+    "github_repository_payload",
+    "mock_github_app_repository",
+    "mock_github_repository_by_id",
 ]
+
+DATA = Path(__file__).parent.parent / "data"
 
 
 SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
@@ -244,3 +253,172 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         if method == "PATCH" and request_json is not None:
             self.patched.append(request_json)
         return 200, self._check_run, {}
+
+
+class MockGitHubRepoSyncAPI(MockGitHubAPI):
+    """A concrete `MockGitHubAPI` serving the reads a repository sync makes.
+
+    A sync reads the ``times-square.yaml`` settings file, the recursive git
+    tree (`CHECK_RUN_GIT_TREE`, which holds one ``demo.ipynb`` /
+    ``demo.yaml`` pair), and the git blobs behind that pair. When
+    ``repository`` is given, the repository resource and its default
+    branch are served too, which is what the app-installation sync path
+    reads before it builds a checkout.
+    """
+
+    def __init__(
+        self,
+        *,
+        notebook_source: str,
+        sidecar_content: str,
+        settings_content: str = 'root: ""\n',
+        repository: dict[str, Any] | None = None,
+        head_sha: str = "abc123",
+        oauth_token: str | None = None,
+        cache: gh_abc.CACHE_TYPE | None = None,
+        base_url: str = sansio.DOMAIN,
+    ) -> None:
+        super().__init__(
+            oauth_token=oauth_token, cache=cache, base_url=base_url
+        )
+        self._notebook_source = notebook_source
+        self._sidecar_content = sidecar_content
+        self._settings_content = settings_content
+        self._repository = repository
+        self._head_sha = head_sha
+        self.requests: list[tuple[str, str]] = []
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes = b"",
+    ) -> tuple[int, Mapping[str, str], bytes]:
+        self.requests.append((method, url))
+        return await super()._request(method, url, headers, body)
+
+    def create_response(
+        self, method: str, url: str, request_json: dict | None
+    ) -> tuple[int, dict, dict]:
+        """Serve the settings file, git tree, git blobs, repository, and
+        default branch that a repository sync reads.
+        """
+        if "times-square.yaml" in url:
+            return 200, _blob(self._settings_content.encode()), {}
+        if "git/trees" in url:
+            return 200, CHECK_RUN_GIT_TREE, {}
+        if "git/blobs/notebooksha" in url:
+            return 200, _blob(self._notebook_source.encode()), {}
+        if "git/blobs/sidecarsha" in url:
+            return 200, _blob(self._sidecar_content.encode()), {}
+        if "/branches/" in url and self._repository is not None:
+            return (
+                200,
+                {
+                    "name": self._repository["default_branch"],
+                    "commit": {
+                        "sha": self._head_sha,
+                        "url": (
+                            "https://api.github.com/repos/x/y/commits/"
+                            f"{self._head_sha}"
+                        ),
+                    },
+                },
+                {},
+            )
+        if self._repository is not None:
+            return 200, self._repository, {}
+        raise AssertionError(f"Unexpected GitHub request: {method} {url}")
+
+
+def github_repository_payload(
+    *, owner: str, repo: str, repository_id: int, owner_id: int
+) -> dict[str, Any]:
+    """Build a GitHub repository resource, based on the recorded push event
+    fixture, under the given names and numeric IDs.
+    """
+    payload = json.loads(
+        (DATA / "github_webhooks" / "push_event.json").read_text()
+    )["repository"]
+    payload["id"] = repository_id
+    payload["name"] = repo
+    payload["full_name"] = f"{owner}/{repo}"
+    payload["owner"]["login"] = owner
+    payload["owner"]["id"] = owner_id
+    return payload
+
+
+def mock_github_app_repository(
+    respx_mock: respx.Router,
+    *,
+    owner: str,
+    repo: str,
+    installation_id: int,
+    repository_id: int,
+    owner_id: int,
+) -> None:
+    """Route the three GitHub App calls that resolve one repository's numeric
+    identity: its installation, that installation's access token, and the
+    repository resource itself.
+    """
+    respx_mock.get(
+        f"https://api.github.com/repos/{owner}/{repo}/installation"
+    ).mock(return_value=Response(200, json={"id": installation_id}))
+    respx_mock.post(
+        "https://api.github.com/app/installations/"
+        f"{installation_id}/access_tokens"
+    ).mock(
+        return_value=Response(
+            201,
+            json={"token": "installation-token", "expires_at": "2100-01-01"},
+        )
+    )
+    respx_mock.get(f"https://api.github.com/repos/{owner}/{repo}").mock(
+        return_value=Response(
+            200,
+            json=github_repository_payload(
+                owner=owner,
+                repo=repo,
+                repository_id=repository_id,
+                owner_id=owner_id,
+            ),
+        )
+    )
+
+
+def mock_github_repository_by_id(
+    respx_mock: respx.Router,
+    *,
+    repository_id: int,
+    installation_id: int,
+    owner: str,
+    repo: str,
+    owner_id: int,
+) -> None:
+    """Route the two GitHub App calls that re-read one repository by its
+    numeric ID: the installation's access token, and the repository resource
+    itself, which answers under whatever names the repository carries now.
+    """
+    respx_mock.post(
+        "https://api.github.com/app/installations/"
+        f"{installation_id}/access_tokens"
+    ).mock(
+        return_value=Response(
+            201,
+            json={"token": "installation-token", "expires_at": "2100-01-01"},
+        )
+    )
+    respx_mock.get(
+        f"https://api.github.com/repositories/{repository_id}"
+    ).mock(
+        return_value=Response(
+            200,
+            json=github_repository_payload(
+                owner=owner,
+                repo=repo,
+                repository_id=repository_id,
+                owner_id=owner_id,
+            ),
+        )
+    )

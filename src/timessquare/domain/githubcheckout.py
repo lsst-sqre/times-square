@@ -13,6 +13,7 @@ from gidgethub.httpx import GitHubAPI
 from safir.github.models import GitHubBlobModel, GitHubRepositoryModel
 
 from timessquare.storage.github.apimodels import (
+    GitHubRepositoryWithIdModel,
     GitTreeItem,
     GitTreeMode,
     RecursiveGitTreeModel,
@@ -76,6 +77,21 @@ class GitHubRepositoryCheckout:
     URL variable is ``sha``.
     """
 
+    repository_id: int | None = None
+    """GitHub's stable numeric ID for the repository, or `None` if the
+    payload this checkout was created from does not carry it.
+    """
+
+    owner_id: int | None = None
+    """GitHub's stable numeric ID for the repository's owner, or `None` if
+    the payload this checkout was created from does not carry it.
+    """
+
+    installation_id: int | None = None
+    """The numeric ID of the Times Square GitHub App installation that this
+    checkout is being read through, or `None` if it is not known.
+    """
+
     @classmethod
     async def create(
         cls,
@@ -84,7 +100,32 @@ class GitHubRepositoryCheckout:
         repo: GitHubRepositoryModel,
         head_sha: str,
         git_ref: str | None = None,
+        installation_id: int | None = None,
     ) -> GitHubRepositoryCheckout:
+        """Create a checkout of a repository at a specific commit.
+
+        Parameters
+        ----------
+        github_client
+            GitHub client, ideally authorized as a GitHub installation.
+        repo
+            The repository. Pass a `~timessquare.storage.github.apimodels
+            .GitHubRepositoryWithIdModel` to also capture GitHub's stable
+            numeric repository and owner IDs; Safir's model does not parse
+            them.
+        head_sha
+            SHA of the commit to check out.
+        git_ref
+            The full git ref, or `None` for a checkout of a bare commit.
+        installation_id
+            The numeric ID of the GitHub App installation that
+            ``github_client`` is authenticated as, if known.
+
+        Returns
+        -------
+        GitHubRepositoryCheckout
+            The checkout.
+        """
         uri = repo.contents_url + "{?ref}"
         data = await retry_transient_github_errors(
             lambda: github_client.getitem(
@@ -94,6 +135,11 @@ class GitHubRepositoryCheckout:
         content_data = GitHubBlobModel.model_validate(data)
         file_content = content_data.decode()
         settings = RepositorySettingsFile.parse_yaml(file_content)
+        repository_id: int | None = None
+        owner_id: int | None = None
+        if isinstance(repo, GitHubRepositoryWithIdModel):
+            repository_id = repo.id
+            owner_id = repo.owner.id
         return cls(
             owner_name=repo.owner.login,
             name=repo.name,
@@ -102,6 +148,9 @@ class GitHubRepositoryCheckout:
             head_sha=head_sha,
             trees_url=repo.trees_url,
             blobs_url=repo.blobs_url,
+            repository_id=repository_id,
+            owner_id=owner_id,
+            installation_id=installation_id,
         )
 
     @property
