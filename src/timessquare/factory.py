@@ -21,6 +21,7 @@ from structlog.stdlib import BoundLogger
 from .config import config
 from .services.backgroundpage import BackgroundPageService
 from .services.githubcheckrun import GitHubCheckRunService
+from .services.githubidbackfill import GitHubIdBackfillService
 from .services.githubrepo import GitHubRepoService
 from .services.page import PageService
 from .services.runscheduler import RunSchedulerService
@@ -312,6 +313,16 @@ class Factory:
             github_client=github_client,
             repo_service=repo_service,
             page_service=self.create_page_service(),
+            logger=self._logger,
+        )
+
+    def create_github_id_backfill_service(self) -> GitHubIdBackfillService:
+        """Create a GitHubIdBackfillService for filling in the numeric GitHub
+        IDs of pages that predate ID capture.
+        """
+        return GitHubIdBackfillService(
+            page_store=self.create_page_store(),
+            github_client_factory=self.create_github_client_factory(),
             logger=self._logger,
         )
 

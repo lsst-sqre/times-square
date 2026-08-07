@@ -215,6 +215,60 @@ async def run_nbstripout(
     await engine.dispose()
 
 
+@main.command("backfill-github-ids")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Report the pages that would be filled in without writing changes.",
+)
+@run_with_asyncio
+async def backfill_github_ids(*, dry_run: bool = False) -> None:
+    """Fill in the numeric GitHub IDs of GitHub-backed pages that have none.
+
+    Times Square records GitHub's stable numeric repository, owner, and app
+    installation IDs on every page it syncs, and keys rename handling on
+    them. Pages created before Times Square started recording those IDs are
+    still matched by their owner and repository name strings until a sync
+    fills the IDs in; this command fills them in for every such page at once,
+    resolving each repository through the GitHub App API.
+
+    Repositories the GitHub App cannot resolve — because they were deleted,
+    made private, or renamed out from under the stored names — are logged and
+    skipped. Use ``rename-github-owner`` for owner renames the App never
+    sees.
+    """
+    logger = structlog.get_logger("timessquare")
+    engine = create_database_engine(
+        config.database_url, config.database_password
+    )
+    if not await is_database_current(engine, logger):
+        raise RuntimeError("Database schema out of date")
+
+    async with Factory.create_standalone(
+        logger=logger, engine=engine
+    ) as factory:
+        backfill_service = factory.create_github_id_backfill_service()
+        report = await backfill_service.backfill(dry_run=dry_run)
+        if dry_run:
+            await factory.db_session.rollback()
+        else:
+            await factory.db_session.commit()
+        logger.info(
+            "Finished backfilling GitHub IDs",
+            repositories_resolved=report.repositories_resolved,
+            repositories_skipped=report.repositories_skipped,
+            pages_updated=report.pages_updated,
+            dry_run=dry_run,
+        )
+        click.echo(
+            f"repositories resolved: {report.repositories_resolved}\n"
+            f"repositories skipped: {report.repositories_skipped}\n"
+            f"pages {'to fill' if dry_run else 'filled'}: "
+            f"{report.pages_updated}"
+        )
+    await engine.dispose()
+
+
 @main.command("rename-github-owner")
 @click.option(
     "--old",

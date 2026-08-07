@@ -471,3 +471,89 @@ async def test_rename_owner_is_idempotent(session: AsyncSession) -> None:
     await session.commit()
 
     assert renamed == []
+
+
+@pytest.mark.asyncio
+async def test_count_pages_missing_github_ids(session: AsyncSession) -> None:
+    """The backfill tally groups pages by their stored owner/repository names,
+    counting only pages that have no repository ID recorded yet.
+    """
+    store = PageStore(session=session)
+    store.add(_page("a", owner="lsst-sqre", repo="demo"))
+    store.add(_page("b", owner="lsst-sqre", repo="demo"))
+    store.add(_page("c", owner="lsst-sitcom", repo="notebooks"))
+    store.add(
+        _page("filled", owner="lsst-sqre", repo="other", repository_id=1)
+    )
+    await session.commit()
+
+    tally = await store.count_pages_missing_github_ids()
+
+    assert tally == {
+        ("lsst-sitcom", "notebooks"): 1,
+        ("lsst-sqre", "demo"): 2,
+    }
+
+
+@pytest.mark.asyncio
+async def test_count_pages_missing_github_ids_skips_uploads(
+    session: AsyncSession,
+) -> None:
+    """Pages uploaded through the API are not GitHub-backed, so they are not
+    backfill targets even though their ID columns are null.
+    """
+    store = PageStore(session=session)
+    store.add(
+        PageModel(
+            name="upload",
+            ipynb="{}",
+            parameters=PageParameters({}),
+            title="Upload",
+            date_added=datetime.now(UTC),
+            uploader_username="someuser",
+        )
+    )
+    await session.commit()
+
+    assert await store.count_pages_missing_github_ids() == {}
+
+
+@pytest.mark.asyncio
+async def test_backfill_github_ids(session: AsyncSession) -> None:
+    """The backfill fills all three numeric IDs on the pages stored under an
+    owner/repository name pair, leaving pages that already have an ID alone.
+    """
+    store = PageStore(session=session)
+    store.add(_page("target", owner="lsst-sqre", repo="demo"))
+    store.add(
+        _page(
+            "filled",
+            owner="lsst-sqre",
+            repo="demo",
+            repository_id=1,
+            owner_id=2,
+            installation_id=3,
+        )
+    )
+    await session.commit()
+
+    backfilled = await store.backfill_github_ids(
+        owner="lsst-sqre",
+        name="demo",
+        repository_id=42,
+        owner_id=7,
+        installation_id=1234,
+    )
+    await session.commit()
+
+    assert backfilled == ["target"]
+    target = await store.get("target")
+    assert target is not None
+    assert target.github_repository_id == 42
+    assert target.github_owner_id == 7
+    assert target.github_installation_id == 1234
+    filled = await store.get("filled")
+    assert filled is not None
+    assert filled.github_repository_id == 1
+    assert filled.github_owner_id == 2
+    assert filled.github_installation_id == 3

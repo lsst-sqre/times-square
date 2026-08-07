@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from safir.database import datetime_from_db, datetime_to_db
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.page import SqlPage
@@ -455,6 +455,97 @@ class PageStore:
                 github_owner=new_owner,
                 github_owner_id=new_owner_id,
                 github_repo=new_name,
+            )
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
+
+    async def count_pages_missing_github_ids(
+        self,
+    ) -> dict[tuple[str, str], int]:
+        """Tally the GitHub-backed pages that have no numeric repository ID
+        recorded yet, grouped by the owner and repository names they are
+        stored under.
+
+        This is the work list for the ``backfill-github-ids`` command: each
+        key is a repository whose identity has to be resolved from the GitHub
+        API, and each value is how many pages that resolution would fill in.
+
+        Soft-deleted pages and pull-request preview pages are included. Their
+        numeric IDs are as much a part of their GitHub identity as any other
+        page's, and grouping means they only cost an extra API call when no
+        live page shares their repository.
+
+        Returns
+        -------
+        dict
+            A mapping from ``(owner, repository name)`` to the number of
+            pages stored under those names with no repository ID. Ordered by
+            owner and then repository name.
+        """
+        statement = (
+            select(
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                func.count().label("page_count"),
+            )
+            .where(SqlPage.github_owner.is_not(None))
+            .where(SqlPage.github_repo.is_not(None))
+            .where(SqlPage.github_repository_id.is_(None))
+            .group_by(SqlPage.github_owner, SqlPage.github_repo)
+            .order_by(SqlPage.github_owner, SqlPage.github_repo)
+        )
+        result = await self._session.execute(statement)
+        return {(row[0], row[1]): row[2] for row in result.all()}
+
+    async def backfill_github_ids(
+        self,
+        *,
+        owner: str,
+        name: str,
+        repository_id: int,
+        owner_id: int,
+        installation_id: int,
+    ) -> list[str]:
+        """Record the numeric repository, owner, and installation IDs on the
+        pages stored under an owner/repository name pair that have none.
+
+        Pages that already carry a repository ID are left alone: their
+        identity came from a sync, which is authoritative, whereas the IDs
+        written here were resolved from name strings that may since have moved
+        to another repository.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner the pages are stored under.
+        name : str
+            The repository name the pages are stored under.
+        repository_id : int
+            GitHub's stable numeric ID for the repository.
+        owner_id : int
+            GitHub's stable numeric ID for the repository owner.
+        installation_id : int
+            The numeric ID of the Times Square GitHub App installation that
+            covers the repository.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were filled in.
+        """
+        statement = (
+            update(SqlPage)
+            .where(SqlPage.github_owner == owner)
+            .where(SqlPage.github_repo == name)
+            .where(SqlPage.github_repository_id.is_(None))
+            .values(
+                github_repository_id=repository_id,
+                github_owner_id=owner_id,
+                github_installation_id=installation_id,
             )
             .returning(SqlPage.name)
         )

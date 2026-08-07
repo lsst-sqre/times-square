@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
+import respx
 import structlog
+from click.testing import CliRunner
 from safir.database import (
+    create_async_session,
     create_database_engine,
     initialize_database,
     stamp_database_async,
@@ -15,13 +19,23 @@ from safir.dependencies.db_session import db_session_dependency
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from timessquare.cli import _rename_github_owner_in_db
+from timessquare.cli import _rename_github_owner_in_db, main
 from timessquare.config import config
 from timessquare.dbschema import Base
 from timessquare.dbschema.page import SqlPage
 from timessquare.domain.page import PageModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.storage.page import PageStore
+
+from .support.github import SAMPLE_PRIVATE_KEY, mock_github_app_repository
+
+APP_ID = 12345
+
+INSTALLATION_ID = 1234
+
+REPOSITORY_ID = 42
+
+OWNER_ID = 7
 
 
 def _make_github_page(
@@ -49,6 +63,44 @@ def _make_github_page(
 async def _owner_by_name(session: AsyncSession, name: str) -> str | None:
     statement = select(SqlPage.github_owner).where(SqlPage.name == name)
     return await session.scalar(statement)
+
+
+async def _seed_pages(*pages: PageModel) -> None:
+    """Reset the database and populate it with pages.
+
+    Each command test seeds through its own engine because the command under
+    test opens the database itself, in its own event loop.
+    """
+    logger = structlog.get_logger(config.logger_name)
+    engine = create_database_engine(
+        config.database_url, config.database_password.get_secret_value()
+    )
+    await initialize_database(engine, logger, schema=Base.metadata, reset=True)
+    await stamp_database_async(engine)
+    session = await create_async_session(engine)
+    store = PageStore(session)
+    for page in pages:
+        store.add(page)
+    await session.commit()
+    await session.aclose()
+    await engine.dispose()
+
+
+async def _github_ids(name: str) -> tuple[int | None, int | None, int | None]:
+    """Read a page's repository, owner, and installation IDs."""
+    engine = create_database_engine(
+        config.database_url, config.database_password.get_secret_value()
+    )
+    session = await create_async_session(engine)
+    page = await PageStore(session).get(name)
+    await session.aclose()
+    await engine.dispose()
+    assert page is not None
+    return (
+        page.github_repository_id,
+        page.github_owner_id,
+        page.github_installation_id,
+    )
 
 
 @pytest.mark.asyncio
@@ -100,3 +152,67 @@ async def test_rename_github_owner() -> None:
             assert await _owner_by_name(session, "page-b") == "other"
     finally:
         await db_session_dependency.aclose()
+
+
+def test_backfill_github_ids(
+    monkeypatch: pytest.MonkeyPatch, respx_mock: respx.Router
+) -> None:
+    """The command fills in the numeric GitHub IDs of pages that have none,
+    resolving each repository through the GitHub App.
+    """
+    asyncio.run(
+        _seed_pages(
+            _make_github_page(
+                name="page-a", github_owner="lsst-sqre", github_repo="demo"
+            )
+        )
+    )
+    monkeypatch.setattr(config, "github_app_id", APP_ID)
+    monkeypatch.setattr(config, "github_app_private_key", SAMPLE_PRIVATE_KEY)
+    mock_github_app_repository(
+        respx_mock,
+        owner="lsst-sqre",
+        repo="demo",
+        installation_id=INSTALLATION_ID,
+        repository_id=REPOSITORY_ID,
+        owner_id=OWNER_ID,
+    )
+
+    result = CliRunner().invoke(main, ["backfill-github-ids"])
+
+    assert result.exit_code == 0, result.output
+    assert "pages filled: 1" in result.output
+    assert asyncio.run(_github_ids("page-a")) == (
+        REPOSITORY_ID,
+        OWNER_ID,
+        INSTALLATION_ID,
+    )
+
+
+def test_backfill_github_ids_dry_run(
+    monkeypatch: pytest.MonkeyPatch, respx_mock: respx.Router
+) -> None:
+    """A dry run reports the pages it would fill in and writes nothing."""
+    asyncio.run(
+        _seed_pages(
+            _make_github_page(
+                name="page-a", github_owner="lsst-sqre", github_repo="demo"
+            )
+        )
+    )
+    monkeypatch.setattr(config, "github_app_id", APP_ID)
+    monkeypatch.setattr(config, "github_app_private_key", SAMPLE_PRIVATE_KEY)
+    mock_github_app_repository(
+        respx_mock,
+        owner="lsst-sqre",
+        repo="demo",
+        installation_id=INSTALLATION_ID,
+        repository_id=REPOSITORY_ID,
+        owner_id=OWNER_ID,
+    )
+
+    result = CliRunner().invoke(main, ["backfill-github-ids", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "pages to fill: 1" in result.output
+    assert asyncio.run(_github_ids("page-a")) == (None, None, None)

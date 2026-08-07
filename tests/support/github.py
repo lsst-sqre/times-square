@@ -6,10 +6,13 @@ import base64
 import json
 from collections.abc import Mapping
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 import gidgethub.abc as gh_abc
+import respx
 from gidgethub import sansio
+from httpx import Response
 
 __all__ = [
     "CHECK_RUN_GIT_TREE",
@@ -17,7 +20,11 @@ __all__ = [
     "MockGitHubAPI",
     "MockGitHubCheckRunAPI",
     "MockGitHubRepoSyncAPI",
+    "github_repository_payload",
+    "mock_github_app_repository",
 ]
+
+DATA = Path(__file__).parent.parent / "data"
 
 
 SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----
@@ -322,3 +329,58 @@ class MockGitHubRepoSyncAPI(MockGitHubAPI):
         if self._repository is not None:
             return 200, self._repository, {}
         raise AssertionError(f"Unexpected GitHub request: {method} {url}")
+
+
+def github_repository_payload(
+    *, owner: str, repo: str, repository_id: int, owner_id: int
+) -> dict[str, Any]:
+    """Build a GitHub repository resource, based on the recorded push event
+    fixture, under the given names and numeric IDs.
+    """
+    payload = json.loads(
+        (DATA / "github_webhooks" / "push_event.json").read_text()
+    )["repository"]
+    payload["id"] = repository_id
+    payload["name"] = repo
+    payload["full_name"] = f"{owner}/{repo}"
+    payload["owner"]["login"] = owner
+    payload["owner"]["id"] = owner_id
+    return payload
+
+
+def mock_github_app_repository(
+    respx_mock: respx.Router,
+    *,
+    owner: str,
+    repo: str,
+    installation_id: int,
+    repository_id: int,
+    owner_id: int,
+) -> None:
+    """Route the three GitHub App calls that resolve one repository's numeric
+    identity: its installation, that installation's access token, and the
+    repository resource itself.
+    """
+    respx_mock.get(
+        f"https://api.github.com/repos/{owner}/{repo}/installation"
+    ).mock(return_value=Response(200, json={"id": installation_id}))
+    respx_mock.post(
+        "https://api.github.com/app/installations/"
+        f"{installation_id}/access_tokens"
+    ).mock(
+        return_value=Response(
+            201,
+            json={"token": "installation-token", "expires_at": "2100-01-01"},
+        )
+    )
+    respx_mock.get(f"https://api.github.com/repos/{owner}/{repo}").mock(
+        return_value=Response(
+            200,
+            json=github_repository_payload(
+                owner=owner,
+                repo=repo,
+                repository_id=repository_id,
+                owner_id=owner_id,
+            ),
+        )
+    )
