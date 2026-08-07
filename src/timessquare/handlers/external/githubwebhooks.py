@@ -25,6 +25,7 @@ from timessquare.config import config
 from timessquare.storage.github.apimodels import (
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
+    GitHubRepositoryTransferredEventModel,
 )
 
 __all__ = [
@@ -42,6 +43,7 @@ __all__ = [
     "handle_repositories_added",
     "handle_repositories_removed",
     "handle_repository_renamed",
+    "handle_repository_transferred",
     "router",
 ]
 
@@ -375,6 +377,50 @@ async def handle_repository_renamed(
     )
 
     await arq_queue.enqueue("repo_renamed", payload=payload)
+
+
+@router.register("repository", action="transferred")
+async def handle_repository_transferred(
+    event: Event,
+    logger: BoundLogger,
+    arq_queue: ArqQueue,
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Handle the ``repository`` (transferred) webhook event from GitHub.
+
+    Transferring a repository does not change its content, so this only
+    queues a task that updates the owner and repository name stored on the
+    repository's pages — or, if the new owner is not one Times Square syncs
+    from, soft-deletes them.
+
+    Unlike the other repository handlers this is deliberately *not* gated on
+    `~timessquare.config.Config.accepted_github_orgs`: a repository
+    transferred out of an accepted org is precisely the case whose pages have
+    to be retired, and gating here would drop that event. The task decides
+    which of the two outcomes applies, and no-ops when it turns out Times
+    Square has no pages for the repository.
+
+    Parameters
+    ----------
+    event : `gidgethub.sansio.Event`
+         The parsed event payload.
+    logger
+        The logger instance
+    arq_queue : `safir.dependencies.arq.ArqQueue`
+        An arq queue client.
+    """
+    payload = GitHubRepositoryTransferredEventModel.model_validate(event.data)
+
+    logger.info(
+        "GitHub repository transferred event",
+        old_github_owner=payload.old_owner_login,
+        github_owner=payload.repository.owner.login,
+        github_repo=payload.repository.name,
+        github_repository_id=payload.repository.id,
+    )
+
+    await arq_queue.enqueue("repo_transferred", payload=payload)
 
 
 @router.register("pull_request", action="opened")

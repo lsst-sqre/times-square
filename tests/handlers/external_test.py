@@ -181,3 +181,56 @@ async def test_handle_repository_renamed_unaccepted_org(
     )
 
     assert arq_queue.calls == []
+
+
+@pytest.mark.asyncio
+async def test_handle_repository_transferred(
+    mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """A ``repository`` (transferred) webhook enqueues a ``repo_transferred``
+    task carrying the parsed payload.
+    """
+    payload = json.loads((DATA / "repository_transferred.json").read_text())
+    event = Event(payload, event="repository", delivery_id="1234")
+    arq_queue = RecordingArqQueue()
+
+    await webhook_router.dispatch(
+        event,
+        structlog.get_logger(__name__),
+        arq_queue,
+        _client_factory_for_owner(mocker, http_client, "lsst-sqre"),
+    )
+
+    assert len(arq_queue.calls) == 1
+    task_name, task_kwargs = arq_queue.calls[0]
+    assert task_name == "repo_transferred"
+    enqueued = task_kwargs["payload"]
+    assert enqueued.old_owner_login == "Codertocat"
+    assert enqueued.repository.owner.login == "lsst-sqre"
+    assert enqueued.repository.owner.id == 30830384
+    assert enqueued.repository.name == "times-square-demo"
+    assert enqueued.repository.id == 186853002
+
+
+@pytest.mark.asyncio
+async def test_handle_repository_transferred_unaccepted_org(
+    mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """A transfer to an owner outside the allowlist is still enqueued: the
+    repository has left Times Square's remit, and the worker task is what
+    soft-deletes its pages.
+    """
+    payload = json.loads((DATA / "repository_transferred.json").read_text())
+    payload["repository"]["owner"]["login"] = "not-accepted"
+    event = Event(payload, event="repository", delivery_id="1234")
+    arq_queue = RecordingArqQueue()
+
+    await webhook_router.dispatch(
+        event,
+        structlog.get_logger(__name__),
+        arq_queue,
+        _client_factory_for_owner(mocker, http_client, "not-accepted"),
+    )
+
+    assert len(arq_queue.calls) == 1
+    assert arq_queue.calls[0][0] == "repo_transferred"

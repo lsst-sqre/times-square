@@ -32,6 +32,7 @@ from .functions import (
     repo_push,
     repo_removed,
     repo_renamed,
+    repo_transferred,
     schedule_runs,
     scheduled_page_run,
 )
@@ -145,6 +146,7 @@ class WorkerSettings:
         repo_added,
         repo_removed,
         repo_renamed,
+        repo_transferred,
         pull_request_sync,
         compute_check_run,
         # Make the check run timeouts slightly longer than the configured

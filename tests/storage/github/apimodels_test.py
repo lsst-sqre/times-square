@@ -8,6 +8,7 @@ from pathlib import Path
 from timessquare.storage.github.apimodels import (
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
+    GitHubRepositoryTransferredEventModel,
     GitTreeMode,
     RecursiveGitTreeModel,
 )
@@ -47,6 +48,42 @@ def test_repository_renamed_event() -> None:
     assert event.repository.owner.login == "Codertocat"
     assert event.repository.owner.id == 21031067
     assert event.installation.id == 1234
+
+
+def test_repository_transferred_event() -> None:
+    """Test that the repository transfer event exposes the new owner's login
+    and numeric ID, and the login of the owner it came from.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/repository_transferred.json"
+    )
+    event = GitHubRepositoryTransferredEventModel.model_validate_json(
+        json_path.read_text()
+    )
+
+    assert event.repository.id == 186853002
+    assert event.repository.name == "times-square-demo"
+    assert event.repository.owner.login == "lsst-sqre"
+    assert event.repository.owner.id == 30830384
+    assert event.old_owner_login == "Codertocat"
+    assert event.installation.id == 1234
+
+
+def test_repository_transferred_event_from_organization() -> None:
+    """Test that the previous owner is also read from an organization
+    transfer, which GitHub reports under a different key than a user
+    transfer.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/repository_transferred.json"
+    )
+    payload = json.loads(json_path.read_text())
+    payload["changes"]["owner"]["from"] = {
+        "organization": {"login": "lsst-sitcom", "id": 12345}
+    }
+    event = GitHubRepositoryTransferredEventModel.model_validate(payload)
+
+    assert event.old_owner_login == "lsst-sitcom"
 
 
 def test_recursive_git_tree_model_rsp_broadcast() -> None:

@@ -22,8 +22,12 @@ __all__ = [
     "GitHubRepoOwnerWithIdModel",
     "GitHubRepositoryChangesModel",
     "GitHubRepositoryNameChangeModel",
+    "GitHubRepositoryOwnerChangeModel",
+    "GitHubRepositoryPreviousOwnerModel",
     "GitHubRepositoryRenameChangesModel",
     "GitHubRepositoryRenamedEventModel",
+    "GitHubRepositoryTransferChangesModel",
+    "GitHubRepositoryTransferredEventModel",
     "GitHubRepositoryWithIdModel",
     "GitTreeItem",
     "GitTreeMode",
@@ -165,6 +169,108 @@ class GitHubRepositoryRenamedEventModel(BaseModel):
     def old_repo_name(self) -> str:
         """The repository's name before the rename."""
         return self.changes.repository.name.previous
+
+
+class GitHubRepositoryPreviousOwnerModel(BaseModel):
+    """The ``changes.owner.from`` object of a ``repository`` (transferred)
+    webhook payload.
+
+    GitHub reports the previous owner under ``organization`` or ``user``
+    depending on what kind of account the repository came from, and only ever
+    sends one of them.
+    """
+
+    organization: Annotated[
+        GitHubRepoOwnerWithIdModel | None,
+        Field(
+            default=None,
+            description="The organization the repository was transferred "
+            "from, if it came from an organization.",
+        ),
+    ]
+
+    user: Annotated[
+        GitHubRepoOwnerWithIdModel | None,
+        Field(
+            default=None,
+            description="The user the repository was transferred from, if it "
+            "came from a user account.",
+        ),
+    ]
+
+    @property
+    def login(self) -> str | None:
+        """The previous owner's login, whichever kind of account it was."""
+        owner = self.organization or self.user
+        return owner.login if owner else None
+
+
+class GitHubRepositoryOwnerChangeModel(BaseModel):
+    """The ``changes.owner`` object of a ``repository`` (transferred) webhook
+    payload.
+    """
+
+    previous: Annotated[
+        GitHubRepositoryPreviousOwnerModel,
+        Field(
+            alias="from",
+            description="The owner the repository was transferred from.",
+        ),
+    ]
+
+
+class GitHubRepositoryTransferChangesModel(BaseModel):
+    """The ``changes`` object of a ``repository`` (transferred) webhook
+    payload.
+    """
+
+    owner: Annotated[
+        GitHubRepositoryOwnerChangeModel,
+        Field(description="The repository owner's previous value."),
+    ]
+
+
+class GitHubRepositoryTransferredEventModel(BaseModel):
+    """A ``repository`` (transferred) webhook payload.
+
+    https://docs.github.com/en/webhooks/webhook-events-and-payloads#repository
+
+    The ``repository`` field carries the repository under its new owner, and
+    possibly under a new name too, since GitHub allows a repository to be
+    renamed as part of a transfer. Only the repository's numeric ID is
+    unchanged, which is why the pages of a transferred repository are matched
+    on that ID alone.
+    """
+
+    changes: Annotated[
+        GitHubRepositoryTransferChangesModel,
+        Field(description="The fields that changed in this event."),
+    ]
+
+    repository: Annotated[
+        GitHubRepositoryWithIdModel,
+        Field(
+            description=(
+                "The transferred repository, under its new owner, including "
+                "numeric IDs."
+            )
+        ),
+    ]
+
+    installation: Annotated[
+        GitHubAppInstallationModel,
+        Field(description="Information about the GitHub App installation."),
+    ]
+
+    @property
+    def old_owner_login(self) -> str | None:
+        """The login of the owner the repository was transferred from.
+
+        This is reported for operators, not used for matching pages: a
+        transfer frees the old ``owner/repo`` name pair immediately, so
+        matching on it risks catching another repository's pages.
+        """
+        return self.changes.owner.previous.login
 
 
 class GitTreeMode(StrEnum):

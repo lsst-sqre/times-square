@@ -415,10 +415,81 @@ class PageService:
             repository_id=repository_id,
         )
 
+    async def transfer_github_repository(
+        self,
+        *,
+        repository_id: int,
+        new_owner: str,
+        new_owner_id: int,
+        new_name: str,
+    ) -> list[str]:
+        """Rewrite the stored owner, owner ID, and repository name on every
+        page of a transferred GitHub repository.
+
+        Like a rename, this is a pure identity flip: the repository's content
+        is unchanged, and the HTML cache is keyed on each page's own name slug
+        rather than on the owner or repository name, so neither the notebooks
+        nor the cached renders are touched.
+
+        Parameters
+        ----------
+        repository_id
+            GitHub's stable numeric ID for the repository. Pages are matched
+            on this ID alone; a transfer frees the repository's old
+            ``owner/repo`` name pair on GitHub immediately, so there is no
+            name-keyed fallback for pages that predate ID capture. Those
+            pages are healed by the next sync of the repository instead.
+        new_owner
+            The login name of the repository's new owner.
+        new_owner_id
+            GitHub's stable numeric ID for the new owner.
+        new_name
+            The repository's name under its new owner, which GitHub allows to
+            change as part of the transfer.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were updated.
+        """
+        return await self._page_store.transfer_repository(
+            repository_id=repository_id,
+            new_owner=new_owner,
+            new_owner_id=new_owner_id,
+            new_name=new_name,
+        )
+
     async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
         """Soft delete all pages backed by a specific GitHub repository."""
         for page in await self.get_pages_for_repo(owner=owner, name=name):
             await self.soft_delete_page(page)
+
+    async def soft_delete_pages_for_repository_id(
+        self, repository_id: int
+    ) -> list[str]:
+        """Soft delete all pages backed by a GitHub repository, matching them
+        on the repository's stable numeric ID alone.
+
+        This is the ID-keyed counterpart of `soft_delete_pages_for_repo`, for
+        callers whose stored owner and repository names are known to be
+        stale — a repository transferred away from Times Square, for example.
+
+        Parameters
+        ----------
+        repository_id
+            GitHub's stable numeric ID for the repository.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were soft-deleted.
+        """
+        pages = await self._page_store.list_pages_for_repository_id(
+            repository_id=repository_id
+        )
+        for page in pages:
+            await self.soft_delete_page(page)
+        return [page.name for page in pages]
 
     async def render_page_template(
         self, name: str, values: Mapping[str, Any]

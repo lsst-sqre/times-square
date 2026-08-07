@@ -250,6 +250,146 @@ async def test_rename_repository_null_id_fallback(
 
 
 @pytest.mark.asyncio
+async def test_transfer_repository_by_id(session: AsyncSession) -> None:
+    """A transfer keyed on the stable repository ID rewrites the owner, the
+    owner ID, and the repository name on every one of the repository's pages.
+    """
+    store = PageStore(session=session)
+    store.add(
+        _page("first", owner="lsst-sitcom", repository_id=42, owner_id=7)
+    )
+    store.add(
+        _page(
+            "second",
+            owner="lsst-sitcom",
+            repo="ancient-name",
+            repository_id=42,
+        )
+    )
+    store.add(_page("elsewhere", owner="lsst-sitcom", repository_id=99))
+    await session.commit()
+
+    transferred = await store.transfer_repository(
+        repository_id=42,
+        new_owner="lsst-so",
+        new_owner_id=8,
+        new_name="new-name",
+    )
+    await session.commit()
+
+    assert sorted(transferred) == ["first", "second"]
+    for name in ("first", "second"):
+        page = await store.get(name)
+        assert page is not None
+        assert page.github_owner == "lsst-so"
+        assert page.github_owner_id == 8
+        assert page.github_repo == "new-name"
+    untouched = await store.get("elsewhere")
+    assert untouched is not None
+    assert untouched.github_owner == "lsst-sitcom"
+
+
+@pytest.mark.asyncio
+async def test_transfer_repository_has_no_name_fallback(
+    session: AsyncSession,
+) -> None:
+    """A transfer never matches pages by name. A transfer frees the old
+    ``owner/repo`` name pair on GitHub immediately, so a name-keyed match
+    could sweep up a different repository's pages.
+    """
+    store = PageStore(session=session)
+    store.add(_page("unbackfilled", owner="lsst-sitcom", repo="old-name"))
+    await session.commit()
+
+    transferred = await store.transfer_repository(
+        repository_id=42,
+        new_owner="lsst-so",
+        new_owner_id=8,
+        new_name="old-name",
+    )
+    await session.commit()
+
+    assert transferred == []
+    page = await store.get("unbackfilled")
+    assert page is not None
+    assert page.github_owner == "lsst-sitcom"
+
+
+@pytest.mark.asyncio
+async def test_transfer_repository_is_idempotent(
+    session: AsyncSession,
+) -> None:
+    """A redelivered transfer webhook reports no affected pages, because
+    pages already stored under the new identity are not matched.
+    """
+    store = PageStore(session=session)
+    store.add(
+        _page(
+            "healed",
+            owner="lsst-so",
+            repo="new-name",
+            repository_id=42,
+            owner_id=8,
+        )
+    )
+    await session.commit()
+
+    transferred = await store.transfer_repository(
+        repository_id=42,
+        new_owner="lsst-so",
+        new_owner_id=8,
+        new_name="new-name",
+    )
+    await session.commit()
+
+    assert transferred == []
+
+
+@pytest.mark.asyncio
+async def test_transfer_repository_fills_null_owner_id(
+    session: AsyncSession,
+) -> None:
+    """A page whose owner strings already match but that predates owner-ID
+    capture is still updated, so the ID is recorded rather than skipped.
+    """
+    store = PageStore(session=session)
+    store.add(_page("no-owner-id", owner="lsst-so", repository_id=42))
+    await session.commit()
+
+    transferred = await store.transfer_repository(
+        repository_id=42,
+        new_owner="lsst-so",
+        new_owner_id=8,
+        new_name="times-square-demo",
+    )
+    await session.commit()
+
+    assert transferred == ["no-owner-id"]
+    page = await store.get("no-owner-id")
+    assert page is not None
+    assert page.github_owner_id == 8
+
+
+@pytest.mark.asyncio
+async def test_list_pages_for_repository_id(session: AsyncSession) -> None:
+    """Listing by repository ID alone matches the repository's live pages
+    whatever names they are stored under, and never matches by name.
+    """
+    store = PageStore(session=session)
+    store.add(_page("stale", owner="lsst-sitcom", repository_id=42))
+    store.add(_page("unbackfilled"))
+    store.add(_page("elsewhere", repository_id=99))
+    deleted = _page("retired", repository_id=42)
+    deleted.date_deleted = datetime.now(UTC)
+    store.add(deleted)
+    await session.commit()
+
+    pages = await store.list_pages_for_repository_id(repository_id=42)
+
+    assert [page.name for page in pages] == ["stale"]
+
+
+@pytest.mark.asyncio
 async def test_rename_repository_is_idempotent(session: AsyncSession) -> None:
     """A redelivered rename webhook reports no affected pages, because pages
     already stored under the new name are not matched.

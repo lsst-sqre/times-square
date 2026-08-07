@@ -216,6 +216,40 @@ class PageStore:
             for sql_page in result.scalars()
         ]
 
+    async def list_pages_for_repository_id(
+        self, *, repository_id: int
+    ) -> list[PageModel]:
+        """Get all live pages backed by a GitHub repository, matching on the
+        repository's stable numeric ID alone.
+
+        Unlike `list_pages_for_repository` this never matches on the stored
+        ``owner``/``repo`` strings, so it is safe to use when those strings
+        are known to be stale — after a transfer, for example, which frees
+        the old name pair on GitHub immediately.
+
+        Parameters
+        ----------
+        repository_id : int
+            GitHub's stable numeric ID for the repository.
+
+        Returns
+        -------
+        list of PageModel
+            The repository's pages. Soft-deleted pages and pull-request
+            preview pages are excluded.
+        """
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.github_repository_id == repository_id)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
+        )
+        result = await self._session.execute(statement)
+        return [
+            self._rehydrate_page_from_sql(sql_page)
+            for sql_page in result.scalars()
+        ]
+
     async def list_conflicting_repository_ids(
         self, *, owner: str, name: str, repository_id: int
     ) -> list[int]:
@@ -309,6 +343,70 @@ class PageStore:
             .where(repository_match)
             .where(SqlPage.github_repo != new_name)
             .values(github_repo=new_name)
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
+
+    async def transfer_repository(
+        self,
+        *,
+        repository_id: int,
+        new_owner: str,
+        new_owner_id: int,
+        new_name: str,
+    ) -> list[str]:
+        """Rewrite the stored owner, owner ID, and repository name on every
+        page of a GitHub repository in a single statement.
+
+        This is a pure identity flip: no other column is touched, so the
+        pages' notebooks, parameters, and cached renders are all left alone.
+
+        Unlike `rename_repository` this has **no** name-keyed fallback for
+        pages that predate ID capture. A transfer frees the repository's old
+        ``owner/repo`` name pair on GitHub the moment it happens, so a
+        name-keyed match could rewrite the pages of whatever repository has
+        since claimed that name. Un-backfilled pages are instead healed by
+        the next sync of the repository.
+
+        Parameters
+        ----------
+        repository_id : int
+            GitHub's stable numeric ID for the repository. This is the only
+            thing pages are matched on.
+        new_owner : str
+            The login name of the repository's new owner.
+        new_owner_id : int
+            GitHub's stable numeric ID for the new owner.
+        new_name : str
+            The repository's name under its new owner. GitHub allows a
+            repository to be renamed as part of a transfer, so this is not
+            necessarily the name the pages are stored under.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were updated. Pages
+            already stored under the new identity are not matched, so a
+            redelivered webhook reports an empty list.
+        """
+        statement = (
+            update(SqlPage)
+            .where(SqlPage.github_repository_id == repository_id)
+            .where(
+                or_(
+                    SqlPage.github_owner != new_owner,
+                    SqlPage.github_repo != new_name,
+                    SqlPage.github_owner_id.is_distinct_from(new_owner_id),
+                )
+            )
+            .values(
+                github_owner=new_owner,
+                github_owner_id=new_owner_id,
+                github_repo=new_name,
+            )
             .returning(SqlPage.name)
         )
         result = await self._session.execute(
