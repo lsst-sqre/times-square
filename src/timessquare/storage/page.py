@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from safir.database import datetime_from_db, datetime_to_db
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.page import SqlPage
@@ -55,6 +55,9 @@ class PageStore:
             cache_ttl=page.cache_ttl,
             github_owner=page.github_owner,
             github_repo=page.github_repo,
+            github_repository_id=page.github_repository_id,
+            github_owner_id=page.github_owner_id,
+            github_installation_id=page.github_installation_id,
             github_commit=page.github_commit,
             repository_path_prefix=page.repository_path_prefix,
             repository_display_path_prefix=page.repository_display_path_prefix,
@@ -102,6 +105,14 @@ class PageStore:
         )
         sql_page.repository_source_sha = page.repository_source_sha
         sql_page.repository_sidecar_sha = page.repository_sidecar_sha
+        # The GitHub identity columns are updatable so that a sync can heal
+        # owner/repo strings that drifted through a rename or transfer, and
+        # backfill the numeric IDs on pages that predate ID capture.
+        sql_page.github_owner = page.github_owner
+        sql_page.github_repo = page.github_repo
+        sql_page.github_repository_id = page.github_repository_id
+        sql_page.github_owner_id = page.github_owner_id
+        sql_page.github_installation_id = page.github_installation_id
 
     async def get(self, name: str) -> PageModel | None:
         """Get a page based on the API slug (name), or get `None` if the
@@ -155,7 +166,12 @@ class PageStore:
         return self._rehydrate_page_from_sql(sql_page)
 
     async def list_pages_for_repository(
-        self, *, owner: str, name: str, commit: str | None = None
+        self,
+        *,
+        owner: str,
+        name: str,
+        commit: str | None = None,
+        repository_id: int | None = None,
     ) -> list[PageModel]:
         """Get all pages backed by a specific GitHub repository.
 
@@ -167,11 +183,25 @@ class PageStore:
             The repository name.
         commit : str, optional
             The commit, if listing pages for a specific GitHub Check Run.
+        repository_id : int, optional
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this ID — which survives renames and transfers —
+            unioned with a name-based match restricted to pages that have no
+            ID recorded yet.
         """
+        name_match = and_(
+            SqlPage.github_owner == owner, SqlPage.github_repo == name
+        )
+        if repository_id is None:
+            repository_match = name_match
+        else:
+            repository_match = or_(
+                SqlPage.github_repository_id == repository_id,
+                and_(SqlPage.github_repository_id.is_(None), name_match),
+            )
         statement = (
             select(SqlPage)
-            .where(SqlPage.github_owner == owner)
-            .where(SqlPage.github_repo == name)
+            .where(repository_match)
             .where(SqlPage.date_deleted == None)  # noqa: E711
         )
         if commit:
@@ -215,6 +245,9 @@ class PageStore:
             cache_ttl=sql_page.cache_ttl,
             github_owner=sql_page.github_owner,
             github_repo=sql_page.github_repo,
+            github_repository_id=sql_page.github_repository_id,
+            github_owner_id=sql_page.github_owner_id,
+            github_installation_id=sql_page.github_installation_id,
             github_commit=sql_page.github_commit,
             repository_path_prefix=sql_page.repository_path_prefix,
             repository_display_path_prefix=(

@@ -16,6 +16,7 @@ __all__ = [
     "SAMPLE_PRIVATE_KEY",
     "MockGitHubAPI",
     "MockGitHubCheckRunAPI",
+    "MockGitHubRepoSyncAPI",
 ]
 
 
@@ -244,3 +245,80 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         if method == "PATCH" and request_json is not None:
             self.patched.append(request_json)
         return 200, self._check_run, {}
+
+
+class MockGitHubRepoSyncAPI(MockGitHubAPI):
+    """A concrete `MockGitHubAPI` serving the reads a repository sync makes.
+
+    A sync reads the ``times-square.yaml`` settings file, the recursive git
+    tree (`CHECK_RUN_GIT_TREE`, which holds one ``demo.ipynb`` /
+    ``demo.yaml`` pair), and the git blobs behind that pair. When
+    ``repository`` is given, the repository resource and its default
+    branch are served too, which is what the app-installation sync path
+    reads before it builds a checkout.
+    """
+
+    def __init__(
+        self,
+        *,
+        notebook_source: str,
+        sidecar_content: str,
+        settings_content: str = 'root: ""\n',
+        repository: dict[str, Any] | None = None,
+        head_sha: str = "abc123",
+        oauth_token: str | None = None,
+        cache: gh_abc.CACHE_TYPE | None = None,
+        base_url: str = sansio.DOMAIN,
+    ) -> None:
+        super().__init__(
+            oauth_token=oauth_token, cache=cache, base_url=base_url
+        )
+        self._notebook_source = notebook_source
+        self._sidecar_content = sidecar_content
+        self._settings_content = settings_content
+        self._repository = repository
+        self._head_sha = head_sha
+        self.requests: list[tuple[str, str]] = []
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes = b"",
+    ) -> tuple[int, Mapping[str, str], bytes]:
+        self.requests.append((method, url))
+        return await super()._request(method, url, headers, body)
+
+    def create_response(
+        self, method: str, url: str, request_json: dict | None
+    ) -> tuple[int, dict, dict]:
+        """Serve the settings file, git tree, git blobs, repository, and
+        default branch that a repository sync reads.
+        """
+        if "times-square.yaml" in url:
+            return 200, _blob(self._settings_content.encode()), {}
+        if "git/trees" in url:
+            return 200, CHECK_RUN_GIT_TREE, {}
+        if "git/blobs/notebooksha" in url:
+            return 200, _blob(self._notebook_source.encode()), {}
+        if "git/blobs/sidecarsha" in url:
+            return 200, _blob(self._sidecar_content.encode()), {}
+        if "/branches/" in url and self._repository is not None:
+            return (
+                200,
+                {
+                    "name": self._repository["default_branch"],
+                    "commit": {
+                        "sha": self._head_sha,
+                        "url": (
+                            "https://api.github.com/repos/x/y/commits/"
+                            f"{self._head_sha}"
+                        ),
+                    },
+                },
+                {},
+            )
+        if self._repository is not None:
+            return 200, self._repository, {}
+        raise AssertionError(f"Unexpected GitHub request: {method} {url}")

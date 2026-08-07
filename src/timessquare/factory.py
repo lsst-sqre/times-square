@@ -292,6 +292,7 @@ class Factory:
             github_client=github_client,
             page_service=self.create_page_service(),
             logger=self._logger,
+            installation_id=installation_id,
         )
 
     async def create_github_check_run_service(

@@ -18,7 +18,6 @@ from safir.github.models import (
     GitHubPullRequestModel,
     GitHubRepositoryModel,
 )
-from safir.github.webhooks import GitHubPushEventModel
 from safir.slack.blockkit import SlackException
 from structlog.stdlib import BoundLogger
 
@@ -26,6 +25,10 @@ from timessquare.config import config
 from timessquare.domain.githubcheckout import (
     GitHubRepositoryCheckout,
     RepositoryNotebookModel,
+)
+from timessquare.storage.github.apimodels import (
+    GitHubPushEventWithIdModel,
+    GitHubRepositoryWithIdModel,
 )
 from timessquare.storage.github.settingsfiles import RepositorySettingsFile
 
@@ -49,6 +52,10 @@ class GitHubRepoService:
         domain.
     logger : `BoundLogger`
         A logger, ideally with request/worker job context already bound.
+    installation_id : `int`, optional
+        The numeric ID of the GitHub App installation that ``github_client``
+        is authenticated as, when it is known. Syncs record it on the pages
+        they touch.
     """
 
     def __init__(
@@ -57,11 +64,13 @@ class GitHubRepoService:
         github_client: GitHubAPI,
         page_service: PageService,
         logger: BoundLogger,
+        installation_id: int | None = None,
     ) -> None:
         self._http_client = http_client
         self._github_client = github_client
         self._page_service = page_service
         self._logger = logger
+        self._installation_id = installation_id
 
     @classmethod
     async def create_for_repo(
@@ -142,12 +151,13 @@ class GitHubRepoService:
             repo=repo,
             git_ref=f"refs/heads/{branch.name}",
             head_sha=branch.commit.sha,
+            installation_id=self._installation_id,
         )
         await self.sync_checkout(checkout)
 
     async def sync_from_push(
         self,
-        push_payload: GitHubPushEventModel,
+        push_payload: GitHubPushEventWithIdModel,
     ) -> None:
         """Synchronize based on a GitHub push event."""
         checkout = await GitHubRepositoryCheckout.create(
@@ -155,18 +165,19 @@ class GitHubRepoService:
             repo=push_payload.repository,
             git_ref=push_payload.ref,
             head_sha=push_payload.after,
+            installation_id=push_payload.installation.id,
         )
         await self.sync_checkout(checkout)
 
     async def request_github_repository(
         self, owner: str, repo: str
-    ) -> GitHubRepositoryModel:
+    ) -> GitHubRepositoryWithIdModel:
         """Request the GitHub repo resource from the GitHub API."""
         uri = "/repos/{owner}/{repo}"
         data = await self._github_client.getitem(
             uri, url_vars={"owner": owner, "repo": repo}
         )
-        return GitHubRepositoryModel.model_validate(data)
+        return GitHubRepositoryWithIdModel.model_validate(data)
 
     async def request_github_branch(
         self, *, url_template: str, branch: str
@@ -209,14 +220,20 @@ class GitHubRepoService:
            4. If disabled, mark the page for deletion.
 
         3. Delete any pages not found in the repository checkout.
+
+        Every pass also refreshes each page's GitHub identity — the numeric
+        repository, owner, and installation IDs, plus the owner and repository
+        name strings — so that a rename Times Square missed (because it was
+        offline, or because the webhook never arrived) heals on the next push.
         """
-        existing_pages = {
-            page.display_path: page
-            for page in await self._page_service.get_pages_for_repo(
-                owner=checkout.owner_name,
-                name=checkout.name,
-            )
-        }
+        existing_pages: dict[str, PageModel] = {}
+        for page in await self._page_service.get_pages_for_repo(
+            owner=checkout.owner_name,
+            name=checkout.name,
+            repository_id=checkout.repository_id,
+        ):
+            await self._refresh_github_identity(page=page, checkout=checkout)
+            existing_pages[page.display_path] = page
         found_display_paths: list[str] = []
         self._logger.debug(
             "Syncing checkout", existing_display_paths=existing_pages.keys()
@@ -299,6 +316,51 @@ class GitHubRepoService:
             page = existing_pages[deleted_path]
             await self._page_service.soft_delete_page(page)
 
+    async def _refresh_github_identity(
+        self,
+        *,
+        page: PageModel,
+        checkout: GitHubRepositoryCheckout,
+    ) -> None:
+        """Bring a page's stored GitHub identity up to date with the checkout,
+        persisting it only when something actually drifted.
+
+        Numeric IDs that the checkout does not know (because the payload it
+        was built from omits them) are left alone rather than cleared.
+        """
+        updates: dict[str, str | int] = {
+            "github_owner": checkout.owner_name,
+            "github_repo": checkout.name,
+        }
+        if checkout.repository_id is not None:
+            updates["github_repository_id"] = checkout.repository_id
+        if checkout.owner_id is not None:
+            updates["github_owner_id"] = checkout.owner_id
+        if checkout.installation_id is not None:
+            updates["github_installation_id"] = checkout.installation_id
+
+        drifted = {
+            field: value
+            for field, value in updates.items()
+            if getattr(page, field) != value
+        }
+        if not drifted:
+            return
+
+        for field, value in drifted.items():
+            setattr(page, field, value)
+        self._logger.info(
+            "Refreshing GitHub identity of page",
+            page_name=page.name,
+            full_name=checkout.full_name,
+            fields=sorted(drifted.keys()),
+        )
+        # The identity does not affect the rendered notebook, so the HTML
+        # cache stays valid.
+        await self._page_service.update_page_in_store(
+            page, drop_html_cache=False
+        )
+
     async def create_page(
         self,
         *,
@@ -339,6 +401,9 @@ class GitHubRepoService:
             parameters=notebook.sidecar.export_parameters(),
             github_owner=checkout.owner_name,
             github_repo=checkout.name,
+            github_repository_id=checkout.repository_id,
+            github_owner_id=checkout.owner_id,
+            github_installation_id=checkout.installation_id,
             repository_path_prefix=notebook.path_prefix,
             repository_display_path_prefix=display_path_prefix,
             repository_path_stem=path_stem,

@@ -18,11 +18,11 @@ from safir.github.webhooks import (
     GitHubCheckRunEventModel,
     GitHubCheckSuiteEventModel,
     GitHubPullRequestEventModel,
-    GitHubPushEventModel,
 )
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
+from timessquare.storage.github.apimodels import GitHubPushEventWithIdModel
 
 __all__ = [
     "handle_check_run_created",
@@ -330,7 +330,7 @@ async def handle_push_event(
     )
 
     # Parse webhook payload
-    payload = GitHubPushEventModel.model_validate(event.data)
+    payload = GitHubPushEventWithIdModel.model_validate(event.data)
 
     # Only process push events for the default branch
     if payload.ref == f"refs/heads/{payload.repository.default_branch}":

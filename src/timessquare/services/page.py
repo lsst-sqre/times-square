@@ -245,11 +245,37 @@ class PageService:
         return await self._page_store.list_page_summaries()
 
     async def get_pages_for_repo(
-        self, owner: str, name: str, commit: str | None = None
+        self,
+        owner: str,
+        name: str,
+        commit: str | None = None,
+        repository_id: int | None = None,
     ) -> list[PageModel]:
-        """Get all pages backed by a specific GitHub repository."""
+        """Get all pages backed by a specific GitHub repository.
+
+        Parameters
+        ----------
+        owner
+            The login name of the repository owner.
+        name
+            The repository name.
+        commit
+            The commit, if listing pages for a specific GitHub Check Run.
+        repository_id
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this rename-proof ID, falling back to the names
+            only for pages that have no ID recorded yet.
+
+        Returns
+        -------
+        list of PageModel
+            The repository's pages.
+        """
         return await self._page_store.list_pages_for_repository(
-            owner=owner, name=name, commit=commit
+            owner=owner,
+            name=name,
+            commit=commit,
+            repository_id=repository_id,
         )
 
     async def get_github_tree(self) -> list[GitHubNode]:

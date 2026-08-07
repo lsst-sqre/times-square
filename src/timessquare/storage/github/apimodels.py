@@ -11,12 +11,81 @@ from pathlib import PurePosixPath
 from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl
+from safir.github.models import GitHubRepoOwnerModel, GitHubRepositoryModel
+from safir.github.webhooks import GitHubPushEventModel
 
 __all__ = [
+    "GitHubPushEventWithIdModel",
+    "GitHubRepoOwnerWithIdModel",
+    "GitHubRepositoryWithIdModel",
     "GitTreeItem",
     "GitTreeMode",
     "RecursiveGitTreeModel",
 ]
+
+
+class GitHubRepoOwnerWithIdModel(GitHubRepoOwnerModel):
+    """A repository owner that retains GitHub's stable numeric ID.
+
+    Safir's `~safir.github.models.GitHubRepoOwnerModel` only parses the
+    owner's ``login``, which changes when an organization or user is renamed.
+    """
+
+    id: Annotated[
+        int,
+        Field(
+            title="Numeric ID",
+            description=(
+                "GitHub's stable numeric ID for the owner, which is "
+                "unaffected by renames."
+            ),
+        ),
+    ]
+
+
+class GitHubRepositoryWithIdModel(GitHubRepositoryModel):
+    """A repository that retains GitHub's stable numeric IDs for both the
+    repository and its owner.
+
+    Safir's `~safir.github.models.GitHubRepositoryModel` only parses the
+    ``name``/``full_name`` strings, which change when a repository is renamed
+    or transferred.
+    """
+
+    id: Annotated[
+        int,
+        Field(
+            title="Numeric ID",
+            description=(
+                "GitHub's stable numeric ID for the repository, which is "
+                "unaffected by renames and transfers."
+            ),
+        ),
+    ]
+
+    owner: Annotated[
+        GitHubRepoOwnerWithIdModel,
+        Field(description="The repository's owner, including its numeric ID."),
+    ]
+
+
+class GitHubPushEventWithIdModel(GitHubPushEventModel):
+    """A ``push`` webhook payload that retains the numeric repository and
+    owner IDs.
+
+    Times Square validates push payloads with this model so that
+    `~timessquare.services.githubrepo.GitHubRepoService` can record the
+    stable IDs on the repository's pages.
+    """
+
+    repository: Annotated[
+        GitHubRepositoryWithIdModel,
+        Field(
+            description=(
+                "The repository that was pushed to, including numeric IDs."
+            )
+        ),
+    ]
 
 
 class GitTreeMode(StrEnum):

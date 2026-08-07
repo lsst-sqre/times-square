@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from timessquare.storage.github.apimodels import (
+    GitHubPushEventWithIdModel,
     GitTreeMode,
     RecursiveGitTreeModel,
 )
+
+
+def test_push_event_carries_numeric_ids() -> None:
+    """Test that the local push event model keeps the numeric repository and
+    owner IDs that Safir's model drops.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/push_event.json"
+    )
+    payload = json.loads(json_path.read_text())
+    payload["installation"]["id"] = 456
+    event = GitHubPushEventWithIdModel.model_validate(payload)
+
+    assert event.repository.id == 186853002
+    assert event.repository.owner.id == 21031067
+    assert event.repository.owner.login == "Codertocat"
+    assert event.installation.id == 456
 
 
 def test_recursive_git_tree_model_rsp_broadcast() -> None:
