@@ -236,6 +236,10 @@ async def backfill_github_ids(*, dry_run: bool = False) -> None:
     made private, or renamed out from under the stored names — are logged and
     skipped. Use ``rename-github-owner`` for owner renames the App never
     sees.
+
+    Resolution is by name, so a stored name that another App-visible
+    repository has claimed since resolves to that repository and fills in its
+    IDs. Run this promptly after deploying, and check ``--dry-run`` first.
     """
     logger = structlog.get_logger("timessquare")
     engine = create_database_engine(

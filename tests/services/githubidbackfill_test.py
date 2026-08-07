@@ -189,3 +189,68 @@ async def test_backfill_skips_unresolvable_repository(
     filled = await store.get("demo")
     assert filled is not None
     assert filled.github_repository_id == 42
+
+
+@pytest.mark.asyncio
+async def test_backfill_reads_all_of_github_before_writing(
+    session: AsyncSession,
+    http_client: AsyncClient,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every GitHub round trip completes before the first row is written.
+
+    Each bulk update takes row locks the caller's transaction holds until it
+    commits, so resolving and writing repository by repository would hold the
+    first repository's locks across every remaining repository's GitHub round
+    trip.
+    """
+    store = PageStore(session=session)
+    store.add(_page("demo", owner="lsst-sqre", repo="times-square-demo"))
+    store.add(_page("other", owner="lsst-sqre", repo="times-square-other"))
+    await session.commit()
+    mock_github_app_repository(
+        respx_mock,
+        owner="lsst-sqre",
+        repo="times-square-demo",
+        installation_id=1234,
+        repository_id=42,
+        owner_id=7,
+    )
+    mock_github_app_repository(
+        respx_mock,
+        owner="lsst-sqre",
+        repo="times-square-other",
+        installation_id=1234,
+        repository_id=43,
+        owner_id=7,
+    )
+
+    github_calls_at_write: list[int] = []
+    backfill_github_ids = store.backfill_github_ids
+
+    async def recording_backfill(
+        *,
+        owner: str,
+        name: str,
+        repository_id: int,
+        owner_id: int,
+        installation_id: int,
+    ) -> list[str]:
+        github_calls_at_write.append(respx_mock.calls.call_count)
+        return await backfill_github_ids(
+            owner=owner,
+            name=name,
+            repository_id=repository_id,
+            owner_id=owner_id,
+            installation_id=installation_id,
+        )
+
+    monkeypatch.setattr(store, "backfill_github_ids", recording_backfill)
+
+    report = await _service(store, http_client).backfill()
+    await session.commit()
+
+    assert report.repositories_resolved == 2
+    total_github_calls = respx_mock.calls.call_count
+    assert github_calls_at_write == [total_github_calls, total_github_calls]

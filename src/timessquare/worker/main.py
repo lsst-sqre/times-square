@@ -174,15 +174,20 @@ class WorkerSettings:
             timeout=60.0,
             unique=True,  # only one worker should run this job at a time
         ),
+        # arq treats an unset cron field as a wildcard, so every daily job
+        # below must pin `minute` as well as `hour`; `hour=11` on its own
+        # fires every minute from 11:00 to 11:59.
         arq.cron(
             cleanup_scheduled_runs,
             hour=11,  # every day at 6 AM EST = 11 AM UTC
+            minute=0,
             timeout=60.0,
             unique=True,  # only one worker should run this job at a time
         ),
         arq.cron(
             reconcile_github_names,
             hour=12,  # every day at 7 AM EST = 12 PM UTC
+            minute=0,
             # One GitHub round trip per repository behind a live page, so the
             # runtime scales with the number of synced repositories.
             timeout=300.0,

@@ -38,6 +38,19 @@ The command is safe to re-run: pages that already carry a repository ID are neve
 Repositories the GitHub App cannot resolve — because they were deleted, made private, or renamed while Times Square was not receiving webhooks — are logged with their owner and repository names and skipped, and the run carries on.
 For an organization or user rename that the App never saw, run :samp:`times-square rename-github-owner --old {old} --new {new}` to update the stored owner strings, then run the backfill again.
 
+.. warning::
+
+   The backfill resolves repositories by the ``owner/repo`` names its pages are stored under, which is precisely the identity a rename invalidates.
+   A repository that was renamed away is only skipped for as long as its old name is *unclaimed*.
+   If another repository the App can see has taken that name — GitHub frees the old name the moment a repository is renamed or transferred — the lookup succeeds and stamps the new repository's IDs onto the old repository's pages.
+   From then on the ID-keyed rename, transfer, and reconciliation machinery treats those pages as belonging to the new repository and rewrites their names to match, which no later backfill undoes.
+
+   Nothing in a by-name lookup can tell the two cases apart, so keep the window short and check the result:
+
+   - Run the backfill promptly after deploying the version that captures IDs, rather than leaving un-backfilled pages around for months.
+   - Run ``--dry-run`` first and read the per-repository log lines: each reports the ``owner/repo`` it resolved along with the repository ID it would write, so an unexpected ID on a repository you know was renamed is the signal to stop.
+   - If a stored name has been recycled, fix the stored names first — with :samp:`times-square rename-github-owner --old {old} --new {new}` for an owner rename — so the backfill resolves the right repository.
+
 Running as a Kubernetes job
 ===========================
 

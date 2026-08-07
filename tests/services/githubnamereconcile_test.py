@@ -281,3 +281,67 @@ async def test_reconcile_continues_past_failures(
     page = await store.get("healed")
     assert page is not None
     assert page.github_repo == "times-square-renamed"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_reads_all_of_github_before_writing(
+    session: AsyncSession,
+    http_client: AsyncClient,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every GitHub round trip completes before the first row is written.
+
+    The bulk update that heals a repository takes row locks that the caller's
+    transaction holds until it commits. Writing as each repository is
+    resolved would hold the first repository's locks across every remaining
+    repository's GitHub round trip — an unbounded stall on concurrent writes
+    to those pages if GitHub is slow.
+    """
+    store = PageStore(session=session)
+    store.add(_page("first"))
+    store.add(_page("second", repo="other-demo", repository_id=99))
+    await session.commit()
+    mock_github_repository_by_id(
+        respx_mock,
+        repository_id=REPOSITORY_ID,
+        installation_id=INSTALLATION_ID,
+        owner=ACCEPTED_OWNER,
+        repo="times-square-renamed",
+        owner_id=OWNER_ID,
+    )
+    mock_github_repository_by_id(
+        respx_mock,
+        repository_id=99,
+        installation_id=INSTALLATION_ID,
+        owner=ACCEPTED_OWNER,
+        repo="other-renamed",
+        owner_id=OWNER_ID,
+    )
+
+    github_calls_at_write: list[int] = []
+    transfer_repository = store.transfer_repository
+
+    async def recording_transfer(
+        *,
+        repository_id: int,
+        new_owner: str,
+        new_owner_id: int,
+        new_name: str,
+    ) -> list[str]:
+        github_calls_at_write.append(respx_mock.calls.call_count)
+        return await transfer_repository(
+            repository_id=repository_id,
+            new_owner=new_owner,
+            new_owner_id=new_owner_id,
+            new_name=new_name,
+        )
+
+    monkeypatch.setattr(store, "transfer_repository", recording_transfer)
+
+    report = await _service(store, http_client).reconcile()
+    await session.commit()
+
+    assert report.repositories_healed == 2
+    total_github_calls = respx_mock.calls.call_count
+    assert github_calls_at_write == [total_github_calls, total_github_calls]

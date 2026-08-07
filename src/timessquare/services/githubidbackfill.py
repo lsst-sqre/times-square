@@ -48,6 +48,23 @@ class _RepositoryIdentity:
     installation_id: int
 
 
+@dataclass(frozen=True, slots=True)
+class _ResolvedRepository:
+    """One repository the GitHub App resolved, ready to be written."""
+
+    owner: str
+    """The owner login the pages are stored under."""
+
+    name: str
+    """The repository name the pages are stored under."""
+
+    page_count: int
+    """The number of pages stored under those names with no repository ID."""
+
+    identity: _RepositoryIdentity
+    """The numeric identity GitHub answered with."""
+
+
 class GitHubIdBackfillService:
     """Fill in the numeric GitHub IDs of pages created before Times Square
     started recording them.
@@ -104,27 +121,40 @@ class GitHubIdBackfillService:
         GitHubIdBackfillReport
             A summary of the run.
 
+        Warnings
+        --------
+        Resolution is by name, which is exactly the identity a rename
+        invalidates, so the backfill is only as trustworthy as the stored
+        names. A repository the App cannot see is skipped, but a stored name
+        that has since been *claimed by a different repository* the App can
+        see resolves successfully and stamps the wrong repository's IDs onto
+        the pages — after which the ID-keyed rename handling rewrites them
+        into that repository in earnest. Nothing in a by-name lookup can
+        distinguish the two cases. Keep the window short: run the backfill
+        promptly after deploying, and read the ``--dry-run`` report first.
+
         Notes
         -----
         This does not commit; the caller is responsible for committing or
         rolling back.
+
+        Every GitHub round trip is made before the first row is written, so
+        that the row locks the bulk updates take are held for one short burst
+        at the end rather than across every remaining repository's round
+        trip.
         """
         tally = await self._page_store.count_pages_missing_github_ids()
-        resolved = 0
-        skipped = 0
+        resolutions, skipped = await self._resolve_all(tally)
+
         pages_updated = 0
-        for (owner, name), page_count in tally.items():
-            identity = await self._resolve_repository(owner=owner, name=name)
-            if identity is None:
-                skipped += 1
-                continue
-            resolved += 1
+        for resolution in resolutions:
+            identity = resolution.identity
             if dry_run:
-                pages_updated += page_count
+                pages_updated += resolution.page_count
             else:
                 backfilled = await self._page_store.backfill_github_ids(
-                    owner=owner,
-                    name=name,
+                    owner=resolution.owner,
+                    name=resolution.name,
                     repository_id=identity.repository_id,
                     owner_id=identity.owner_id,
                     installation_id=identity.installation_id,
@@ -132,26 +162,59 @@ class GitHubIdBackfillService:
                 pages_updated += len(backfilled)
             self._logger.info(
                 "Resolved GitHub IDs for repository",
-                github_owner=owner,
-                github_repo=name,
+                github_owner=resolution.owner,
+                github_repo=resolution.name,
                 github_repository_id=identity.repository_id,
                 github_owner_id=identity.owner_id,
                 github_installation_id=identity.installation_id,
-                page_count=page_count,
+                page_count=resolution.page_count,
                 dry_run=dry_run,
             )
         return GitHubIdBackfillReport(
             dry_run=dry_run,
-            repositories_resolved=resolved,
+            repositories_resolved=len(resolutions),
             repositories_skipped=skipped,
             pages_updated=pages_updated,
         )
+
+    async def _resolve_all(
+        self, tally: dict[tuple[str, str], int]
+    ) -> tuple[list[_ResolvedRepository], int]:
+        """Resolve every repository in the work list through the GitHub API,
+        without writing anything.
+
+        Returns
+        -------
+        tuple
+            The repositories that resolved, and the number that did not.
+        """
+        resolutions = []
+        skipped = 0
+        for (owner, name), page_count in tally.items():
+            identity = await self._resolve_repository(owner=owner, name=name)
+            if identity is None:
+                skipped += 1
+                continue
+            resolutions.append(
+                _ResolvedRepository(
+                    owner=owner,
+                    name=name,
+                    page_count=page_count,
+                    identity=identity,
+                )
+            )
+        return resolutions, skipped
 
     async def _resolve_repository(
         self, *, owner: str, name: str
     ) -> _RepositoryIdentity | None:
         """Resolve a repository's numeric identity from its stored names, or
         return `None` if the GitHub App cannot see it.
+
+        The names are taken at face value. If the repository they used to
+        name has been renamed away and another App-visible repository has
+        claimed the pair since, this answers with that repository's identity
+        instead — see the warning on `backfill`.
         """
         try:
             installation_id = await self._request_installation_id(

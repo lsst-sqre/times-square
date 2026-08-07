@@ -51,6 +51,26 @@ class GitHubNameReconciliationReport:
     """The number of pages whose stored GitHub names were rewritten."""
 
 
+@dataclass(frozen=True, slots=True)
+class _ReconciliationPlan:
+    """Everything GitHub had to say about one reconciliation pass, gathered
+    before any database write.
+    """
+
+    candidates: list[
+        tuple[StoredGitHubRepository, GitHubRepositoryWithIdModel]
+    ]
+    """The repositories that are still Times Square's to heal, each paired
+    with the identity GitHub answered with.
+    """
+
+    repositories_skipped: int
+    """The number of repositories that have left Times Square's remit."""
+
+    repositories_failed: int
+    """The number of repositories the GitHub App could not re-read."""
+
+
 class GitHubNameReconciliationService:
     """Heal drift between the GitHub owner and repository names Times Square
     stores on its pages and the names GitHub currently answers with.
@@ -113,30 +133,22 @@ class GitHubNameReconciliationService:
         -----
         This does not commit; the caller is responsible for committing or
         rolling back.
+
+        Every GitHub round trip is made before the first row is written. The
+        run takes one round trip per synced repository, so interleaving the
+        writes would hold the row locks each bulk update takes for as long as
+        GitHub takes to answer about every *remaining* repository, stalling
+        concurrent writes to those pages; gathering first keeps the locks to
+        one short burst at the end.
         """
-        healed = 0
-        skipped = 0
-        failed = 0
-        pages_updated = 0
         stored_repositories = (
             await self._page_store.list_github_repository_identities()
         )
-        for stored in stored_repositories:
-            current = await self._fetch_repository(stored)
-            if current is None:
-                failed += 1
-                continue
-            if current.owner.login not in config.accepted_github_orgs:
-                self._log_for(stored).warning(
-                    "GitHub repository now belongs to an owner Times Square "
-                    "does not sync from; leaving its pages under their "
-                    "stored names",
-                    current_github_owner=current.owner.login,
-                    current_github_repo=current.name,
-                    accepted_orgs=config.accepted_github_orgs,
-                )
-                skipped += 1
-                continue
+        plan = await self._gather(stored_repositories)
+
+        healed = 0
+        pages_updated = 0
+        for stored, current in plan.candidates:
             page_names = await self._page_store.transfer_repository(
                 repository_id=stored.repository_id,
                 new_owner=current.owner.login,
@@ -157,9 +169,41 @@ class GitHubNameReconciliationService:
         return GitHubNameReconciliationReport(
             repositories_checked=len(stored_repositories),
             repositories_healed=healed,
+            repositories_skipped=plan.repositories_skipped,
+            repositories_failed=plan.repositories_failed,
+            pages_updated=pages_updated,
+        )
+
+    async def _gather(
+        self, stored_repositories: list[StoredGitHubRepository]
+    ) -> _ReconciliationPlan:
+        """Re-read every stored repository from GitHub, without writing
+        anything, and return the ones whose names are Times Square's to heal.
+        """
+        candidates = []
+        skipped = 0
+        failed = 0
+        for stored in stored_repositories:
+            current = await self._fetch_repository(stored)
+            if current is None:
+                failed += 1
+                continue
+            if current.owner.login not in config.accepted_github_orgs:
+                self._log_for(stored).warning(
+                    "GitHub repository now belongs to an owner Times Square "
+                    "does not sync from; leaving its pages under their "
+                    "stored names",
+                    current_github_owner=current.owner.login,
+                    current_github_repo=current.name,
+                    accepted_orgs=config.accepted_github_orgs,
+                )
+                skipped += 1
+                continue
+            candidates.append((stored, current))
+        return _ReconciliationPlan(
+            candidates=candidates,
             repositories_skipped=skipped,
             repositories_failed=failed,
-            pages_updated=pages_updated,
         )
 
     async def _fetch_repository(

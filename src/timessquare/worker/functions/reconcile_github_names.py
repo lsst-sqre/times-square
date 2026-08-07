@@ -49,6 +49,11 @@ async def reconcile_github_names(ctx: dict[Any, Any]) -> str:
         reconciliation_service = (
             factory.create_github_name_reconciliation_service()
         )
+        # One transaction for the whole pass, so a failure part-way through
+        # leaves no half-healed repository behind. The service makes all of
+        # its GitHub round trips before its first write, so the row locks the
+        # heals take are held for one short burst at the end of the run
+        # rather than for the length of the run.
         async with db_session.begin():
             report = await reconciliation_service.reconcile()
 
