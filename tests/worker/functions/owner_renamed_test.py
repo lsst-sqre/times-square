@@ -1,4 +1,4 @@
-"""Tests for the org_renamed worker task."""
+"""Tests for the owner_renamed worker task."""
 
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ from timessquare.domain.page import PageModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.factory import ProcessContext, WorkerFactory
 from timessquare.storage.github.apimodels import (
-    GitHubOrganizationRenamedEventModel,
+    GitHubInstallationTargetRenamedEventModel,
 )
-from timessquare.worker.functions.org_renamed import org_renamed
+from timessquare.worker.functions.owner_renamed import owner_renamed
 
 DATA = Path(__file__).parent / ".." / ".." / "data"
 
@@ -68,14 +68,16 @@ async def worker_ctx() -> AsyncGenerator[dict[str, Any]]:
     await db_session_dependency.aclose()
 
 
-def _payload() -> GitHubOrganizationRenamedEventModel:
-    """Build the organization rename payload from the recorded GitHub
+def _payload() -> GitHubInstallationTargetRenamedEventModel:
+    """Build the installation target rename payload from the recorded GitHub
     fixture.
     """
     payload = json.loads(
-        (DATA / "github_webhooks" / "organization_renamed.json").read_text()
+        (
+            DATA / "github_webhooks" / "installation_target_renamed.json"
+        ).read_text()
     )
-    return GitHubOrganizationRenamedEventModel.model_validate(payload)
+    return GitHubInstallationTargetRenamedEventModel.model_validate(payload)
 
 
 def _page(
@@ -136,11 +138,11 @@ async def _stored_page(
 
 
 @pytest.mark.asyncio
-async def test_org_renamed_flips_owner_by_id(
+async def test_owner_renamed_flips_owner_by_id(
     worker_ctx: dict[str, Any], respx_mock: respx.Router
 ) -> None:
     """A rename keyed on the stable owner ID flips the owner login on the
-    organization's pages, whatever login they are stored under.
+    account's pages, whatever login they are stored under.
 
     ``respx_mock`` with no routes registered means any outbound HTTP call —
     a Noteburst execution or a GitHub content fetch — fails the test.
@@ -155,7 +157,7 @@ async def test_org_renamed_flips_owner_by_id(
         ],
     )
 
-    await org_renamed(worker_ctx, payload=_payload())
+    await owner_renamed(worker_ctx, payload=_payload())
 
     for name in ("stale", "current"):
         page = await _stored_page(process_context, name)
@@ -169,7 +171,7 @@ async def test_org_renamed_flips_owner_by_id(
 
 
 @pytest.mark.asyncio
-async def test_org_renamed_null_id_fallback(
+async def test_owner_renamed_null_id_fallback(
     worker_ctx: dict[str, Any], respx_mock: respx.Router
 ) -> None:
     """Pages that predate owner-ID capture are flipped through the old login,
@@ -184,7 +186,7 @@ async def test_org_renamed_null_id_fallback(
         ],
     )
 
-    await org_renamed(worker_ctx, payload=_payload())
+    await owner_renamed(worker_ctx, payload=_payload())
 
     page = await _stored_page(process_context, "unbackfilled")
     assert page.github_owner == NEW_LOGIN
@@ -196,18 +198,18 @@ async def test_org_renamed_null_id_fallback(
 
 
 @pytest.mark.asyncio
-async def test_org_renamed_warns_to_update_config(
+async def test_owner_renamed_warns_to_update_config(
     worker_ctx: dict[str, Any], respx_mock: respx.Router
 ) -> None:
     """The task warns the operator that ``TS_GITHUB_ORGS`` still names the
-    organization's old login, so its future events would be dropped.
+    account's old login, so its future events would be dropped.
     """
     await _add_pages(
         worker_ctx["process_context"], [_page("page", owner_id=OWNER_ID)]
     )
 
     with capture_logs() as logs:
-        await org_renamed(worker_ctx, payload=_payload())
+        await owner_renamed(worker_ctx, payload=_payload())
 
     warnings = [entry for entry in logs if entry.get("log_level") == "warning"]
     assert len(warnings) == 1
@@ -216,7 +218,7 @@ async def test_org_renamed_warns_to_update_config(
 
 
 @pytest.mark.asyncio
-async def test_org_renamed_logs_affected_count(
+async def test_owner_renamed_logs_affected_count(
     worker_ctx: dict[str, Any], respx_mock: respx.Router
 ) -> None:
     """The task logs how many pages the rename affected."""
@@ -229,8 +231,28 @@ async def test_org_renamed_logs_affected_count(
     )
 
     with capture_logs() as logs:
-        await org_renamed(worker_ctx, payload=_payload())
+        await owner_renamed(worker_ctx, payload=_payload())
 
     assert any(entry.get("page_count") == 2 for entry in logs), json.dumps(
         [entry.get("event") for entry in logs]
     )
+
+
+@pytest.mark.asyncio
+async def test_owner_renamed_without_login_change_is_a_noop(
+    worker_ctx: dict[str, Any], respx_mock: respx.Router
+) -> None:
+    """A payload carrying no login change leaves every page alone. The webhook
+    handler drops these, so this guards the task against a payload shape that
+    changed between enqueueing and running.
+    """
+    process_context = worker_ctx["process_context"]
+    await _add_pages(process_context, [_page("page", owner_id=OWNER_ID)])
+
+    payload = _payload()
+    payload.changes.login = None
+
+    await owner_renamed(worker_ctx, payload=payload)
+
+    page = await _stored_page(process_context, "page")
+    assert page.github_owner == OLD_LOGIN

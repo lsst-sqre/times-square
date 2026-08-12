@@ -2,7 +2,7 @@ from .cleanup_scheduled_runs import cleanup_scheduled_runs
 from .compute_check_run import compute_check_run
 from .create_check_run import create_check_run
 from .create_rerequested_check_run import create_rerequested_check_run
-from .org_renamed import org_renamed
+from .owner_renamed import owner_renamed
 from .ping import ping
 from .pull_request_sync import pull_request_sync
 from .reconcile_github_names import reconcile_github_names
@@ -20,7 +20,7 @@ __all__ = [
     "compute_check_run",
     "create_check_run",
     "create_rerequested_check_run",
-    "org_renamed",
+    "owner_renamed",
     "ping",
     "pull_request_sync",
     "reconcile_github_names",

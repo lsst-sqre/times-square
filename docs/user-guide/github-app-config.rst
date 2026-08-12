@@ -72,19 +72,7 @@ The GitHub App needs the following repository permissions:
 - **Metadata**: Read-only
 - **Pull requests**: Read-only
 
-It also needs one organization permission:
-
-- **Members**: Read-only
-
-GitHub gates each webhook event behind a permission, and **Members** is the permission that gates the **Organization** event described below.
-Times Square only reads the ``renamed`` action of that event and never reads an organization's membership, but the permission is not divisible: the event also carries membership changes, so GitHub sizes the requirement to the most sensitive payload the event can deliver.
-Without this permission the Organization event cannot be selected at all — GitHub only offers an event's checkbox once the app holds the permission that gates it.
-
-.. note::
-
-   Adding a permission to an *existing* GitHub App does not take effect on its own.
-   GitHub raises a permission request on each installation, and an owner of that organization must approve it before Times Square receives any Organization event.
-   Until it is approved, the app keeps working with its previous permissions and organization renames go unhealed until the daily reconciliation cron picks them up.
+No organization permissions are needed.
 
 Events
 ------
@@ -93,13 +81,18 @@ The GitHub App needs to subscribe to the following events:
 
 - Check Run
 - Check Suite
-- Organization
+- Installation target
 - Push
 - Pull request
 - Repository
 
-The **Organization** event lets Times Square follow an organization rename.
-Because :envvar:`TS_GITHUB_ORGS` names organizations by their login, update it to the organization's new login after such a rename; Times Square logs a warning to that effect when it processes the rename.
+The **Installation target** event lets Times Square follow a rename of the account the app is installed on, whether that is an organization or a personal account.
+Because :envvar:`TS_GITHUB_ORGS` names owners by their login, update it to the new login after such a rename; Times Square logs a warning to that effect when it processes the rename.
+
+.. note::
+
+   GitHub's **Organization** event also reports an organization rename, but it is gated behind the **Members** organization permission — the event carries membership changes too, and GitHub sizes each event's permission to the most sensitive payload it can deliver.
+   Times Square uses **Installation target** instead: it needs no permission at all, it covers personal accounts as well as organizations, and it is scoped to exactly the accounts the app is installed on.
 
 .. _github-app-secrets:
 

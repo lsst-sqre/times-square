@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from timessquare.storage.github.apimodels import (
-    GitHubOrganizationRenamedEventModel,
+    GitHubInstallationTargetRenamedEventModel,
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
     GitHubRepositoryTransferredEventModel,
@@ -87,23 +87,58 @@ def test_repository_transferred_event_from_organization() -> None:
     assert event.old_owner_login == "lsst-sitcom"
 
 
-def test_organization_renamed_event() -> None:
-    """Test that the organization rename event exposes both the new login and
-    the login the organization's pages are stored under, along with the
+def test_installation_target_renamed_event() -> None:
+    """Test that the installation target rename event exposes both the new
+    login and the login the account's pages are stored under, along with the
     rename-proof numeric owner ID.
     """
     json_path = Path(__file__).parent.joinpath(
-        "../../data/github_webhooks/organization_renamed.json"
+        "../../data/github_webhooks/installation_target_renamed.json"
     )
-    event = GitHubOrganizationRenamedEventModel.model_validate_json(
+    event = GitHubInstallationTargetRenamedEventModel.model_validate_json(
         json_path.read_text()
     )
 
     assert event.old_login == "lsst-sqre"
     assert event.new_login == "lsst-so"
-    assert event.organization.login == "lsst-so"
-    assert event.organization.id == 30830384
+    assert event.account.login == "lsst-so"
+    assert event.account.id == 30830384
+    assert event.target_type == "Organization"
     assert event.installation.id == 1234
+
+
+def test_installation_target_renamed_event_user_account() -> None:
+    """A personal account rename parses the same way an organization's does:
+    only ``target_type`` distinguishes them, and Times Square treats both as
+    the ``github_owner`` of its pages.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/installation_target_renamed.json"
+    )
+    payload = json.loads(json_path.read_text())
+    payload["target_type"] = "User"
+    payload["account"]["type"] = "User"
+    event = GitHubInstallationTargetRenamedEventModel.model_validate(payload)
+
+    assert event.target_type == "User"
+    assert event.old_login == "lsst-sqre"
+    assert event.new_login == "lsst-so"
+
+
+def test_installation_target_renamed_event_without_login_change() -> None:
+    """GitHub does not mark ``changes.login`` as required, so a payload that
+    renames something other than the login parses with no old login rather
+    than failing validation and 500-ing the webhook endpoint.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/installation_target_renamed.json"
+    )
+    payload = json.loads(json_path.read_text())
+    payload["changes"] = {"slug": {"from": "old-slug"}}
+    event = GitHubInstallationTargetRenamedEventModel.model_validate(payload)
+
+    assert event.old_login is None
+    assert event.new_login == "lsst-so"
 
 
 def test_recursive_git_tree_model_rsp_broadcast() -> None:

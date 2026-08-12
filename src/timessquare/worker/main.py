@@ -25,7 +25,7 @@ from .functions import (
     compute_check_run,
     create_check_run,
     create_rerequested_check_run,
-    org_renamed,
+    owner_renamed,
     ping,
     pull_request_sync,
     reconcile_github_names,
@@ -149,7 +149,7 @@ class WorkerSettings:
         repo_removed,
         repo_renamed,
         repo_transferred,
-        org_renamed,
+        owner_renamed,
         pull_request_sync,
         compute_check_run,
         # Make the check run timeouts slightly longer than the configured

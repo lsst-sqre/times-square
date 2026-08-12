@@ -23,7 +23,7 @@ from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
 from timessquare.storage.github.apimodels import (
-    GitHubOrganizationRenamedEventModel,
+    GitHubInstallationTargetRenamedEventModel,
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
     GitHubRepositoryTransferredEventModel,
@@ -36,8 +36,8 @@ __all__ = [
     "handle_installation_created",
     "handle_installation_deleted",
     "handle_installation_suspend",
+    "handle_installation_target_renamed",
     "handle_installation_unsuspend",
-    "handle_organization_renamed",
     "handle_ping",
     "handle_pr_opened",
     "handle_pr_sync",
@@ -425,25 +425,30 @@ async def handle_repository_transferred(
     await arq_queue.enqueue("repo_transferred", payload=payload)
 
 
-@router.register("organization", action="renamed")
-async def handle_organization_renamed(
+@router.register("installation_target", action="renamed")
+async def handle_installation_target_renamed(
     event: Event,
     logger: BoundLogger,
     arq_queue: ArqQueue,
     *args: Any,
     **kwargs: Any,
 ) -> None:
-    """Handle the ``organization`` (renamed) webhook event from GitHub.
+    """Handle the ``installation_target`` (renamed) webhook event from GitHub.
 
-    Renaming an organization does not change any repository's content, so this
-    only queues a task that flips the owner login stored on the organization's
-    pages.
+    GitHub sends this event when the account a Times Square installation sits
+    on — an organization or a personal account — is renamed. Renaming an
+    account does not change any repository's content, so this only queues a
+    task that flips the owner login stored on that account's pages.
+
+    This event is used in preference to ``organization`` (renamed), which
+    reports the same rename for organizations only and is gated behind the
+    Members organization permission.
 
     `~timessquare.config.Config.accepted_github_orgs` is keyed on login names,
     so gating this event on the *new* login alone would drop the very event
-    that heals the rename: when an organization is renamed, the allowlist
-    still names it by its old login. The event is therefore accepted when
-    *either* login is allowlisted, and the task warns the operator to update
+    that heals the rename: when an account is renamed, the allowlist still
+    names it by its old login. The event is therefore accepted when *either*
+    login is allowlisted, and the task warns the operator to update
     ``TS_GITHUB_ORGS``.
 
     Parameters
@@ -455,29 +460,43 @@ async def handle_organization_renamed(
     arq_queue : `safir.dependencies.arq.ArqQueue`
         An arq queue client.
     """
-    payload = GitHubOrganizationRenamedEventModel.model_validate(event.data)
+    payload = GitHubInstallationTargetRenamedEventModel.model_validate(
+        event.data
+    )
+
+    old_login = payload.old_login
+    if old_login is None:
+        # GitHub does not require changes.login, and without the old login
+        # there is nothing to rename the pages from.
+        logger.debug(
+            "Ignoring GitHub installation target renamed event with no "
+            "login change",
+            github_owner=payload.new_login,
+        )
+        return
 
     accepted_orgs = config.accepted_github_orgs
-    if (
-        payload.old_login not in accepted_orgs
-        and payload.new_login not in accepted_orgs
+    if old_login not in accepted_orgs and payload.new_login not in (
+        accepted_orgs
     ):
         logger.debug(
-            "Ignoring GitHub organization renamed event for unaccepted org",
-            old_github_owner=payload.old_login,
+            "Ignoring GitHub installation target renamed event for "
+            "unaccepted org",
+            old_github_owner=old_login,
             github_owner=payload.new_login,
             accepted_orgs=accepted_orgs,
         )
         return
 
     logger.info(
-        "GitHub organization renamed event",
-        old_github_owner=payload.old_login,
+        "GitHub installation target renamed event",
+        old_github_owner=old_login,
         github_owner=payload.new_login,
-        github_owner_id=payload.organization.id,
+        github_owner_id=payload.account.id,
+        target_type=payload.target_type,
     )
 
-    await arq_queue.enqueue("org_renamed", payload=payload)
+    await arq_queue.enqueue("owner_renamed", payload=payload)
 
 
 @router.register("pull_request", action="opened")

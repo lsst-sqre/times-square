@@ -18,9 +18,9 @@ from safir.github.webhooks import (
 )
 
 __all__ = [
-    "GitHubOrganizationLoginChangeModel",
-    "GitHubOrganizationRenameChangesModel",
-    "GitHubOrganizationRenamedEventModel",
+    "GitHubInstallationTargetChangesModel",
+    "GitHubInstallationTargetLoginChangeModel",
+    "GitHubInstallationTargetRenamedEventModel",
     "GitHubPushEventWithIdModel",
     "GitHubRepoOwnerWithIdModel",
     "GitHubRepositoryChangesModel",
@@ -276,54 +276,80 @@ class GitHubRepositoryTransferredEventModel(BaseModel):
         return self.changes.owner.previous.login
 
 
-class GitHubOrganizationLoginChangeModel(BaseModel):
-    """The ``changes.login`` object of an ``organization`` (renamed) webhook
-    payload.
+class GitHubInstallationTargetLoginChangeModel(BaseModel):
+    """The ``changes.login`` object of an ``installation_target`` (renamed)
+    webhook payload.
     """
 
     previous: Annotated[
         str,
         Field(
             alias="from",
-            description="The organization's login before the rename.",
+            description="The account's login before the rename.",
         ),
     ]
 
 
-class GitHubOrganizationRenameChangesModel(BaseModel):
-    """The ``changes`` object of an ``organization`` (renamed) webhook
+class GitHubInstallationTargetChangesModel(BaseModel):
+    """The ``changes`` object of an ``installation_target`` (renamed) webhook
     payload.
     """
 
     login: Annotated[
-        GitHubOrganizationLoginChangeModel,
-        Field(description="The organization login's previous value."),
+        GitHubInstallationTargetLoginChangeModel | None,
+        Field(
+            default=None,
+            description=(
+                "The account login's previous value. GitHub does not mark "
+                "this field as required, so a payload that renames something "
+                "other than the login carries no old login to rename pages "
+                "from."
+            ),
+        ),
     ]
 
 
-class GitHubOrganizationRenamedEventModel(BaseModel):
-    """An ``organization`` (renamed) webhook payload.
+class GitHubInstallationTargetRenamedEventModel(BaseModel):
+    """An ``installation_target`` (renamed) webhook payload.
 
-    https://docs.github.com/en/webhooks/webhook-events-and-payloads#organization
+    https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation_target
 
-    The ``organization`` field already carries the new login; the old login —
-    the login Times Square's pages are still stored under — is only available
-    from ``changes.login.from``.
+    GitHub sends this event when the user or organization account a GitHub App
+    is installed on is renamed. Times Square uses it in preference to the
+    ``organization`` event, which reports the same rename but is gated behind
+    the Members organization permission and never fires for a personal
+    account.
+
+    The ``account`` field already carries the new login; the old login — the
+    login Times Square's pages are still stored under — is only available from
+    ``changes.login.from``.
     """
 
     changes: Annotated[
-        GitHubOrganizationRenameChangesModel,
+        GitHubInstallationTargetChangesModel,
         Field(description="The fields that changed in this event."),
     ]
 
-    organization: Annotated[
+    account: Annotated[
         GitHubRepoOwnerWithIdModel,
         Field(
             description=(
-                "The renamed organization, under its new login, including "
-                "its numeric ID. An organization payload carries the same "
-                "``login`` and ``id`` fields as a repository owner, so the "
-                "owner model parses it too."
+                "The renamed account, under its new login, including its "
+                "numeric ID. An account payload carries the same ``login`` "
+                "and ``id`` fields as a repository owner, so the owner model "
+                "parses it too."
+            )
+        ),
+    ]
+
+    target_type: Annotated[
+        str,
+        Field(
+            description=(
+                "The kind of account that was renamed, ``Organization`` or "
+                "``User``. Times Square treats both the same way — either is "
+                "the ``github_owner`` of its pages — and records it only for "
+                "operators reading the logs."
             )
         ),
     ]
@@ -334,14 +360,18 @@ class GitHubOrganizationRenamedEventModel(BaseModel):
     ]
 
     @property
-    def old_login(self) -> str:
-        """The organization's login before the rename."""
+    def old_login(self) -> str | None:
+        """The account's login before the rename, or `None` if the payload
+        reports no login change.
+        """
+        if self.changes.login is None:
+            return None
         return self.changes.login.previous
 
     @property
     def new_login(self) -> str:
-        """The organization's login after the rename."""
-        return self.organization.login
+        """The account's login after the rename."""
+        return self.account.login
 
 
 class GitTreeMode(StrEnum):

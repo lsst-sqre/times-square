@@ -5,20 +5,28 @@
       "from": "lsst-sqre"
     }
   },
-  "organization": {
+  "account": {
     "login": "lsst-so",
     "id": 30830384,
     "node_id": "MDEyOk9yZ2FuaXphdGlvbjMwODMwMzg0",
-    "url": "https://api.github.com/orgs/lsst-so",
-    "repos_url": "https://api.github.com/orgs/lsst-so/repos",
-    "events_url": "https://api.github.com/orgs/lsst-so/events",
-    "hooks_url": "https://api.github.com/orgs/lsst-so/hooks",
-    "issues_url": "https://api.github.com/orgs/lsst-so/issues",
-    "members_url": "https://api.github.com/orgs/lsst-so/members{/member}",
-    "public_members_url": "https://api.github.com/orgs/lsst-so/public_members{/member}",
     "avatar_url": "https://avatars.githubusercontent.com/u/30830384?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/lsst-so",
+    "html_url": "https://github.com/lsst-so",
+    "followers_url": "https://api.github.com/users/lsst-so/followers",
+    "following_url": "https://api.github.com/users/lsst-so/following{/other_user}",
+    "gists_url": "https://api.github.com/users/lsst-so/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/lsst-so/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/lsst-so/subscriptions",
+    "organizations_url": "https://api.github.com/users/lsst-so/orgs",
+    "repos_url": "https://api.github.com/users/lsst-so/repos",
+    "events_url": "https://api.github.com/users/lsst-so/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/lsst-so/received_events",
+    "type": "Organization",
+    "site_admin": false,
     "description": null
   },
+  "target_type": "Organization",
   "sender": {
     "login": "Codertocat",
     "id": 21031067,

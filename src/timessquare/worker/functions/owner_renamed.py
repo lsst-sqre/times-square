@@ -1,4 +1,4 @@
-"""Worker function that processes an org_renamed task."""
+"""Worker function that processes an owner_renamed task."""
 
 from __future__ import annotations
 
@@ -10,40 +10,49 @@ from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 from timessquare.config import config
 from timessquare.factory import WorkerFactory
 from timessquare.storage.github.apimodels import (
-    GitHubOrganizationRenamedEventModel,
+    GitHubInstallationTargetRenamedEventModel,
 )
 
 
-async def org_renamed(
-    ctx: dict[Any, Any], *, payload: GitHubOrganizationRenamedEventModel
+async def owner_renamed(
+    ctx: dict[Any, Any],
+    *,
+    payload: GitHubInstallationTargetRenamedEventModel,
 ) -> str:
-    """Process org_renamed queue tasks, triggered by ``organization``
-    (renamed) events on GitHub.
+    """Process owner_renamed queue tasks, triggered by
+    ``installation_target`` (renamed) events on GitHub.
 
-    Renaming an organization does not change any repository's content, so this
-    task only flips the owner login stored on the organization's pages. No
-    content is re-synced and no notebook is re-executed.
+    Renaming the account a Times Square installation sits on — an organization
+    or a personal account — does not change any repository's content, so this
+    task only flips the owner login stored on that account's pages. No content
+    is re-synced and no notebook is re-executed.
 
     Pages are matched on GitHub's stable numeric owner ID, with a fallback to
     the old login restricted to pages that have no owner ID recorded yet.
     """
     old_login = payload.old_login
+    if old_login is None:
+        # The webhook handler drops these, so reaching here means the payload
+        # changed shape between enqueueing and running.
+        return "No login change in payload"
+
     new_login = payload.new_login
     logger = ctx["logger"].bind(
-        task="org_renamed",
+        task="owner_renamed",
         old_github_owner=old_login,
         github_owner=new_login,
-        github_owner_id=payload.organization.id,
+        github_owner_id=payload.account.id,
+        target_type=payload.target_type,
     )
-    logger.info("Running org_renamed")
+    logger.info("Running owner_renamed")
 
     if new_login not in config.accepted_github_orgs:
         # TS_GITHUB_ORGS is keyed on login names, so until an operator updates
-        # it the organization's own future events are dropped by the webhook
+        # it the account's own future events are dropped by the webhook
         # handlers' allowlist gate.
         logger.warning(
-            "GitHub organization renamed; update TS_GITHUB_ORGS to its new "
-            "login or Times Square will ignore its future events",
+            "GitHub owner renamed; update TS_GITHUB_ORGS to its new login or "
+            "Times Square will ignore its future events",
             accepted_orgs=config.accepted_github_orgs,
         )
 
@@ -60,10 +69,10 @@ async def org_renamed(
                 page_names = await page_service.rename_github_owner(
                     old_login=old_login,
                     new_login=new_login,
-                    owner_id=payload.organization.id,
+                    owner_id=payload.account.id,
                 )
             logger.info(
-                "Renamed GitHub organization pages",
+                "Renamed GitHub owner pages",
                 page_count=len(page_names),
                 page_names=page_names,
             )
@@ -73,9 +82,9 @@ async def org_renamed(
                 SlackMessage(
                     message="Times Square worker exception.",
                     fields=[
-                        SlackTextField(heading="Task", text="org_renamed"),
+                        SlackTextField(heading="Task", text="owner_renamed"),
                         SlackTextField(
-                            heading="Organization",
+                            heading="Owner",
                             text=f"https://github.com/{new_login}",
                         ),
                     ],

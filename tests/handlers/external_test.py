@@ -184,31 +184,36 @@ async def test_handle_repository_renamed_unaccepted_org(
     assert arq_queue.calls == []
 
 
-def _organization_renamed_payload(*, old_login: str, new_login: str) -> dict:
-    """Re-point the recorded organization rename fixture at a given pair of
-    old and new logins.
+def _installation_target_renamed_payload(
+    *, old_login: str, new_login: str
+) -> dict:
+    """Re-point the recorded installation target rename fixture at a given
+    pair of old and new logins.
     """
-    payload = json.loads((DATA / "organization_renamed.json").read_text())
+    payload = json.loads(
+        (DATA / "installation_target_renamed.json").read_text()
+    )
     payload["changes"]["login"]["from"] = old_login
-    payload["organization"]["login"] = new_login
+    payload["account"]["login"] = new_login
     return payload
 
 
 @pytest.mark.asyncio
-async def test_handle_organization_renamed_old_login_accepted(
+async def test_handle_installation_target_renamed_old_login_accepted(
     mocker: MockerFixture, http_client: AsyncClient
 ) -> None:
-    """An ``organization`` (renamed) webhook is processed when only the *old*
-    login is in the allowlist, which is the normal case: ``TS_GITHUB_ORGS``
-    still names the organization Times Square knew before the rename.
+    """An ``installation_target`` (renamed) webhook is processed when only the
+    *old* login is in the allowlist, which is the normal case:
+    ``TS_GITHUB_ORGS`` still names the account Times Square knew before the
+    rename.
 
     The client factory here resolves to an unaccepted owner to prove the gate
     reads the payload's logins rather than the installation's account.
     """
-    payload = _organization_renamed_payload(
+    payload = _installation_target_renamed_payload(
         old_login="lsst-sqre", new_login="lsst-so"
     )
-    event = Event(payload, event="organization", delivery_id="1234")
+    event = Event(payload, event="installation_target", delivery_id="1234")
     arq_queue = RecordingArqQueue()
 
     await webhook_router.dispatch(
@@ -220,25 +225,25 @@ async def test_handle_organization_renamed_old_login_accepted(
 
     assert len(arq_queue.calls) == 1
     task_name, task_kwargs = arq_queue.calls[0]
-    assert task_name == "org_renamed"
+    assert task_name == "owner_renamed"
     enqueued = task_kwargs["payload"]
     assert enqueued.old_login == "lsst-sqre"
     assert enqueued.new_login == "lsst-so"
-    assert enqueued.organization.id == 30830384
+    assert enqueued.account.id == 30830384
 
 
 @pytest.mark.asyncio
-async def test_handle_organization_renamed_new_login_accepted(
+async def test_handle_installation_target_renamed_new_login_accepted(
     mocker: MockerFixture, http_client: AsyncClient
 ) -> None:
-    """An ``organization`` (renamed) webhook is processed when only the *new*
-    login is in the allowlist, which is the case when an operator updated
-    ``TS_GITHUB_ORGS`` ahead of the rename.
+    """An ``installation_target`` (renamed) webhook is processed when only the
+    *new* login is in the allowlist, which is the case when an operator
+    updated ``TS_GITHUB_ORGS`` ahead of the rename.
     """
-    payload = _organization_renamed_payload(
+    payload = _installation_target_renamed_payload(
         old_login="lsst-sitcom", new_login="lsst-sqre"
     )
-    event = Event(payload, event="organization", delivery_id="1234")
+    event = Event(payload, event="installation_target", delivery_id="1234")
     arq_queue = RecordingArqQueue()
 
     await webhook_router.dispatch(
@@ -250,21 +255,48 @@ async def test_handle_organization_renamed_new_login_accepted(
 
     assert len(arq_queue.calls) == 1
     task_name, task_kwargs = arq_queue.calls[0]
-    assert task_name == "org_renamed"
+    assert task_name == "owner_renamed"
     assert task_kwargs["payload"].old_login == "lsst-sitcom"
 
 
 @pytest.mark.asyncio
-async def test_handle_organization_renamed_neither_login_accepted(
+async def test_handle_installation_target_renamed_neither_login_accepted(
     mocker: MockerFixture, http_client: AsyncClient
 ) -> None:
     """A rename where neither login is in the allowlist is ignored, with a
     debug log rather than an enqueued task.
     """
-    payload = _organization_renamed_payload(
+    payload = _installation_target_renamed_payload(
         old_login="lsst-sitcom", new_login="lsst-so"
     )
-    event = Event(payload, event="organization", delivery_id="1234")
+    event = Event(payload, event="installation_target", delivery_id="1234")
+    arq_queue = RecordingArqQueue()
+
+    with capture_logs() as logs:
+        await webhook_router.dispatch(
+            event,
+            structlog.get_logger(__name__),
+            arq_queue,
+            _client_factory_for_owner(mocker, http_client, "lsst-sqre"),
+        )
+
+    assert arq_queue.calls == []
+    assert [entry["log_level"] for entry in logs] == ["debug"]
+
+
+@pytest.mark.asyncio
+async def test_handle_installation_target_renamed_without_login_change(
+    mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """GitHub does not mark ``changes.login`` as required, so a payload with
+    no login change is ignored rather than enqueuing a task that has no old
+    login to rename pages from.
+    """
+    payload = _installation_target_renamed_payload(
+        old_login="lsst-sqre", new_login="lsst-so"
+    )
+    payload["changes"] = {"slug": {"from": "old-slug"}}
+    event = Event(payload, event="installation_target", delivery_id="1234")
     arq_queue = RecordingArqQueue()
 
     with capture_logs() as logs:
