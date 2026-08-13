@@ -15,5 +15,10 @@ function = "timessquare.main:create_openapi"
 [sphinx]
 rst_epilog_file = "_rst_epilog.rst"
 
+[sphinx.linkcheck]
+ignore = [
+    '^https://times-square\.lsst\.io/'
+]
+
 [sphinx.intersphinx.projects]
 python = "https://docs.python.org/3/"
