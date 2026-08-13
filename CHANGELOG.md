@@ -8,6 +8,19 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.27.0'></a>
+## 0.27.0 (2026-08-13)
+
+### New features
+
+- Times Square now follows GitHub repository renames, repository transfers, and renames of the owning organization or user account. Previously any of these orphaned the repository's pages under their old names. Every repository sync records GitHub's stable numeric repository, owner, and app installation IDs (new `github_repository_id`, `github_owner_id`, and `github_installation_id` page columns), and new webhook handlers for the `repository` *renamed* and *transferred* events and the `installation_target` *renamed* event flip the stored names on the affected pages in a single bulk update keyed on those IDs, so the pages immediately serve from their new URLs. Nothing is re-synced from GitHub and no notebook is re-executed. A repository transferred to an owner outside `TS_GITHUB_ORGS` leaves Times Square's remit and its pages are soft-deleted; after an owner rename, update `TS_GITHUB_ORGS` to the new login (Times Square logs a warning as a reminder). Repository syncs also refuse to run while the pushed repository's `owner/repo` name is still held by pages recorded under a different repository ID, since GitHub recycles a freed name immediately. **Existing deployments must update their GitHub App to subscribe to the Installation target webhook event; it requires no additional permission.**
+- Stored GitHub owner and repository names are now reconciled against GitHub once a day. The new `reconcile_github_names` worker cron re-reads every repository behind a live page by its numeric ID and heals any stored names that disagree, catching renames whose webhook Times Square missed. A repository the GitHub App cannot read is logged and left untouched, and one whose current owner is no longer in `TS_GITHUB_ORGS` is reported rather than healed.
+- Added a `times-square backfill-github-ids [--dry-run]` CLI command that fills in the numeric GitHub IDs on pages predating ID capture by resolving each repository through the GitHub App API, so renames are handled by ID immediately instead of after each repository's next sync. It is safe to re-run, and repositories the app cannot resolve are logged and skipped. Run it once when deploying this release; see the [Backfilling GitHub numeric IDs](https://times-square.lsst.io/user-guide/github-id-backfill.html) guide.
+
+### Bug fixes
+
+- Fixed the worker's daily cron jobs (`cleanup_scheduled_runs` and the new `reconcile_github_names`) firing every minute of their scheduled hour: arq treats an unset cron field as a wildcard, so declaring only the hour meant sixty runs a day. Both now pin `minute=0`.
+
 <a id='changelog-0.26.0'></a>
 ## 0.26.0 (2026-08-07)
 
