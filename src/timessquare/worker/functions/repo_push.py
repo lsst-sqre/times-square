@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from safir.dependencies.db_session import db_session_dependency
-from safir.github.webhooks import GitHubPushEventModel
 from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 
 from timessquare.factory import WorkerFactory
+from timessquare.storage.github.apimodels import GitHubPushEventWithIdModel
 
 
 async def repo_push(
-    ctx: dict[Any, Any], *, payload: GitHubPushEventModel
+    ctx: dict[Any, Any], *, payload: GitHubPushEventWithIdModel
 ) -> str:
     """Process repo_push queue tasks, triggered by push events on GitHub
     repositories.

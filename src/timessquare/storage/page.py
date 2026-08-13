@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from safir.database import datetime_from_db, datetime_to_db
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from timessquare.dbschema.page import SqlPage
@@ -14,6 +16,34 @@ from timessquare.domain.githubtree import (
 )
 from timessquare.domain.page import PageModel, PageSummaryModel, PersonModel
 from timessquare.domain.pageparameters import PageParameters
+
+__all__ = ["PageStore", "StoredGitHubRepository"]
+
+
+@dataclass(frozen=True, slots=True)
+class StoredGitHubRepository:
+    """The GitHub identity that a repository's pages are stored under.
+
+    This is the shape of one row of the reconciliation work list: enough to
+    re-fetch the repository from the GitHub API by ID, and enough to tell
+    whether the names Times Square serves the repository's pages under have
+    drifted from the names GitHub answers with.
+    """
+
+    repository_id: int
+    """GitHub's stable numeric ID for the repository."""
+
+    owner: str
+    """The owner login the pages are stored under."""
+
+    name: str
+    """The repository name the pages are stored under."""
+
+    owner_id: int | None
+    """GitHub's stable numeric ID for the owner, if it was ever recorded."""
+
+    installation_id: int
+    """The Times Square GitHub App installation covering the repository."""
 
 
 class PageStore:
@@ -55,6 +85,9 @@ class PageStore:
             cache_ttl=page.cache_ttl,
             github_owner=page.github_owner,
             github_repo=page.github_repo,
+            github_repository_id=page.github_repository_id,
+            github_owner_id=page.github_owner_id,
+            github_installation_id=page.github_installation_id,
             github_commit=page.github_commit,
             repository_path_prefix=page.repository_path_prefix,
             repository_display_path_prefix=page.repository_display_path_prefix,
@@ -102,6 +135,14 @@ class PageStore:
         )
         sql_page.repository_source_sha = page.repository_source_sha
         sql_page.repository_sidecar_sha = page.repository_sidecar_sha
+        # The GitHub identity columns are updatable so that a sync can heal
+        # owner/repo strings that drifted through a rename or transfer, and
+        # backfill the numeric IDs on pages that predate ID capture.
+        sql_page.github_owner = page.github_owner
+        sql_page.github_repo = page.github_repo
+        sql_page.github_repository_id = page.github_repository_id
+        sql_page.github_owner_id = page.github_owner_id
+        sql_page.github_installation_id = page.github_installation_id
 
     async def get(self, name: str) -> PageModel | None:
         """Get a page based on the API slug (name), or get `None` if the
@@ -155,7 +196,12 @@ class PageStore:
         return self._rehydrate_page_from_sql(sql_page)
 
     async def list_pages_for_repository(
-        self, *, owner: str, name: str, commit: str | None = None
+        self,
+        *,
+        owner: str,
+        name: str,
+        commit: str | None = None,
+        repository_id: int | None = None,
     ) -> list[PageModel]:
         """Get all pages backed by a specific GitHub repository.
 
@@ -167,11 +213,25 @@ class PageStore:
             The repository name.
         commit : str, optional
             The commit, if listing pages for a specific GitHub Check Run.
+        repository_id : int, optional
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this ID — which survives renames and transfers —
+            unioned with a name-based match restricted to pages that have no
+            ID recorded yet.
         """
+        name_match = and_(
+            SqlPage.github_owner == owner, SqlPage.github_repo == name
+        )
+        if repository_id is None:
+            repository_match = name_match
+        else:
+            repository_match = or_(
+                SqlPage.github_repository_id == repository_id,
+                and_(SqlPage.github_repository_id.is_(None), name_match),
+            )
         statement = (
             select(SqlPage)
-            .where(SqlPage.github_owner == owner)
-            .where(SqlPage.github_repo == name)
+            .where(repository_match)
             .where(SqlPage.date_deleted == None)  # noqa: E711
         )
         if commit:
@@ -185,6 +245,402 @@ class PageStore:
             self._rehydrate_page_from_sql(sql_page)
             for sql_page in result.scalars()
         ]
+
+    async def list_pages_for_repository_id(
+        self, *, repository_id: int
+    ) -> list[PageModel]:
+        """Get all live pages backed by a GitHub repository, matching on the
+        repository's stable numeric ID alone.
+
+        Unlike `list_pages_for_repository` this never matches on the stored
+        ``owner``/``repo`` strings, so it is safe to use when those strings
+        are known to be stale — after a transfer, for example, which frees
+        the old name pair on GitHub immediately.
+
+        Parameters
+        ----------
+        repository_id : int
+            GitHub's stable numeric ID for the repository.
+
+        Returns
+        -------
+        list of PageModel
+            The repository's pages. Soft-deleted pages and pull-request
+            preview pages are excluded.
+        """
+        statement = (
+            select(SqlPage)
+            .where(SqlPage.github_repository_id == repository_id)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
+        )
+        result = await self._session.execute(statement)
+        return [
+            self._rehydrate_page_from_sql(sql_page)
+            for sql_page in result.scalars()
+        ]
+
+    async def list_conflicting_repository_ids(
+        self, *, owner: str, name: str, repository_id: int
+    ) -> list[int]:
+        """List the repository IDs of pages that hold an owner/repository
+        name pair on behalf of some *other* GitHub repository.
+
+        A non-empty result means the ``owner/name`` strings are stale: they
+        still point at pages belonging to a repository that has since been
+        renamed or transferred, and a repository that now answers to those
+        names would collide with them on display paths.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner.
+        name : str
+            The repository name.
+        repository_id : int
+            GitHub's stable numeric ID for the repository claiming the names.
+
+        Returns
+        -------
+        list of int
+            The distinct, sorted repository IDs of conflicting pages. Pages
+            belonging to ``repository_id`` itself, pages with no ID recorded
+            yet, soft-deleted pages, and pull-request preview pages are all
+            excluded.
+        """
+        statement = (
+            select(SqlPage.github_repository_id)
+            .where(SqlPage.github_owner == owner)
+            .where(SqlPage.github_repo == name)
+            .where(SqlPage.github_repository_id.is_not(None))
+            .where(SqlPage.github_repository_id != repository_id)
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
+            .distinct()
+        )
+        result = await self._session.execute(statement)
+        return sorted(row[0] for row in result.all())
+
+    async def rename_repository(
+        self,
+        *,
+        owner: str,
+        old_name: str,
+        new_name: str,
+        repository_id: int | None = None,
+    ) -> list[str]:
+        """Flip the stored repository name on every page of a GitHub
+        repository in a single statement.
+
+        This is a pure name flip: no other column is touched, so the pages'
+        notebooks, parameters, and cached renders are all left alone.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner. Only used by the
+            name-keyed fallback.
+        old_name : str
+            The repository name the pages are stored under. Only used by the
+            name-keyed fallback.
+        new_name : str
+            The repository name to store.
+        repository_id : int, optional
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this ID — which survives renames — unioned with a
+            match on ``owner``/``old_name`` restricted to pages that have no
+            ID recorded yet.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were renamed. Pages
+            already stored under ``new_name`` are not matched, so a
+            redelivered webhook reports an empty list.
+        """
+        name_match = and_(
+            SqlPage.github_owner == owner, SqlPage.github_repo == old_name
+        )
+        if repository_id is None:
+            repository_match = name_match
+        else:
+            repository_match = or_(
+                SqlPage.github_repository_id == repository_id,
+                and_(SqlPage.github_repository_id.is_(None), name_match),
+            )
+        statement = (
+            update(SqlPage)
+            .where(repository_match)
+            .where(SqlPage.github_repo != new_name)
+            .values(github_repo=new_name)
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
+
+    async def rename_owner(
+        self, *, old_login: str, new_login: str, owner_id: int
+    ) -> list[str]:
+        """Flip the stored owner login on every page of a GitHub owner in a
+        single statement.
+
+        This is a pure name flip: no other column is touched, so the pages'
+        notebooks, parameters, and cached renders are all left alone.
+
+        Parameters
+        ----------
+        old_login : str
+            The login the pages are stored under. Only used by the name-keyed
+            fallback.
+        new_login : str
+            The login to store.
+        owner_id : int
+            GitHub's stable numeric ID for the owner. Pages are matched on
+            this ID — which survives renames — unioned with a match on
+            ``old_login`` restricted to pages that have no owner ID recorded
+            yet.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were renamed. Pages
+            already stored under ``new_login`` are not matched, so a
+            redelivered webhook reports an empty list.
+        """
+        statement = (
+            update(SqlPage)
+            .where(
+                or_(
+                    SqlPage.github_owner_id == owner_id,
+                    and_(
+                        SqlPage.github_owner_id.is_(None),
+                        SqlPage.github_owner == old_login,
+                    ),
+                )
+            )
+            .where(SqlPage.github_owner != new_login)
+            .values(github_owner=new_login)
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
+
+    async def transfer_repository(
+        self,
+        *,
+        repository_id: int,
+        new_owner: str,
+        new_owner_id: int,
+        new_name: str,
+    ) -> list[str]:
+        """Rewrite the stored owner, owner ID, and repository name on every
+        page of a GitHub repository in a single statement.
+
+        This is a pure identity flip: no other column is touched, so the
+        pages' notebooks, parameters, and cached renders are all left alone.
+
+        Unlike `rename_repository` this has **no** name-keyed fallback for
+        pages that predate ID capture. A transfer frees the repository's old
+        ``owner/repo`` name pair on GitHub the moment it happens, so a
+        name-keyed match could rewrite the pages of whatever repository has
+        since claimed that name. Un-backfilled pages are instead healed by
+        the next sync of the repository.
+
+        Parameters
+        ----------
+        repository_id : int
+            GitHub's stable numeric ID for the repository. This is the only
+            thing pages are matched on.
+        new_owner : str
+            The login name of the repository's new owner.
+        new_owner_id : int
+            GitHub's stable numeric ID for the new owner.
+        new_name : str
+            The repository's name under its new owner. GitHub allows a
+            repository to be renamed as part of a transfer, so this is not
+            necessarily the name the pages are stored under.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were updated. Pages
+            already stored under the new identity are not matched, so a
+            redelivered webhook reports an empty list.
+        """
+        statement = (
+            update(SqlPage)
+            .where(SqlPage.github_repository_id == repository_id)
+            .where(
+                or_(
+                    SqlPage.github_owner != new_owner,
+                    SqlPage.github_repo != new_name,
+                    SqlPage.github_owner_id.is_distinct_from(new_owner_id),
+                )
+            )
+            .values(
+                github_owner=new_owner,
+                github_owner_id=new_owner_id,
+                github_repo=new_name,
+            )
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
+
+    async def list_github_repository_identities(
+        self,
+    ) -> list[StoredGitHubRepository]:
+        """List the distinct GitHub repositories behind Times Square's live
+        pages, as the identities those pages are stored under.
+
+        This is the work list for the daily name reconciliation: each entry
+        costs one round trip to the GitHub API, and the names in it are what
+        the reconciliation compares GitHub's answer against.
+
+        Only pages that carry both a repository ID and an installation ID are
+        included, because those are what the reconciliation needs to re-fetch
+        a repository by ID as the App installation that can see it. Pages
+        that predate ID capture are the ``backfill-github-ids`` command's job,
+        not the cron's. Soft-deleted pages and pull-request preview pages are
+        excluded as well: they serve nothing, so drift in their stored names
+        costs an API call for no benefit. The bulk updates that heal drift are
+        keyed on the repository ID alone, so those pages are healed anyway
+        whenever a live sibling page puts their repository on this list.
+
+        Returns
+        -------
+        list of StoredGitHubRepository
+            One entry per distinct stored identity, ordered by owner and then
+            repository name. A repository whose pages disagree about its
+            names — a partial heal — appears once per variant, which is
+            harmless: healing the first variant heals the rest by ID, leaving
+            the others as no-ops.
+        """
+        statement = (
+            select(
+                SqlPage.github_repository_id,
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                SqlPage.github_owner_id,
+                SqlPage.github_installation_id,
+            )
+            .where(SqlPage.github_repository_id.is_not(None))
+            .where(SqlPage.github_installation_id.is_not(None))
+            .where(SqlPage.github_owner.is_not(None))
+            .where(SqlPage.github_repo.is_not(None))
+            .where(SqlPage.date_deleted == None)  # noqa: E711
+            .where(SqlPage.github_commit == None)  # noqa: E711
+            .distinct()
+            .order_by(SqlPage.github_owner, SqlPage.github_repo)
+        )
+        result = await self._session.execute(statement)
+        return [
+            StoredGitHubRepository(
+                repository_id=row[0],
+                owner=row[1],
+                name=row[2],
+                owner_id=row[3],
+                installation_id=row[4],
+            )
+            for row in result.all()
+        ]
+
+    async def count_pages_missing_github_ids(
+        self,
+    ) -> dict[tuple[str, str], int]:
+        """Tally the GitHub-backed pages that have no numeric repository ID
+        recorded yet, grouped by the owner and repository names they are
+        stored under.
+
+        This is the work list for the ``backfill-github-ids`` command: each
+        key is a repository whose identity has to be resolved from the GitHub
+        API, and each value is how many pages that resolution would fill in.
+
+        Soft-deleted pages and pull-request preview pages are included. Their
+        numeric IDs are as much a part of their GitHub identity as any other
+        page's, and grouping means they only cost an extra API call when no
+        live page shares their repository.
+
+        Returns
+        -------
+        dict
+            A mapping from ``(owner, repository name)`` to the number of
+            pages stored under those names with no repository ID. Ordered by
+            owner and then repository name.
+        """
+        statement = (
+            select(
+                SqlPage.github_owner,
+                SqlPage.github_repo,
+                func.count().label("page_count"),
+            )
+            .where(SqlPage.github_owner.is_not(None))
+            .where(SqlPage.github_repo.is_not(None))
+            .where(SqlPage.github_repository_id.is_(None))
+            .group_by(SqlPage.github_owner, SqlPage.github_repo)
+            .order_by(SqlPage.github_owner, SqlPage.github_repo)
+        )
+        result = await self._session.execute(statement)
+        return {(row[0], row[1]): row[2] for row in result.all()}
+
+    async def backfill_github_ids(
+        self,
+        *,
+        owner: str,
+        name: str,
+        repository_id: int,
+        owner_id: int,
+        installation_id: int,
+    ) -> list[str]:
+        """Record the numeric repository, owner, and installation IDs on the
+        pages stored under an owner/repository name pair that have none.
+
+        Pages that already carry a repository ID are left alone: their
+        identity came from a sync, which is authoritative, whereas the IDs
+        written here were resolved from name strings that may since have moved
+        to another repository.
+
+        Parameters
+        ----------
+        owner : str
+            The login name of the repository owner the pages are stored under.
+        name : str
+            The repository name the pages are stored under.
+        repository_id : int
+            GitHub's stable numeric ID for the repository.
+        owner_id : int
+            GitHub's stable numeric ID for the repository owner.
+        installation_id : int
+            The numeric ID of the Times Square GitHub App installation that
+            covers the repository.
+
+        Returns
+        -------
+        list of str
+            The names (URL slugs) of the pages that were filled in.
+        """
+        statement = (
+            update(SqlPage)
+            .where(SqlPage.github_owner == owner)
+            .where(SqlPage.github_repo == name)
+            .where(SqlPage.github_repository_id.is_(None))
+            .values(
+                github_repository_id=repository_id,
+                github_owner_id=owner_id,
+                github_installation_id=installation_id,
+            )
+            .returning(SqlPage.name)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return [row[0] for row in result.all()]
 
     def _rehydrate_page_from_sql(self, sql_page: SqlPage) -> PageModel:
         """Create a page domain model from the SQL result."""
@@ -215,6 +671,9 @@ class PageStore:
             cache_ttl=sql_page.cache_ttl,
             github_owner=sql_page.github_owner,
             github_repo=sql_page.github_repo,
+            github_repository_id=sql_page.github_repository_id,
+            github_owner_id=sql_page.github_owner_id,
+            github_installation_id=sql_page.github_installation_id,
             github_commit=sql_page.github_commit,
             repository_path_prefix=sql_page.repository_path_prefix,
             repository_display_path_prefix=(

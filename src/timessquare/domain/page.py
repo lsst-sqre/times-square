@@ -110,6 +110,27 @@ class PageModel:
     github_repo: str | None = None
     """The GitHub repository name for GitHub-backed pages."""
 
+    github_repository_id: int | None = None
+    """GitHub's stable numeric ID for the repository backing this page.
+
+    This identifier survives repository renames and transfers, unlike
+    `github_owner` and `github_repo`. It is `None` for pages that predate ID
+    capture and have not been backfilled yet.
+    """
+
+    github_owner_id: int | None = None
+    """GitHub's stable numeric ID for the repository's owner.
+
+    `None` under the same circumstances as `github_repository_id`.
+    """
+
+    github_installation_id: int | None = None
+    """The numeric ID of the Times Square GitHub App installation that last
+    synced this page.
+
+    `None` under the same circumstances as `github_repository_id`.
+    """
+
     github_commit: str | None = None
     """The SHA of the commit this page corresponds to; only used for pages
     associated with a GitHub Check Run.
@@ -215,6 +236,9 @@ class PageModel:
         timeout: int | None = None,
         authors: list[PersonModel] | None = None,
         github_commit: str | None = None,
+        github_repository_id: int | None = None,
+        github_owner_id: int | None = None,
+        github_installation_id: int | None = None,
         schedule_rruleset: str | None = None,
         schedule_enabled: bool = False,
     ) -> PageModel:
@@ -235,6 +259,9 @@ class PageModel:
             cache_ttl=cache_ttl,
             github_owner=github_owner,
             github_repo=github_repo,
+            github_repository_id=github_repository_id,
+            github_owner_id=github_owner_id,
+            github_installation_id=github_installation_id,
             github_commit=github_commit,
             repository_path_prefix=repository_path_prefix,
             repository_display_path_prefix=repository_display_path_prefix,

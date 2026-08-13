@@ -245,11 +245,64 @@ class PageService:
         return await self._page_store.list_page_summaries()
 
     async def get_pages_for_repo(
-        self, owner: str, name: str, commit: str | None = None
+        self,
+        owner: str,
+        name: str,
+        commit: str | None = None,
+        repository_id: int | None = None,
     ) -> list[PageModel]:
-        """Get all pages backed by a specific GitHub repository."""
+        """Get all pages backed by a specific GitHub repository.
+
+        Parameters
+        ----------
+        owner
+            The login name of the repository owner.
+        name
+            The repository name.
+        commit
+            The commit, if listing pages for a specific GitHub Check Run.
+        repository_id
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this rename-proof ID, falling back to the names
+            only for pages that have no ID recorded yet.
+
+        Returns
+        -------
+        list of PageModel
+            The repository's pages.
+        """
         return await self._page_store.list_pages_for_repository(
-            owner=owner, name=name, commit=commit
+            owner=owner,
+            name=name,
+            commit=commit,
+            repository_id=repository_id,
+        )
+
+    async def get_conflicting_repository_ids(
+        self, *, owner: str, name: str, repository_id: int
+    ) -> list[int]:
+        """Get the IDs of other GitHub repositories whose pages are stored
+        under this owner/repository name pair.
+
+        Parameters
+        ----------
+        owner
+            The login name of the repository owner.
+        name
+            The repository name.
+        repository_id
+            GitHub's stable numeric ID for the repository claiming the names.
+
+        Returns
+        -------
+        list of int
+            The distinct repository IDs of conflicting pages, empty when the
+            names are free. A non-empty result means the stored names are
+            stale — they still belong to a repository that was renamed or
+            transferred away.
+        """
+        return await self._page_store.list_conflicting_repository_ids(
+            owner=owner, name=name, repository_id=repository_id
         )
 
     async def get_github_tree(self) -> list[GitHubNode]:
@@ -320,10 +373,155 @@ class PageService:
         page.date_deleted = datetime.now(UTC)
         await self.update_page_in_store(page)
 
+    async def rename_github_repository(
+        self,
+        *,
+        owner: str,
+        old_name: str,
+        new_name: str,
+        repository_id: int | None = None,
+    ) -> list[str]:
+        """Flip the stored repository name on every page of a GitHub
+        repository.
+
+        This is a pure name flip. A rename does not change the repository's
+        content, and the HTML cache is keyed on each page's own name slug
+        rather than on the repository name, so neither the notebooks nor the
+        cached renders are touched.
+
+        Parameters
+        ----------
+        owner
+            The login name of the repository owner.
+        old_name
+            The repository name the pages are stored under, used to match
+            pages that have no repository ID recorded yet.
+        new_name
+            The repository name to store.
+        repository_id
+            GitHub's stable numeric ID for the repository. When given, pages
+            are matched on this rename-proof ID, falling back to the names
+            only for pages that have no ID recorded yet.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were renamed.
+        """
+        return await self._page_store.rename_repository(
+            owner=owner,
+            old_name=old_name,
+            new_name=new_name,
+            repository_id=repository_id,
+        )
+
+    async def rename_github_owner(
+        self, *, old_login: str, new_login: str, owner_id: int
+    ) -> list[str]:
+        """Flip the stored owner login on every page belonging to a GitHub
+        organization or user.
+
+        This is a pure name flip. Renaming an organization does not change any
+        repository's content, and the HTML cache is keyed on each page's own
+        name slug rather than on the owner login, so neither the notebooks nor
+        the cached renders are touched.
+
+        Parameters
+        ----------
+        old_login
+            The login the pages are stored under, used to match pages that
+            have no owner ID recorded yet.
+        new_login
+            The login to store.
+        owner_id
+            GitHub's stable numeric ID for the owner. Pages are matched on
+            this rename-proof ID, falling back to ``old_login`` only for pages
+            that have no ID recorded yet.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were renamed.
+        """
+        return await self._page_store.rename_owner(
+            old_login=old_login, new_login=new_login, owner_id=owner_id
+        )
+
+    async def transfer_github_repository(
+        self,
+        *,
+        repository_id: int,
+        new_owner: str,
+        new_owner_id: int,
+        new_name: str,
+    ) -> list[str]:
+        """Rewrite the stored owner, owner ID, and repository name on every
+        page of a transferred GitHub repository.
+
+        Like a rename, this is a pure identity flip: the repository's content
+        is unchanged, and the HTML cache is keyed on each page's own name slug
+        rather than on the owner or repository name, so neither the notebooks
+        nor the cached renders are touched.
+
+        Parameters
+        ----------
+        repository_id
+            GitHub's stable numeric ID for the repository. Pages are matched
+            on this ID alone; a transfer frees the repository's old
+            ``owner/repo`` name pair on GitHub immediately, so there is no
+            name-keyed fallback for pages that predate ID capture. Those
+            pages are healed by the next sync of the repository instead.
+        new_owner
+            The login name of the repository's new owner.
+        new_owner_id
+            GitHub's stable numeric ID for the new owner.
+        new_name
+            The repository's name under its new owner, which GitHub allows to
+            change as part of the transfer.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were updated.
+        """
+        return await self._page_store.transfer_repository(
+            repository_id=repository_id,
+            new_owner=new_owner,
+            new_owner_id=new_owner_id,
+            new_name=new_name,
+        )
+
     async def soft_delete_pages_for_repo(self, owner: str, name: str) -> None:
         """Soft delete all pages backed by a specific GitHub repository."""
         for page in await self.get_pages_for_repo(owner=owner, name=name):
             await self.soft_delete_page(page)
+
+    async def soft_delete_pages_for_repository_id(
+        self, repository_id: int
+    ) -> list[str]:
+        """Soft delete all pages backed by a GitHub repository, matching them
+        on the repository's stable numeric ID alone.
+
+        This is the ID-keyed counterpart of `soft_delete_pages_for_repo`, for
+        callers whose stored owner and repository names are known to be
+        stale — a repository transferred away from Times Square, for example.
+
+        Parameters
+        ----------
+        repository_id
+            GitHub's stable numeric ID for the repository.
+
+        Returns
+        -------
+        list of str
+            The names of the pages that were soft-deleted.
+        """
+        pages = await self._page_store.list_pages_for_repository_id(
+            repository_id=repository_id
+        )
+        for page in pages:
+            await self.soft_delete_page(page)
+        return [page.name for page in pages]
 
     async def render_page_template(
         self, name: str, values: Mapping[str, Any]

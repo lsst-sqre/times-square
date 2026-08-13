@@ -21,6 +21,8 @@ from structlog.stdlib import BoundLogger
 from .config import config
 from .services.backgroundpage import BackgroundPageService
 from .services.githubcheckrun import GitHubCheckRunService
+from .services.githubidbackfill import GitHubIdBackfillService
+from .services.githubnamereconcile import GitHubNameReconciliationService
 from .services.githubrepo import GitHubRepoService
 from .services.page import PageService
 from .services.runscheduler import RunSchedulerService
@@ -292,6 +294,7 @@ class Factory:
             github_client=github_client,
             page_service=self.create_page_service(),
             logger=self._logger,
+            installation_id=installation_id,
         )
 
     async def create_github_check_run_service(
@@ -311,6 +314,28 @@ class Factory:
             github_client=github_client,
             repo_service=repo_service,
             page_service=self.create_page_service(),
+            logger=self._logger,
+        )
+
+    def create_github_id_backfill_service(self) -> GitHubIdBackfillService:
+        """Create a GitHubIdBackfillService for filling in the numeric GitHub
+        IDs of pages that predate ID capture.
+        """
+        return GitHubIdBackfillService(
+            page_store=self.create_page_store(),
+            github_client_factory=self.create_github_client_factory(),
+            logger=self._logger,
+        )
+
+    def create_github_name_reconciliation_service(
+        self,
+    ) -> GitHubNameReconciliationService:
+        """Create a GitHubNameReconciliationService for healing drift between
+        the GitHub names stored on pages and the names GitHub answers with.
+        """
+        return GitHubNameReconciliationService(
+            page_store=self.create_page_store(),
+            github_client_factory=self.create_github_client_factory(),
             logger=self._logger,
         )
 

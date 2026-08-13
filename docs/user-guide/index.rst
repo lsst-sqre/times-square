@@ -8,3 +8,4 @@ User guide
 
    github-app-config
    environment-variables
+   github-id-backfill
