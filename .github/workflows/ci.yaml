@@ -56,6 +56,9 @@ jobs:
         run: uv run --only-group=nox nox -s typing test-coverage coverage-report
 
   build:
+    concurrency:
+      group: docker
+      queue: max
     uses: lsst-sqre/multiplatform-build-and-push/.github/workflows/build.yaml@v4
     needs: [lint, test]
     with:
