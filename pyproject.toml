@@ -24,7 +24,7 @@ dependencies = [
     "gunicorn",
     "starlette",
     "uvicorn[standard]",
-    "safir[db,arq,redis]",
+    "safir[db,arq,redis]>=15.2.0",
     "alembic[tz]",
     "pydantic[email]",
     "pydantic_settings",
