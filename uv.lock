@@ -2780,7 +2780,7 @@ requires-dist = [
     { name = "pydantic-settings" },
     { name = "python-dateutil", specifier = ">=2.9.0.post0" },
     { name = "pyyaml" },
-    { name = "safir", extras = ["arq", "db", "redis"] },
+    { name = "safir", extras = ["arq", "db", "redis"], specifier = ">=15.2.0" },
     { name = "sentry-sdk" },
     { name = "sse-starlette" },
     { name = "starlette" },

@@ -58,7 +58,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator:
     await engine.dispose()
 
     await db_session_dependency.initialize(
-        str(config.database_url), config.database_password.get_secret_value()
+        str(config.database_url),
+        config.database_password.get_secret_value(),
+        pool_pre_ping=True,
     )
     await context_dependency.initialize()
 

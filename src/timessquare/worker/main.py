@@ -82,7 +82,9 @@ async def startup(ctx: dict[Any, Any]) -> None:
     # Set up the database session dependency; we can use it "manually" with
     # arq to provide sessions similarly to FastAPI endpoints
     await db_session_dependency.initialize(
-        str(config.database_url), config.database_password.get_secret_value()
+        str(config.database_url),
+        config.database_password.get_secret_value(),
+        pool_pre_ping=True,
     )
 
     # Shared process-wide resources; worker functions combine this with a
