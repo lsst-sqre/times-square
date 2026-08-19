@@ -63,25 +63,17 @@ jobs:
     needs: [lint, test]
     with:
       images: ghcr.io/${{ github.repository }}
-      # Build but don't push for dependabot PRs: no registry secrets are
-      # available and we don't want dependency-bump images in the registry.
+      # Always build so the required `build / manifest` check reports on
+      # every PR: a job skipped by its own `if:` creates no check-run at
+      # all, and the required check hangs in "Expected" forever. Only push
+      # on releases and ticket-branch PRs -- every other branch (u/,
+      # dependabot/, renovate/, forks) builds as validation, and the
+      # manifest job skips, which counts as passing.
       push: >-
         ${{ (github.event_name == 'release' && github.event.action == 'published')
             || startsWith(github.head_ref, 'tickets/')
             || startsWith(github.head_ref, 't/') }}
     secrets: inherit
-
-    # Only do Docker builds of releases and pull requests from ticket
-    # branches. This will still trigger on pull requests from untrusted
-    # repositories whose branch names match our tickets/* branch convention,
-    # but in this case the build will fail with an error since the secret
-    # won't be set.
-    if: >
-      (github.event_name == 'release' && github.event.action == 'published')
-      || (github.event_name != 'merge_group'
-          && (startsWith(github.head_ref, 'tickets/')
-              || startsWith(github.head_ref, 't/')
-              || startsWith(github.head_ref, 'dependabot/')))
 
   docs:
     runs-on: ubuntu-latest
