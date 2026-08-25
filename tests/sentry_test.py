@@ -18,6 +18,7 @@ import pytest
 import respx
 import sentry_sdk
 from httpx import AsyncClient
+from safir.sentry import before_send_handler
 from safir.testing.sentry import (
     Captured,
     capture_events_fixture,
@@ -25,6 +26,11 @@ from safir.testing.sentry import (
 )
 
 from timessquare.config import config
+from timessquare.sentry import (
+    SENTRY_MAX_VALUE_LENGTH,
+    init_sentry,
+    make_traces_sampler,
+)
 
 NOTEBURST_URL = "https://test.example.com/noteburst/v1/notebooks/"
 
@@ -61,6 +67,19 @@ def _large_ipynb() -> str:
         },
     )
     return json.dumps(notebook)
+
+
+def _capture_sentry_init(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Replace ``sentry_sdk.init`` with a recorder of its keyword arguments."""
+    captured: dict[str, Any] = {}
+
+    def fake_init(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(sentry_sdk, "init", fake_init)
+    return captured
 
 
 def _iter_strings(value: Any) -> Iterator[str]:
@@ -159,3 +178,37 @@ async def test_noteburst_error_event_size_is_bounded(
     assert oversized == []
 
     assert len(json.dumps(event).encode()) < MAX_EVENT_SIZE
+
+
+def test_init_sentry_applies_shared_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The helper owns every option both processes must configure alike."""
+    captured = _capture_sentry_init(monkeypatch)
+
+    init_sentry()
+
+    assert captured["dsn"] == config.sentry_dsn
+    assert captured["environment"] == config.environment_name
+    assert captured["before_send"] is before_send_handler
+    assert captured["max_value_length"] == SENTRY_MAX_VALUE_LENGTH
+
+
+@pytest.mark.parametrize(
+    "tracing",
+    [
+        pytest.param({"traces_sampler": make_traces_sampler(0.1)}, id="api"),
+        pytest.param({"traces_sample_rate": 0.1}, id="worker"),
+    ],
+)
+def test_init_sentry_forwards_per_process_options(
+    monkeypatch: pytest.MonkeyPatch, tracing: dict[str, Any]
+) -> None:
+    """Each process contributes its own tracing option as an argument."""
+    captured = _capture_sentry_init(monkeypatch)
+
+    init_sentry(**tracing)
+
+    for name, value in tracing.items():
+        assert captured[name] is value
+    assert captured["max_value_length"] == SENTRY_MAX_VALUE_LENGTH

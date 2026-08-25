@@ -7,19 +7,17 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 import arq
-import sentry_sdk
 import structlog
 from safir.database import create_database_engine, is_database_current
 from safir.dependencies.db_session import db_session_dependency
 from safir.logging import configure_logging
-from safir.sentry import before_send_handler
 from safir.slack.blockkit import SlackMessage, SlackTextField
 from safir.slack.webhook import SlackWebhookClient
 
 from timessquare import __version__
 from timessquare.config import config
 from timessquare.factory import ProcessContext
-from timessquare.sentry import SENTRY_MAX_VALUE_LENGTH
+from timessquare.sentry import init_sentry
 
 from .functions import (
     cleanup_scheduled_runs,
@@ -40,13 +38,7 @@ from .functions import (
     scheduled_page_run,
 )
 
-sentry_sdk.init(
-    dsn=config.sentry_dsn,
-    environment=config.environment_name,
-    before_send=before_send_handler,
-    traces_sample_rate=config.sentry_traces_sample_rate,
-    max_value_length=SENTRY_MAX_VALUE_LENGTH,
-)
+init_sentry(traces_sample_rate=config.sentry_traces_sample_rate)
 
 
 async def startup(ctx: dict[Any, Any]) -> None:
