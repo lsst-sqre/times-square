@@ -4,6 +4,12 @@ User guide
 
 .. toctree::
    :maxdepth: 2
+   :caption: Authoring
+
+   notebook-parameters
+
+.. toctree::
+   :maxdepth: 2
    :caption: Deployment
 
    github-app-config
