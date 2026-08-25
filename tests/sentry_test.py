@@ -8,7 +8,10 @@ was dropped server-side as ``too_large:event``.
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import json
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -19,11 +22,8 @@ import respx
 import sentry_sdk
 from httpx import AsyncClient
 from safir.sentry import before_send_handler
-from safir.testing.sentry import (
-    Captured,
-    capture_events_fixture,
-    sentry_init_fixture,
-)
+from safir.testing.sentry import Captured, capture_events_fixture
+from safir.testing.sentry import TestTransport as SentryTestTransport
 
 from timessquare.config import config
 from timessquare.sentry import (
@@ -34,22 +34,28 @@ from timessquare.sentry import (
 
 NOTEBURST_URL = "https://test.example.com/noteburst/v1/notebooks/"
 
-MAX_VALUE_LENGTH = 1100
-"""Longest acceptable serialized string in an event.
+SENTRY_INGEST_LIMIT = 1_048_576
+"""Largest event Sentry's ingest API accepts, in bytes (1 MiB)."""
 
-This is the configured ``max_value_length`` (1024) plus room for the SDK's
-truncation marker.
+MAX_EVENT_SIZE = SENTRY_INGEST_LIMIT // 2
+"""Largest acceptable serialized event.
+
+Half of `SENTRY_INGEST_LIMIT`, so the test fails while there is still ample
+headroom rather than at the point where real events start being dropped.
 """
 
-MAX_EVENT_SIZE = 512 * 1024
-"""Largest acceptable serialized event, comfortably under Sentry's 1 MiB
-ingest limit.
+MIN_IPYNB_SIZE = 100_000
+"""Smallest notebook `_large_ipynb` may return, in bytes.
+
+The unbounded event only grows past `MAX_EVENT_SIZE` once the notebook is
+larger than roughly 47 KB, so a filler that silently shrank below that would
+leave the test passing whether or not the values are bounded.
 """
 
 
 def _large_ipynb() -> str:
-    """Return a notebook large enough (>100 KB) that unbounded serialization
-    of the frame locals holding it overflows Sentry's event size limit.
+    """Return a notebook large enough that unbounded serialization of the
+    frame locals holding it overflows Sentry's event size limit.
     """
     data_path = Path(__file__).parent / "data" / "demo.ipynb"
     notebook = json.loads(data_path.read_text())
@@ -66,7 +72,9 @@ def _large_ipynb() -> str:
             "source": filler,
         },
     )
-    return json.dumps(notebook)
+    ipynb = json.dumps(notebook)
+    assert len(ipynb) > MIN_IPYNB_SIZE
+    return ipynb
 
 
 def _capture_sentry_init(
@@ -79,6 +87,36 @@ def _capture_sentry_init(
         captured.update(kwargs)
 
     monkeypatch.setattr(sentry_sdk, "init", fake_init)
+    return captured
+
+
+def _entrypoint_sentry_options(
+    monkeypatch: pytest.MonkeyPatch, module_name: str
+) -> dict[str, Any]:
+    """Return the keyword arguments an entrypoint module passes to
+    ``sentry_sdk.init`` when it is imported.
+
+    Both entrypoints initialize Sentry as a module-level side effect, and both
+    are already imported — with their init calls already spent — before any
+    test runs. The module is therefore executed a second time here, in a
+    throwaway namespace and with ``sentry_sdk.init`` replaced by a recorder,
+    so that neither the real `sys.modules` entry nor the live Sentry client is
+    disturbed. Asserting on the live client instead would only ever describe
+    whichever entrypoint the test session imported last.
+    """
+    captured = _capture_sentry_init(monkeypatch)
+    origin = importlib.import_module(module_name).__file__
+    assert origin is not None
+    # The probe's dotted name keeps it inside the real package, so the
+    # module's relative imports resolve against the already-imported
+    # timessquare modules instead of re-executing them.
+    probe_name = f"{module_name}__sentry_probe"
+    spec = importlib.util.spec_from_file_location(probe_name, origin)
+    assert spec is not None
+    assert spec.loader is not None
+    probe = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, probe_name, probe)
+    spec.loader.exec_module(probe)
     return captured
 
 
@@ -111,24 +149,24 @@ def _iter_frame_vars(event: dict[str, Any]) -> Iterator[tuple[str, str, str]]:
 
 
 @pytest.fixture
-def sentry_events(monkeypatch: pytest.MonkeyPatch) -> Iterator[Captured]:
-    """Capture Sentry events, reusing the service's own SDK options.
+def sentry_events(monkeypatch: pytest.MonkeyPatch) -> Captured:
+    """Capture the events the service's own Sentry client sends.
 
-    The serialization options are read back from the live client, which both
-    ``timessquare.main`` and ``timessquare.worker.main`` set up at import time
-    with the same settings. Reusing them, rather than restating them here, is
-    what makes this a regression test: if the service stops bounding the
-    values it serializes, this fixture stops bounding them too.
+    The live client is the one an entrypoint configured at import time; only
+    its transport is swapped out, so every option governing how an event is
+    serialized stays exactly as the service set it. That is what makes this a
+    regression test: nothing here re-states a limit, so if the service stops
+    bounding the values it serializes, the captured events stop being bounded
+    too.
+
+    Which entrypoint won the import race is deliberately not this fixture's
+    concern — `test_entrypoint_bounds_serialized_values` pins the bound for
+    each entrypoint separately.
     """
-    app_options = sentry_sdk.get_client().options
-    with sentry_init_fixture() as init:
-        init(
-            environment=app_options["environment"],
-            before_send=app_options["before_send"],
-            traces_sampler=app_options["traces_sampler"],
-            max_value_length=app_options["max_value_length"],
-        )
-        yield capture_events_fixture(monkeypatch)()
+    monkeypatch.setattr(
+        sentry_sdk.get_client(), "transport", SentryTestTransport()
+    )
+    return capture_events_fixture(monkeypatch)()
 
 
 @pytest.mark.asyncio
@@ -164,6 +202,11 @@ async def test_noteburst_error_event_size_is_bounded(
     # instance with no job in flight triggers a fresh execution request, and
     # the connection error propagates uncaught out of the handler.
     post_route.mock(side_effect=httpx.ConnectError("Connection refused"))
+    # A must differ from demo.ipynb's default of 4: with the default
+    # parameters, get_html_and_status finds the job already stored for the
+    # page at creation and polls it with get_job rather than POSTing a new
+    # execution request, which fails on the unmocked GET with a confusing
+    # respx AllMockedAssertionError instead of the ConnectError under test.
     with pytest.raises(httpx.ConnectError):
         await client.get(html_status_url, params={"A": 2})
 
@@ -173,11 +216,40 @@ async def test_noteburst_error_event_size_is_bounded(
     oversized = [
         (function, name, len(string))
         for function, name, string in _iter_frame_vars(event)
-        if len(string) > MAX_VALUE_LENGTH
+        if len(string) > SENTRY_MAX_VALUE_LENGTH
     ]
     assert oversized == []
 
     assert len(json.dumps(event).encode()) < MAX_EVENT_SIZE
+
+
+@pytest.mark.parametrize(
+    ("module_name", "tracing_option"),
+    [
+        pytest.param("timessquare.main", "traces_sampler", id="api"),
+        pytest.param(
+            "timessquare.worker.main", "traces_sample_rate", id="worker"
+        ),
+    ],
+)
+def test_entrypoint_bounds_serialized_values(
+    monkeypatch: pytest.MonkeyPatch, module_name: str, tracing_option: str
+) -> None:
+    """Both processes bound serialized values, and each brings its own
+    tracing option.
+
+    The bug this pins is asymmetric by nature: an entrypoint that stopped
+    going through `init_sentry` would keep reporting oversized events even
+    though the other entrypoint, and every assertion made against the live
+    client, still looked correct.
+    """
+    options = _entrypoint_sentry_options(monkeypatch, module_name)
+
+    assert options["max_value_length"] == SENTRY_MAX_VALUE_LENGTH
+    assert options["dsn"] == config.sentry_dsn
+    assert options["environment"] == config.environment_name
+    assert options["before_send"] is before_send_handler
+    assert tracing_option in options
 
 
 def test_init_sentry_applies_shared_options(
