@@ -32,7 +32,7 @@ from .dependencies.requestcontext import context_dependency
 from .handlers.external import external_router
 from .handlers.internal import internal_router
 from .handlers.v1 import v1_router
-from .sentry import make_traces_sampler
+from .sentry import SENTRY_MAX_VALUE_LENGTH, make_traces_sampler
 
 __all__ = ["app", "config"]
 
@@ -41,6 +41,7 @@ sentry_sdk.init(
     environment=config.environment_name,
     before_send=before_send_handler,
     traces_sampler=make_traces_sampler(config.sentry_traces_sample_rate),
+    max_value_length=SENTRY_MAX_VALUE_LENGTH,
 )
 
 

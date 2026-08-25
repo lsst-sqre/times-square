@@ -19,6 +19,7 @@ from safir.slack.webhook import SlackWebhookClient
 from timessquare import __version__
 from timessquare.config import config
 from timessquare.factory import ProcessContext
+from timessquare.sentry import SENTRY_MAX_VALUE_LENGTH
 
 from .functions import (
     cleanup_scheduled_runs,
@@ -44,6 +45,7 @@ sentry_sdk.init(
     environment=config.environment_name,
     before_send=before_send_handler,
     traces_sample_rate=config.sentry_traces_sample_rate,
+    max_value_length=SENTRY_MAX_VALUE_LENGTH,
 )
 
 

@@ -4,7 +4,18 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-__all__ = ["make_traces_sampler"]
+__all__ = ["SENTRY_MAX_VALUE_LENGTH", "make_traces_sampler"]
+
+SENTRY_MAX_VALUE_LENGTH = 1024
+"""Maximum length of any string serialized into a Sentry event.
+
+sentry-sdk 2.x defaults to ``None``, i.e. unbounded serialization of local
+variables. Times Square holds the full source of a notebook in the local
+variables of several frames on the Noteburst submission path, so an uncaught
+exception raised while a large notebook is in flight produced an event over
+Sentry's 1 MiB ingest limit, which was then dropped server-side as
+``too_large:event``. This restores the sentry-sdk 1.x limit.
+"""
 
 EVENTS_REGEX = re.compile("/pages/.*/events$")
 
