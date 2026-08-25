@@ -14,14 +14,17 @@ from .config import config
 __all__ = ["SENTRY_MAX_VALUE_LENGTH", "init_sentry", "make_traces_sampler"]
 
 SENTRY_MAX_VALUE_LENGTH = 1024
-"""Maximum length of any string serialized into a Sentry event.
+"""Maximum length, in bytes, of a string serialized into a Sentry event.
 
-sentry-sdk 2.x defaults to ``None``, i.e. unbounded serialization of local
-variables. Times Square holds the full source of a notebook in the local
-variables of several frames on the Noteburst submission path, so an uncaught
-exception raised while a large notebook is in flight produced an event over
-Sentry's 1 MiB ingest limit, which was then dropped server-side as
-``too_large:event``. This restores the sentry-sdk 1.x limit.
+sentry-sdk 2.x leaves this unbounded, which kept events carrying notebook
+source from ever reaching Sentry; the changelog entry for DM-55927 has the
+rationale and the trade-off.
+
+The SDK's serializer clips every string in an event, not only frame locals:
+exception messages, structlog messages, request bodies, tags, and ``extra``
+values are all subject to this bound. Values added after serialization by a
+``before_send`` handler are not, which exempts the contexts and tags Safir
+builds from a ``SlackException``.
 """
 
 EVENTS_REGEX = re.compile("/pages/.*/events$")

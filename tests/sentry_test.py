@@ -1,9 +1,7 @@
 """Tests for the Sentry SDK configuration.
 
-These are regression tests for DM-55927: sentry-sdk 2.x serializes frame
-locals without a length limit, so an uncaught exception raised while a large
-notebook is in flight produced an event over Sentry's 1 MiB ingest limit and
-was dropped server-side as ``too_large:event``.
+These are regression tests for DM-55927. The bound they pin, and why it
+exists, is documented on `timessquare.sentry.SENTRY_MAX_VALUE_LENGTH`.
 """
 
 from __future__ import annotations
