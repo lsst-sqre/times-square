@@ -47,10 +47,10 @@ from timessquare.storage.noteburst import (
 )
 
 from ..support.github import MockGitHubCheckRunAPI
+from ..support.noteburst import JOB_URL
 
 DATA = Path(__file__).parent.joinpath("../data/github_webhooks")
 
-SELF_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
 ENQUEUE_TIME = datetime(2022, 3, 15, 4, 12, 0, tzinfo=UTC)
 START_TIME = datetime(2022, 3, 15, 4, 13, 0, tzinfo=UTC)
 FINISH_TIME = datetime(2022, 3, 15, 4, 13, 10, tzinfo=UTC)
@@ -304,7 +304,7 @@ async def test_validate_sidecar_accepts_from_date_count_schedule() -> None:
 
 def _base_response(**kwargs: object) -> NoteburstJobResponseModel:
     data: dict[str, object] = {
-        "self_url": SELF_URL,
+        "self_url": JOB_URL,
         "enqueue_time": ENQUEUE_TIME,
         "status": NoteburstJobStatus.complete,
         "start_time": START_TIME,

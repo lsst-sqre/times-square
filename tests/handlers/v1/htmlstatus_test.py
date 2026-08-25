@@ -2,36 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from pathlib import Path
-
 import pytest
 import respx
 from httpx import AsyncClient, Response
 
 from timessquare.config import config
 
-NOTEBURST_URL = "https://test.example.com/noteburst/v1/notebooks/"
-JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
-
-
-def _queued_post_response() -> Response:
-    return Response(
-        202,
-        json={
-            "job_id": "xyz",
-            "kernel_name": "",
-            "enqueue_time": datetime.now(tz=UTC).isoformat(),
-            "status": "queued",
-            "self_url": JOB_URL,
-        },
-    )
+from ...support.github import DATA
+from ...support.noteburst import (
+    JOB_ID,
+    JOB_URL,
+    NOTEBURST_URL,
+    queued_job_response,
+)
 
 
 async def _create_page(client: AsyncClient) -> dict[str, str]:
-    data_path = Path(__file__).parent.joinpath("../../data")
-    demo_path = data_path / "demo.ipynb"
-    page_req_data = {"title": "Demo", "ipynb": demo_path.read_text()}
+    page_req_data = {
+        "title": "Demo",
+        "ipynb": (DATA / "demo.ipynb").read_text(),
+    }
     r = await client.post(f"{config.path_prefix}/v1/pages", json=page_req_data)
     assert r.status_code == 201
     return r.json()
@@ -45,14 +35,14 @@ async def test_htmlstatus_execution_failure(
     execution_error, and does not trigger a re-execution storm.
     """
     post_route = respx_mock.post(NOTEBURST_URL).mock(
-        return_value=_queued_post_response()
+        return_value=queued_job_response()
     )
 
     data = await _create_page(client)
     html_status_url = data["html_status_url"]
 
     # First poll for a fresh page instance (A=2) requests a new execution.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     r = await client.get(html_status_url, params={"A": 2})
     assert r.status_code == 200
     assert r.json()["available"] is False
@@ -63,7 +53,7 @@ async def test_htmlstatus_execution_failure(
         return_value=Response(
             200,
             json={
-                "job_id": "xyz",
+                "job_id": JOB_ID,
                 "kernel_name": "",
                 "enqueue_time": "2022-03-15T04:12:00Z",
                 "status": "complete",
@@ -102,12 +92,12 @@ async def test_htmlstatus_result_expiry(
     client: AsyncClient, respx_mock: respx.Router
 ) -> None:
     """A success=None (arq result expiry) result is a terminal failure."""
-    respx_mock.post(NOTEBURST_URL).mock(return_value=_queued_post_response())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     data = await _create_page(client)
     html_status_url = data["html_status_url"]
 
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     r = await client.get(html_status_url, params={"A": 3})
     assert r.status_code == 200
 
@@ -115,7 +105,7 @@ async def test_htmlstatus_result_expiry(
         return_value=Response(
             200,
             json={
-                "job_id": "xyz",
+                "job_id": JOB_ID,
                 "kernel_name": "",
                 "enqueue_time": "2022-03-15T04:12:00Z",
                 "status": "complete",
@@ -139,8 +129,8 @@ async def test_htmlstatus_normal_is_backward_compatible(
     client: AsyncClient, respx_mock: respx.Router
 ) -> None:
     """execution_error is null in the normal pending case."""
-    respx_mock.post(NOTEBURST_URL).mock(return_value=_queued_post_response())
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post_response())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
 
     data = await _create_page(client)
     html_status_url = data["html_status_url"]
@@ -157,12 +147,12 @@ async def test_htmlstatus_contract_violation(
     client: AsyncClient, respx_mock: respx.Router
 ) -> None:
     """The impossible success=true + ipynb=None state raises a hard error."""
-    respx_mock.post(NOTEBURST_URL).mock(return_value=_queued_post_response())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     data = await _create_page(client)
     html_status_url = data["html_status_url"]
 
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     r = await client.get(html_status_url, params={"A": 4})
     assert r.status_code == 200
 
@@ -170,7 +160,7 @@ async def test_htmlstatus_contract_violation(
         return_value=Response(
             200,
             json={
-                "job_id": "xyz",
+                "job_id": JOB_ID,
                 "kernel_name": "",
                 "enqueue_time": "2022-03-15T04:12:00Z",
                 "status": "complete",

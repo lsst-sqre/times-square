@@ -13,7 +13,6 @@ import importlib.util
 import json
 import sys
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -32,7 +31,8 @@ from timessquare.sentry import (
     make_traces_sampler,
 )
 
-NOTEBURST_URL = "https://test.example.com/noteburst/v1/notebooks/"
+from .support.github import DATA
+from .support.noteburst import NOTEBURST_URL, queued_job_response
 
 SENTRY_INGEST_LIMIT = 1_048_576
 """Largest event Sentry's ingest API accepts, in bytes (1 MiB)."""
@@ -57,8 +57,7 @@ def _large_ipynb() -> str:
     """Return a notebook large enough that unbounded serialization of the
     frame locals holding it overflows Sentry's event size limit.
     """
-    data_path = Path(__file__).parent / "data" / "demo.ipynb"
-    notebook = json.loads(data_path.read_text())
+    notebook = json.loads((DATA / "demo.ipynb").read_text())
     filler = [
         f"Filler line {i:04d} of a deliberately enormous markdown cell.\n"
         for i in range(2000)
@@ -179,18 +178,7 @@ async def test_noteburst_error_event_size_is_bounded(
     Sentry to accept.
     """
     post_route = respx_mock.post(NOTEBURST_URL)
-    post_route.mock(
-        return_value=httpx.Response(
-            202,
-            json={
-                "job_id": "xyz",
-                "kernel_name": "",
-                "enqueue_time": "2026-08-24T21:09:00Z",
-                "status": "queued",
-                "self_url": f"{NOTEBURST_URL}xyz",
-            },
-        )
-    )
+    post_route.mock(return_value=queued_job_response())
     r = await client.post(
         f"{config.path_prefix}/v1/pages",
         json={"title": "Demo", "ipynb": _large_ipynb()},

@@ -34,7 +34,7 @@ from timessquare.storage.noteburst import (
     NoteburstJobResponseModel,
 )
 
-JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
+from ..support.noteburst import JOB_ID, JOB_URL
 
 
 def _failed_noteburst_response() -> NoteburstJobResponseModel:
@@ -43,7 +43,7 @@ def _failed_noteburst_response() -> NoteburstJobResponseModel:
     """
     return NoteburstJobResponseModel.model_validate(
         {
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "complete",
@@ -62,7 +62,7 @@ def _contract_violation_noteburst_response() -> NoteburstJobResponseModel:
     """Return the impossible ``success=True`` + ``ipynb=None`` state."""
     return NoteburstJobResponseModel.model_validate(
         {
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "complete",
@@ -79,7 +79,7 @@ def _successful_noteburst_response(ipynb: str) -> NoteburstJobResponseModel:
     """Return a completed Noteburst response carrying an executed notebook."""
     return NoteburstJobResponseModel.model_validate(
         {
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "complete",
