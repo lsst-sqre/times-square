@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -30,22 +29,13 @@ from timessquare.storage.noteburst import NoteburstJobModel
 from timessquare.worker.functions.replace_nbhtml import replace_nbhtml
 from timessquare.worker.functions.scheduled_page_run import scheduled_page_run
 
-NOTEBURST_URL = "https://test.example.com/noteburst/v1/notebooks/"
-JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
-
-
-def _queued_response() -> Response:
-    """Return a 202 queued Noteburst submit/poll response."""
-    return Response(
-        202,
-        json={
-            "job_id": "xyz",
-            "kernel_name": "",
-            "enqueue_time": datetime.now(tz=UTC).isoformat(),
-            "status": "queued",
-            "self_url": JOB_URL,
-        },
-    )
+from ...support.github import DATA
+from ...support.noteburst import (
+    JOB_ID,
+    JOB_URL,
+    NOTEBURST_URL,
+    queued_job_response,
+)
 
 
 def _failed_response() -> Response:
@@ -55,7 +45,7 @@ def _failed_response() -> Response:
     return Response(
         200,
         json={
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "complete",
@@ -77,7 +67,7 @@ def _contract_violation_response() -> Response:
     return Response(
         200,
         json={
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "complete",
@@ -125,9 +115,8 @@ async def worker_ctx() -> AsyncGenerator[dict[str, Any]]:
 
 async def _create_demo_page(process_context: ProcessContext) -> str:
     """Create and commit a demo page, returning its name."""
-    ipynb_path = Path(__file__).parent.parent.parent / "data" / "demo.ipynb"
     page = PageModel.create_from_api_upload(
-        ipynb=ipynb_path.read_text(),
+        ipynb=(DATA / "demo.ipynb").read_text(),
         title="Demo",
         uploader_username="testuser",
     )
@@ -153,7 +142,7 @@ async def test_scheduled_page_run_execution_failure_logs_and_skips(
     """
     page_name = await _create_demo_page(worker_ctx["process_context"])
 
-    respx_mock.post(NOTEBURST_URL).mock(return_value=_queued_response())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     respx_mock.get(JOB_URL).mock(return_value=_failed_response())
 
     result = await scheduled_page_run(
@@ -173,7 +162,7 @@ async def test_scheduled_page_run_contract_violation_posts_slack(
     """A genuine contract violation still raises and posts a Slack message."""
     page_name = await _create_demo_page(worker_ctx["process_context"])
 
-    respx_mock.post(NOTEBURST_URL).mock(return_value=_queued_response())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     respx_mock.get(JOB_URL).mock(return_value=_contract_violation_response())
 
     with pytest.raises(RuntimeError):

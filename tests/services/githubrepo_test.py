@@ -6,7 +6,6 @@ import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import cast
 
 import pytest
@@ -14,7 +13,7 @@ import pytest_asyncio
 import respx
 import structlog
 from gidgethub.httpx import GitHubAPI
-from httpx import AsyncClient, Response
+from httpx import AsyncClient
 from safir.database import (
     create_database_engine,
     initialize_database,
@@ -33,9 +32,8 @@ from timessquare.services.page import PageService
 from timessquare.storage.github.apimodels import GitHubPushEventWithIdModel
 from timessquare.storage.github.settingsfiles import NotebookSidecarFile
 
-from ..support.github import MockGitHubRepoSyncAPI
-
-DATA = Path(__file__).parent / ".." / "data"
+from ..support.github import DATA, MockGitHubRepoSyncAPI
+from ..support.noteburst import NOTEBURST_URL, queued_job_response
 
 REPOSITORY_ID = 186853002
 """The repository ID in the push_event.json fixture."""
@@ -123,20 +121,7 @@ def _github_client() -> MockGitHubRepoSyncAPI:
 
 def _mock_noteburst(respx_mock: respx.Router) -> None:
     """Accept the noteburst execution requests a sync makes."""
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=Response(
-            202,
-            json={
-                "job_id": "xyz",
-                "kernel_name": "",
-                "enqueue_time": datetime.now(tz=UTC).isoformat(),
-                "status": "queued",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
-            },
-        )
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
 
 def _existing_page(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timezone
-from pathlib import Path
 
 import nbformat
 import pytest
@@ -13,28 +12,22 @@ from httpx import AsyncClient, Response
 
 from timessquare.config import config
 
+from ...support.github import DATA
+from ...support.noteburst import (
+    JOB_ID,
+    JOB_URL,
+    NOTEBURST_URL,
+    queued_job_response,
+)
+
 
 @pytest.mark.asyncio
 async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     """Test creating and managing pages."""
-    data_path = Path(__file__).parent.joinpath("../../data")
-    demo_path = data_path / "demo.ipynb"
+    demo_path = DATA / "demo.ipynb"
     page_req_data = {"title": "Demo", "ipynb": demo_path.read_text()}
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=Response(
-            202,
-            json={
-                "job_id": "xyz",
-                "kernel_name": "",
-                "enqueue_time": datetime.now(tz=UTC).isoformat(),
-                "status": "queued",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
-            },
-        )
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     r = await client.post(f"{config.path_prefix}/v1/pages", json=page_req_data)
     assert r.status_code == 201
@@ -114,7 +107,7 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 404
 
     # Try adding an invalid notebook (bad parameters)
-    invalid_demo_path = data_path / "demo-invalid-params.ipynb"
+    invalid_demo_path = DATA / "demo-invalid-params.ipynb"
     r = await client.post(
         f"{config.path_prefix}/v1/pages",
         json={"title": "demo-invalid", "ipynb": invalid_demo_path.read_text()},
@@ -186,35 +179,20 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert "kernelspec" not in notebook.metadata
 
     # Try to get HTML rendering; should be unavailable right now.
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=Response(
-            202,
-            json={
-                "job_id": "xyz",
-                "kernel_name": "",
-                "enqueue_time": datetime.now(tz=UTC).isoformat(),
-                "status": "queued",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
-            },
-        )
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     r = await client.get(html_url, params={"A": 2})
     assert r.status_code == 404
 
     # Check the htmlstatus
-    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
+    respx_mock.get(JOB_URL).mock(
         return_value=Response(
             200,
             json={
-                "job_id": "xyz",
+                "job_id": JOB_ID,
                 "kernel_name": "",
                 "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
+                "self_url": JOB_URL,
             },
         )
     )
@@ -224,17 +202,15 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert data["available"] is False
 
     # Try to get noteburst job while still queued
-    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
+    respx_mock.get(JOB_URL).mock(
         return_value=Response(
             200,
             json={
-                "job_id": "xyz",
+                "job_id": JOB_ID,
                 "kernel_name": "",
                 "enqueue_time": datetime.now(tz=UTC).isoformat(),
                 "status": "queued",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
+                "self_url": JOB_URL,
             },
         )
     )
@@ -242,17 +218,15 @@ async def test_pages(client: AsyncClient, respx_mock: respx.Router) -> None:
     assert r.status_code == 404
 
     # Get completed noteburst job
-    respx_mock.get("https://test.example.com/noteburst/v1/notebooks/xyz").mock(
+    respx_mock.get(JOB_URL).mock(
         return_value=Response(
             200,
             json={
-                "job_id": "xyz",
+                "job_id": JOB_ID,
                 "kernel_name": "",
                 "enqueue_time": "2022-03-15T04:12:00Z",
                 "status": "complete",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
+                "self_url": JOB_URL,
                 "start_time": "2022-03-15T04:13:00Z",
                 "finish_time": "2022-03-15T04:13:10Z",
                 "success": True,
@@ -285,20 +259,7 @@ async def test_dynamic_default_handling(
             return datetime(2025, 5, 2, 12, 0, 0, tzinfo=tz)
 
     # Mock the noteburst response
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=Response(
-            202,
-            json={
-                "job_id": "xyz",
-                "kernel_name": "",
-                "enqueue_time": datetime.now(tz=UTC).isoformat(),
-                "status": "queued",
-                "self_url": (
-                    "https://test.example.com/noteburst/v1/notebooks/xyz"
-                ),
-            },
-        )
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     # Create a notebook with a dynamic default parameter
     notebook_content = {

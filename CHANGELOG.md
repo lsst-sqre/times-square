@@ -8,6 +8,36 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.27.1'></a>
+## 0.27.1 (2026-08-31)
+
+### Bug fixes
+
+- Bounded the length of values serialized into Sentry events
+  (`max_value_length=1024`) in both the API and the arq worker. sentry-sdk
+  2.x serializes local variables without a length limit, and the Noteburst
+  submission path holds the full source of a notebook in the local variables
+  of several stack frames, so an uncaught error raised while a page with a
+  notebook larger than about 100 KB was in flight produced an event over
+  Sentry's 1 MiB ingest limit and was dropped server-side as
+  `too_large:event`. Those errors are now reported.
+
+  The bound is not confined to frame locals: sentry-sdk applies it to every
+  string in an event, so exception messages, structlog log messages, request
+  bodies, tags, and `extra` values are truncated at 1 KiB (measured in bytes,
+  with a trailing `...`) too. A clipped value in Sentry — a long pydantic
+  `ValidationError`, or a Noteburst or GitHub error body — is this limit at
+  work; reporting a truncated error is the deliberate trade for reporting it
+  at all.
+
+### Other changes
+
+- Enabled SQLAlchemy pessimistic connection checking (`pool_pre_ping=True`)
+  on the database session dependency, following the recommendation added in
+  Safir 15.2.0. A connection dropped by the database server while the
+  service was idle is now detected and replaced transparently instead of
+  failing the next job.
+
 <a id='changelog-0.27.0'></a>
 ## 0.27.0 (2026-08-13)
 

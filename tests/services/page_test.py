@@ -44,7 +44,13 @@ from timessquare.services.page import (
 )
 from timessquare.storage.noteburst import NoteburstJobModel, NoteburstJobStatus
 
-JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
+from ..support.noteburst import (
+    JOB_ID,
+    JOB_URL,
+    NOTEBURST_URL,
+    queued_job_response,
+)
+
 HTML_BASE_URL = "https://example.com/times-square/api/v1/pages/demo/html"
 
 
@@ -76,25 +82,12 @@ async def page_service() -> AsyncGenerator[PageService]:
     await db_session_dependency.aclose()
 
 
-def _queued_post() -> Response:
-    return Response(
-        202,
-        json={
-            "job_id": "xyz",
-            "kernel_name": "",
-            "enqueue_time": datetime.now(tz=UTC).isoformat(),
-            "status": "queued",
-            "self_url": JOB_URL,
-        },
-    )
-
-
 def _queued_job() -> Response:
     """Build a job-status response for a job that is still queued."""
     return Response(
         200,
         json={
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "queued",
@@ -108,7 +101,7 @@ def _in_progress_job() -> Response:
     return Response(
         200,
         json={
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "in_progress",
@@ -132,7 +125,7 @@ def _failed_job(
     return Response(
         200,
         json={
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": enqueue_time,
             "status": "complete",
@@ -151,7 +144,7 @@ def _successful_job(ipynb: str) -> Response:
     return Response(
         200,
         json={
-            "job_id": "xyz",
+            "job_id": JOB_ID,
             "kernel_name": "",
             "enqueue_time": "2022-03-15T04:12:00Z",
             "status": "complete",
@@ -179,12 +172,12 @@ async def test_terminal_failure_deletes_job_and_guards_reexecution(
 
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    post_route = respx_mock.post(
-        "https://test.example.com/noteburst/v1/notebooks/"
-    ).mock(return_value=_queued_post())
+    post_route = respx_mock.post(NOTEBURST_URL).mock(
+        return_value=queued_job_response()
+    )
 
     # First status request enqueues a new execution and stores a job.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     status = await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -239,12 +232,12 @@ async def test_explicit_rerun_clears_cached_failure(
 
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    post_route = respx_mock.post(
-        "https://test.example.com/noteburst/v1/notebooks/"
-    ).mock(return_value=_queued_post())
+    post_route = respx_mock.post(NOTEBURST_URL).mock(
+        return_value=queued_job_response()
+    )
 
     # Drive the page instance into a cached terminal failure.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -255,7 +248,7 @@ async def test_explicit_rerun_clears_cached_failure(
     assert status.execution_error is not None
 
     # An explicit re-run request clears the cached failure.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.request_noteburst_execution(page_instance)
     assert (
         await page_service._execution_failure_store.get_instance(
@@ -290,12 +283,12 @@ async def test_live_job_takes_precedence_over_cached_failure(
 
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    post_route = respx_mock.post(
-        "https://test.example.com/noteburst/v1/notebooks/"
-    ).mock(return_value=_queued_post())
+    post_route = respx_mock.post(NOTEBURST_URL).mock(
+        return_value=queued_job_response()
+    )
 
     # Drive the page instance into a cached terminal failure.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -308,7 +301,7 @@ async def test_live_job_takes_precedence_over_cached_failure(
 
     # Simulate the race: a fresh execution stores a new job record, then a
     # concurrent poll of the old job re-writes the failure marker.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.request_noteburst_execution(page_instance)
     await page_service._execution_failure_store.store_failure(
         failure=failure, page_id=page_instance.id
@@ -373,12 +366,10 @@ async def test_events_terminal_failure(
     await page_service.add_page_to_store(page)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     # Seed a Noteburst job record (the SSE iterator only reads existing jobs).
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -429,10 +420,8 @@ async def test_events_normal_has_null_execution_error(
     )
     await page_service.add_page_to_store(page)
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -459,12 +448,10 @@ async def test_events_stale_html_survives_failed_background_refresh(
     await page_service.add_page_to_store(page)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     # Render and cache HTML for the page instance.
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -476,7 +463,7 @@ async def test_events_stale_html_survives_failed_background_refresh(
 
     # A background refresh (as from soft_delete_html) puts a new job in flight
     # while the stale HTML stays cached...
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.request_noteburst_execution(page_instance)
 
     # ...and that refresh job completes as a terminal failure.
@@ -518,12 +505,10 @@ async def test_events_live_job_takes_precedence_over_cached_failure(
     await page_service.add_page_to_store(page)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
 
     # A pending job is in flight...
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -617,9 +602,7 @@ async def test_build_events_payload_in_flight_job(
     """
     page = await _create_demo_page(page_service)
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     respx_mock.get(JOB_URL).mock(return_value=_queued_job())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
@@ -647,10 +630,8 @@ async def test_build_events_payload_cached_html(
     ipynb = (Path(__file__).parent.parent / "data" / "demo.ipynb").read_text()
     page = await _create_demo_page(page_service)
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -685,10 +666,8 @@ async def test_build_events_payload_terminal_failure(
     page = await _create_demo_page(page_service)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
-    respx_mock.get(JOB_URL).mock(return_value=_queued_post())
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
+    respx_mock.get(JOB_URL).mock(return_value=queued_job_response())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
     )
@@ -914,9 +893,7 @@ async def test_events_emits_once_per_state_change(
     page = await _create_demo_page(page_service)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
@@ -969,9 +946,7 @@ async def test_events_terminal_failure_emits_once_and_stays_open(
     page = await _create_demo_page(page_service)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
@@ -1031,9 +1006,7 @@ async def test_events_reexecution_failing_identically_is_reported(
     page = await _create_demo_page(page_service)
     page_instance = PageInstanceModel(page=page, values={"A": 2})
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
     await page_service.get_html_and_status(
         name=page.name, query_params={"A": 2}
@@ -1197,9 +1170,7 @@ async def test_events_successful_completion_renders_html_and_backs_off(
         page_instance_id=page_instance.id,
     )
 
-    respx_mock.post("https://test.example.com/noteburst/v1/notebooks/").mock(
-        return_value=_queued_post()
-    )
+    respx_mock.post(NOTEBURST_URL).mock(return_value=queued_job_response())
     job_route = respx_mock.get(JOB_URL).mock(return_value=_queued_job())
     await page_service.get_html_and_status(
         name=page.name, query_params=query_params

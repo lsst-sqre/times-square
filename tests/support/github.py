@@ -16,6 +16,7 @@ from httpx import Response
 
 __all__ = [
     "CHECK_RUN_GIT_TREE",
+    "DATA",
     "SAMPLE_PRIVATE_KEY",
     "MockGitHubAPI",
     "MockGitHubCheckRunAPI",
@@ -26,6 +27,7 @@ __all__ = [
 ]
 
 DATA = Path(__file__).parent.parent / "data"
+"""The directory holding the test data files."""
 
 
 SAMPLE_PRIVATE_KEY = """-----BEGIN RSA PRIVATE KEY-----

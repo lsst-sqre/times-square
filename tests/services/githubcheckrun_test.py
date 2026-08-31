@@ -44,8 +44,7 @@ from timessquare.services.page import PageService
 from timessquare.storage.noteburst import NoteburstJobModel
 
 from ..support.github import MockGitHubCheckRunAPI
-
-JOB_URL = "https://test.example.com/noteburst/v1/notebooks/xyz"
+from ..support.noteburst import JOB_URL
 
 DATA = Path(__file__).parent.joinpath("../data/github_webhooks")
 
