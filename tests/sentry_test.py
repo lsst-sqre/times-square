@@ -10,7 +10,7 @@ import importlib
 import importlib.util
 import json
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpx
@@ -210,16 +210,27 @@ async def test_noteburst_error_event_size_is_bounded(
 
 
 @pytest.mark.parametrize(
-    ("module_name", "tracing_option"),
+    ("module_name", "tracing_check"),
     [
-        pytest.param("timessquare.main", "traces_sampler", id="api"),
         pytest.param(
-            "timessquare.worker.main", "traces_sample_rate", id="worker"
+            "timessquare.main",
+            lambda options: callable(options["traces_sampler"]),
+            id="api",
+        ),
+        pytest.param(
+            "timessquare.worker.main",
+            lambda options: (
+                options["traces_sample_rate"]
+                == config.sentry_traces_sample_rate
+            ),
+            id="worker",
         ),
     ],
 )
 def test_entrypoint_bounds_serialized_values(
-    monkeypatch: pytest.MonkeyPatch, module_name: str, tracing_option: str
+    monkeypatch: pytest.MonkeyPatch,
+    module_name: str,
+    tracing_check: Callable[[dict[str, Any]], bool],
 ) -> None:
     """Both processes bound serialized values, and each brings its own
     tracing option.
@@ -235,7 +246,7 @@ def test_entrypoint_bounds_serialized_values(
     assert options["dsn"] == config.sentry_dsn
     assert options["environment"] == config.environment_name
     assert options["before_send"] is before_send_handler
-    assert tracing_option in options
+    assert tracing_check(options)
 
 
 def test_init_sentry_applies_shared_options(
