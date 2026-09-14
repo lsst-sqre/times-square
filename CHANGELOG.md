@@ -8,6 +8,15 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.27.2'></a>
+## 0.27.2 (2026-09-14)
+
+### Other changes
+
+- Update dependencies. Notably, GitPython is updated to 3.1.62, which
+  includes the fix for the advisory covered by the pending Dependabot
+  security update to 3.1.59.
+
 <a id='changelog-0.27.1'></a>
 ## 0.27.1 (2026-08-31)
 
