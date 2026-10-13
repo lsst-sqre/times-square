@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 from safir.github.models import GitHubBlobModel
 
+from timessquare.domain.githubcheckrun import Annotation
 from timessquare.domain.pageparameters import (
     DateParameterSchema,
     DatetimeParameterSchema,
@@ -37,6 +38,31 @@ def test_load_sidecar() -> None:
     sidecar = NotebookSidecarFile.parse_yaml(sidecar_path.read_text())
     parameters = sidecar.export_parameters()
     assert parameters is not None
+
+
+def test_reserved_ts_prefix_parameter_rejected() -> None:
+    """A sidecar declaring a ``ts_``-prefixed parameter fails validation so
+    the GitHub check run reports it to notebook authors.
+    """
+    content = (
+        "parameters:\n"
+        "  ts_start:\n"
+        "    type: number\n"
+        "    description: Reserved-prefix parameter\n"
+        "    default: 0\n"
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        NotebookSidecarFile.parse_yaml(content)
+
+    # The check-run path renders the pydantic error into annotations; the
+    # message must name the offending parameter and the reservation rule.
+    annotations = Annotation.from_validation_error(
+        path="notebook.yaml", error=exc_info.value
+    )
+    assert len(annotations) == 1
+    message = annotations[0].message
+    assert "ts_start" in message
+    assert "ts_" in message
 
 
 def test_date_format_parameter() -> None:

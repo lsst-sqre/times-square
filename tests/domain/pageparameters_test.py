@@ -98,6 +98,25 @@ def test_parameter_name_validation() -> None:
         PageParameters.validate_parameter_name("lambda")
 
 
+def test_reserved_ts_prefix_parameter_name() -> None:
+    """Parameter names starting with ``ts_`` are reserved for Times Square
+    viewer controls and must be rejected.
+    """
+    with pytest.raises(ParameterNameValidationError) as exc_info:
+        PageParameters.validate_parameter_name("ts_start")
+    message = str(exc_info.value)
+    assert "ts_start" in message
+    assert "ts_" in message
+
+    with pytest.raises(ParameterNameValidationError):
+        PageParameters.validate_parameter_name("ts_hide_code")
+
+    # Names that merely contain "ts" but do not start with the reserved
+    # prefix remain valid.
+    PageParameters.validate_parameter_name("counts_ts")
+    PageParameters.validate_parameter_name("ts")
+
+
 def test_parameter_default_exists() -> None:
     name = "myvar"
     schema: dict[str, Any] = {"type": "number", "description": "Test schema"}
