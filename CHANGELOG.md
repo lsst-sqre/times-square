@@ -8,6 +8,14 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.27.3'></a>
+## 0.27.3 (2026-10-21)
+
+### Other changes
+
+- Update certifi to 2026.10.19 and uv to 0.13.4 ([GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2), [GHSA-hq85-5cpj-mr62](https://github.com/advisories/GHSA-hq85-5cpj-mr62)). Earlier versions of both trust the `emSign ECC Root CA - G3` root certificate, whose intermediate CAs have compromised private keys. uv is updated in the Dockerfile, CI, and pre-commit configuration as well as `uv.lock`. The rebuilt image also picks up Debian's `ca-certificates` security update ([DSA-6572-1](https://security-tracker.debian.org/tracker/DSA-6572-1)), which removes the same root from the system trust store.
+- Include the Dependabot security updates for Mako 1.4.2, PyJWT 2.15.0, tornado 6.5.9, urllib3 2.8.0, and virtualenv 21.7.13.
+
 <a id='changelog-0.27.2'></a>
 ## 0.27.2 (2026-09-14)
 
