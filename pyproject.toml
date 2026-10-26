@@ -73,7 +73,7 @@ dev = [
     "uv",
 ]
 docs = [
-    "documenteer[guide]>=1.0",
+    "documenteer[guide]==2.5.0b4",
 ]
 lint = [
     "prek",
