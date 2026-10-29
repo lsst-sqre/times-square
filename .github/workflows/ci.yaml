@@ -77,7 +77,13 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
     timeout-minutes: 15
+    env:
+      HAS_OOK_TOKEN: ${{ secrets.OOK_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -98,18 +104,18 @@ jobs:
 
       - name: Run nox
         run: uv run --only-group=nox nox -s docs docs-linkcheck
+        env:
+          OOK_TOKEN: ${{ secrets.OOK_TOKEN }}
 
-      # Only attempt documentation uploads for long-lived branches, tagged
-      # releases, and pull requests from ticket branches.  This avoids version
-      # clutter in the docs and failures when a PR doesn't have access to
-      # secrets.
-      - name: Upload to LSST the Docs
-        uses: lsst-sqre/ltd-upload@v1
+      - name: Upload to Docverse
+        uses: lsst-sqre/docverse-upload@v1
         with:
+          org: rubin
           project: times-square
           dir: "docs/_build/html"
-          username: ${{ secrets.LTD_USERNAME }}
-          password: ${{ secrets.LTD_PASSWORD }}
+          token: ${{ secrets.DOCVERSE_TOKEN }}
+          github-token: ${{ github.token }}
+          comment-on-pr: "true"
         if: >
           github.event_name != 'merge_group'
           && (github.event_name != 'pull_request'
