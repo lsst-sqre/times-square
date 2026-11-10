@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 
 import dateutil.rrule
@@ -52,8 +52,8 @@ class RunSchedule:
 
     def next(
         self,
-        after: datetime.datetime | None,
-    ) -> datetime.datetime | None:
+        after: datetime | None,
+    ) -> datetime | None:
         """Get the next scheduled time after a given datetime.
 
         Parameters
@@ -71,9 +71,9 @@ class RunSchedule:
         if self.enabled is False:
             return None
         if after is None:
-            after_dt = datetime.datetime.now(datetime.UTC)
+            after_dt = datetime.now(UTC)
         else:
-            after_dt = after.astimezone(datetime.UTC)
+            after_dt = after.astimezone(UTC)
         next_dt = self.rruleset.after(after_dt, inc=False)
 
         if next_dt is None:
