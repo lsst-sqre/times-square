@@ -2931,10 +2931,6 @@ wheels = [
 asyncio = [
     { name = "greenlet" },
 ]
-mypy = [
-    { name = "mypy" },
-    { name = "types-greenlet" },
-]
 
 [[package]]
 name = "sse-starlette"
@@ -3072,7 +3068,6 @@ nox = [
 ]
 typing = [
     { name = "mypy" },
-    { name = "sqlalchemy", extra = ["mypy"] },
     { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
 ]
@@ -3131,7 +3126,6 @@ nox = [
 ]
 typing = [
     { name = "mypy" },
-    { name = "sqlalchemy", extras = ["mypy"] },
     { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
 ]
@@ -3214,15 +3208,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2c/2e/a7fbfe268c8a3b32546930c0297c101d65a4a14c304ad5790a9f478f0e4e/traitlets-5.16.1.tar.gz", hash = "sha256:ed900c2b631aa3a112811139fa97b8d2c3bad5e989656bba4b7e52c7852c18c1", size = 166137, upload-time = "2026-08-03T08:32:36.848Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ad/66/0d785f0bc5e4315a96c989bb476d0fc07ea4f85132550c7b156ca2035d52/traitlets-5.16.1-py3-none-any.whl", hash = "sha256:f775618166caa0396c8e337099240f2bd3e5e917d203b2e6fbe21a58d3cb1f6b", size = 86211, upload-time = "2026-08-03T08:32:34.48Z" },
-]
-
-[[package]]
-name = "types-greenlet"
-version = "3.5.0.20260518"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e4/58/ec7e4d35ce36557d7599d347c51632723e5f89af551af776d25bab7c605f/types_greenlet-3.5.0.20260518.tar.gz", hash = "sha256:2abc0b31a60d10244bba4a9f9e5d19b7254749b14ea85cb2f72eef282fab39f4", size = 9084, upload-time = "2026-05-18T06:03:08.352Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/1f/112ebbffe68c40af3bca8e948a9d2df66a53dd7b3124e031e3110fcba3e5/types_greenlet-3.5.0.20260518-py3-none-any.whl", hash = "sha256:ce8f2b59314ffd683648d8f7fc1eab7b7a36a0330adb4a054d0a2157b9624166", size = 8816, upload-time = "2026-05-18T06:03:07.06Z" },
 ]
 
 [[package]]
