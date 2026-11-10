@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from safir.database import datetime_from_db, datetime_to_db
@@ -319,7 +320,12 @@ class PageStore:
             .distinct()
         )
         result = await self._session.execute(statement)
-        return sorted(row[0] for row in result.all())
+        # The query excludes null IDs, but the column type is still nullable.
+        return sorted(
+            conflicting_id
+            for conflicting_id in result.scalars()
+            if conflicting_id is not None
+        )
 
     async def rename_repository(
         self,
@@ -540,16 +546,27 @@ class PageStore:
             .order_by(SqlPage.github_owner, SqlPage.github_repo)
         )
         result = await self._session.execute(statement)
-        return [
-            StoredGitHubRepository(
-                repository_id=row[0],
-                owner=row[1],
-                name=row[2],
-                owner_id=row[3],
-                installation_id=row[4],
+        repositories: list[StoredGitHubRepository] = []
+        for repository_id, owner, name, owner_id, installation_id in result:
+            if (
+                repository_id is None
+                or owner is None
+                or name is None
+                or installation_id is None
+            ):
+                # Already filtered out by the query above, but the column
+                # types are nullable so this narrows them for typing.
+                continue
+            repositories.append(
+                StoredGitHubRepository(
+                    repository_id=repository_id,
+                    owner=owner,
+                    name=name,
+                    owner_id=owner_id,
+                    installation_id=installation_id,
+                )
             )
-            for row in result.all()
-        ]
+        return repositories
 
     async def count_pages_missing_github_ids(
         self,
@@ -587,7 +604,13 @@ class PageStore:
             .order_by(SqlPage.github_owner, SqlPage.github_repo)
         )
         result = await self._session.execute(statement)
-        return {(row[0], row[1]): row[2] for row in result.all()}
+        # The query excludes null names, but the column types are still
+        # nullable so the condition narrows them for typing.
+        return {
+            (owner, name): page_count
+            for owner, name, page_count in result
+            if owner is not None and name is not None
+        }
 
     async def backfill_github_ids(
         self,
@@ -733,7 +756,7 @@ class PageStore:
 
     async def _generate_node_for_owner(self, owner_name: str) -> GitHubNode:
         statement = (
-            select(  # order matches GitHubTreeQueryResult
+            select(  # order matches _build_tree_inputs
                 SqlPage.github_owner,
                 SqlPage.github_repo,
                 SqlPage.github_commit,
@@ -753,17 +776,7 @@ class PageStore:
         )
         result = await self._session.execute(statement)
 
-        tree_inputs = [
-            GitHubTreeQueryResult(
-                github_owner=row[0],
-                github_repo=row[1],
-                github_commit=row[2],
-                path_prefix=row[3],
-                title=row[4],
-                path_stem=row[5],
-            )
-            for row in result.all()
-        ]
+        tree_inputs = _build_tree_inputs(result)
 
         owner_node = GitHubNode(
             node_type=GitHubNodeType.owner,
@@ -782,7 +795,7 @@ class PageStore:
     ) -> list[GitHubNode]:
         """Get the tree of GitHub-backed pages for a pull request commit."""
         statement = (
-            select(  # order matches GitHubTreeQueryResult
+            select(  # order matches _build_tree_inputs
                 SqlPage.github_owner,
                 SqlPage.github_repo,
                 SqlPage.github_commit,
@@ -800,17 +813,7 @@ class PageStore:
         )
         result = await self._session.execute(statement)
 
-        tree_inputs = [
-            GitHubTreeQueryResult(
-                github_owner=row[0],
-                github_repo=row[1],
-                github_commit=row[2],
-                path_prefix=row[3],
-                title=row[4],
-                path_stem=row[5],
-            )
-            for row in result.all()
-        ]
+        tree_inputs = _build_tree_inputs(result)
         if len(tree_inputs) == 0:
             return []
 
@@ -851,3 +854,47 @@ class PageStore:
             self._rehydrate_page_from_sql(sql_page)
             for sql_page in result.scalars()
         ]
+
+
+def _build_tree_inputs(
+    rows: Iterable[
+        tuple[str | None, str | None, str | None, str | None, str, str | None]
+    ],
+) -> list[GitHubTreeQueryResult]:
+    """Convert rows from a GitHub tree query into tree inputs.
+
+    Parameters
+    ----------
+    rows
+        Rows with the columns ``github_owner``, ``github_repo``,
+        ``github_commit``, ``repository_display_path_prefix``, ``title``, and
+        ``repository_path_stem``, in that order.
+
+    Returns
+    -------
+    list of GitHubTreeQueryResult
+        The tree inputs, in row order. Rows that are missing any of the
+        GitHub-specific columns are skipped. These columns are only null for
+        pages that aren't backed by GitHub, which the queries already exclude
+        by matching on the owner.
+    """
+    tree_inputs: list[GitHubTreeQueryResult] = []
+    for owner, repo, commit, path_prefix, title, path_stem in rows:
+        if (
+            owner is None
+            or repo is None
+            or path_prefix is None
+            or path_stem is None
+        ):
+            continue
+        tree_inputs.append(
+            GitHubTreeQueryResult(
+                github_owner=owner,
+                github_repo=repo,
+                github_commit=commit,
+                path_prefix=path_prefix,
+                title=title,
+                path_stem=path_stem,
+            )
+        )
+    return tree_inputs
