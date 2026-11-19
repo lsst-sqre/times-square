@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Self
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from safir.pydantic import HumanTimedelta
 
 from timessquare.domain.page import PersonModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.domain.schedule import RunSchedule
 from timessquare.domain.schedulerule import ScheduleRules
+from timessquare.exceptions import ParameterNameValidationError
 
 from ._parameterschema import ParameterSchemaModel
 from ._person import SidecarPersonModel
@@ -105,6 +106,18 @@ class NotebookSidecarFile(BaseModel):
             ),
         ),
     ] = True
+
+    @model_validator(mode="after")
+    def check_parameter_names(self) -> Self:
+        """Validate parameter names so violations (including the reserved
+        ``ts_`` prefix) surface through the GitHub check-run validation path.
+        """
+        for name in self.parameters:
+            try:
+                PageParameters.validate_parameter_name(name)
+            except ParameterNameValidationError as e:
+                raise ValueError(str(e)) from e
+        return self
 
     @classmethod
     def parse_yaml(cls, content: str) -> NotebookSidecarFile:
