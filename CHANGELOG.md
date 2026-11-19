@@ -8,6 +8,13 @@ Collect fragments into this file with: scriv collect --version X.Y.Z
 
 <!-- scriv-insert-here -->
 
+<a id='changelog-0.27.4'></a>
+## 0.27.4 (2026-11-19)
+
+### Other changes
+
+- Update dependencies. Notably, SQLAlchemy is updated from 2.0 to 2.1, FastAPI to 0.162, python-dateutil to 4.0, and gidgethub to 6.0. SQLAlchemy 2.1 removes its deprecated mypy plugin, so the plugin and the `sqlalchemy[mypy]` extra are dropped from the type-checking configuration, and the page store now explicitly narrows the nullable columns that SQLAlchemy 2.1's typed result rows expose.
+
 <a id='changelog-0.27.3'></a>
 ## 0.27.3 (2026-10-21)
 
