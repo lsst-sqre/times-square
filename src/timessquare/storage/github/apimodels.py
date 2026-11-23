@@ -100,10 +100,12 @@ class GitHubCheckSuiteHeadBranchModel(BaseModel):
         str | None,
         Field(
             description=(
-                "Name of the branch the check suite's commit was pushed to. "
-                "For a commit from a fork, this names the fork's branch, "
-                "which need not exist in the repository the check suite "
-                "belongs to."
+                "Name of the branch the check suite's commit was pushed to, "
+                "which may since have been renamed or deleted. For a commit "
+                "from a fork, GitHub reports no branch for a third-party "
+                "app's check suite, such as Times Square's, while GitHub "
+                "Actions' check suites name the fork's branch, which need "
+                "not exist in the repository the check suite belongs to."
             )
         ),
     ] = None

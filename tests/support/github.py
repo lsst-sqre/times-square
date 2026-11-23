@@ -7,9 +7,10 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import gidgethub.abc as gh_abc
 import respx
@@ -189,9 +190,20 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         commit first. A commit that is only in a fork is in none of them.
         This backs the "list branches for HEAD commit", "get a branch", and
         "compare two commits" GETs. Compare reports ``identical`` or
-        ``behind`` when the head commit is in the base commit's history, and
-        otherwise ``diverged``, which is what GitHub reports for a fork's
-        commit compared against a branch of the base repository.
+        ``behind`` when the head commit is in the base commit's history,
+        ``ahead`` when the base commit is in the head commit's history, and
+        otherwise ``diverged``. Compared against a branch of the base
+        repository, a fork's commit is ``ahead`` if it was made on top of the
+        branch's tip, and ``diverged`` if the branch has moved on since or
+        the commit shares none of its history.
+    ``renamed_branches``
+        Maps the old names of renamed branches to their new names. As on
+        GitHub, "get a branch" answers an old name with a 301 redirect to
+        the new name, and the old name is not otherwise a branch.
+    ``fork_commits``
+        Maps commits that are only in a fork to their parent commits, which
+        may be on a branch of the installed repository. A fork's commit that
+        is not listed here shares no history with the installed repository.
     ``pull_heads``
         Maps pull request numbers to head commits. GitHub keeps a
         ``refs/pull/N/head`` ref in the base repository for every pull
@@ -200,7 +212,9 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         not, since that ref is not a branch.
     ``check_suite_head_branch``
         The ``head_branch`` that the "get a check suite" GET reports. For a
-        fork's commit, GitHub reports the name of the fork's branch.
+        fork's commit, GitHub reports `None` for a third-party app's check
+        suite, such as Times Square's. Only GitHub Actions' own check suites
+        report the name of the fork's branch.
     ``commit_pulls``
         Maps commits to what the "list pull requests associated with a
         commit" GET returns for them, which is no pull requests by default.
@@ -209,6 +223,10 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         use this endpoint, which is exactly why: tests set it to what GitHub
         returns so that they fail if the check run service goes back to
         judging a commit's source by its pull requests.
+    ``error_statuses``
+        Maps regular expressions to HTTP error statuses. A GET of one of the
+        endpoints above whose URL path matches an expression responds with
+        that status instead.
     """
 
     def __init__(
@@ -216,9 +234,12 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         *,
         check_run: dict[str, Any],
         branches: Mapping[str, Sequence[str]] | None = None,
+        renamed_branches: Mapping[str, str] | None = None,
+        fork_commits: Mapping[str, str] | None = None,
         pull_heads: Mapping[int, str] | None = None,
         check_suite_head_branch: str | None = None,
         commit_pulls: Mapping[str, list[dict[str, Any]]] | None = None,
+        error_statuses: Mapping[str, int] | None = None,
         contents_error: BaseException | None = None,
         tree_error: BaseException | None = None,
         blob_error: BaseException | None = None,
@@ -234,9 +255,12 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         self._branches = {
             name: list(history) for name, history in (branches or {}).items()
         }
+        self._renamed_branches = dict(renamed_branches or {})
+        self._fork_commits = dict(fork_commits or {})
         self._pull_heads = dict(pull_heads or {})
         self._check_suite_head_branch = check_suite_head_branch
         self._commit_pulls = dict(commit_pulls or {})
+        self._error_statuses = dict(error_statuses or {})
         self._contents_error = contents_error
         self._tree_error = tree_error
         self._blob_error = blob_error
@@ -315,6 +339,9 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         """
         path = urlsplit(url).path
         repo_url = "/".join(url.split("/")[:6])
+        for pattern, status in self._error_statuses.items():
+            if re.search(pattern, path):
+                return status, {"message": HTTPStatus(status).phrase}, {}
         if m := re.search(r"/commits/(\w+)/branches-where-head$", path):
             return (
                 200,
@@ -329,6 +356,24 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
             return 200, self._commit_pulls.get(m[1], []), {}
         if m := re.search(r"/branches/(.+)$", path):
             name = unquote(m[1])
+            if name in self._renamed_branches:
+                new_url = (
+                    f"{repo_url}/branches/"
+                    f"{quote(self._renamed_branches[name], safe='')}"
+                )
+                return (
+                    301,
+                    {
+                        "message": "Moved Permanently",
+                        "url": new_url,
+                        "documentation_url": (
+                            "https://docs.github.com/rest/guides/"
+                            "best-practices-for-using-the-rest-api"
+                            "#follow-redirects"
+                        ),
+                    },
+                    {"location": new_url},
+                )
             if name not in self._branches:
                 return 404, {"message": "Branch not found"}, {}
             return 200, self._branch_object(repo_url, name), {}
@@ -372,17 +417,26 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
 
     def _history(self, sha: str) -> list[str]:
         """Get the commits reachable from a commit, newest first."""
+        if sha in self._fork_commits:
+            return [sha, *self._history(self._fork_commits[sha])]
         for history in self._branches.values():
             if sha in history:
                 return history[history.index(sha) :]
         return [sha]
 
     def _compare(self, base: str, head: str) -> dict[str, Any]:
-        history = self._history(base)
+        base_history = self._history(base)
+        head_history = self._history(head)
         if head == base:
             status, ahead_by, behind_by = "identical", 0, 0
-        elif head in history:
-            status, ahead_by, behind_by = "behind", 0, history.index(head)
+        elif head in base_history:
+            status, ahead_by, behind_by = (
+                "behind",
+                0,
+                base_history.index(head),
+            )
+        elif base in head_history:
+            status, ahead_by, behind_by = "ahead", head_history.index(base), 0
         else:
             status, ahead_by, behind_by = "diverged", 1, 1
         return {"status": status, "ahead_by": ahead_by, "behind_by": behind_by}

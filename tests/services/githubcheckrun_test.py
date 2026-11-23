@@ -7,6 +7,7 @@ import warnings
 from collections import deque
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,6 +16,7 @@ import pytest
 import pytest_asyncio
 import respx
 import structlog
+from gidgethub import HTTPException
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient, Response
 from safir.database import (
@@ -441,11 +443,26 @@ BASE_SHA = "f95f852bd8fca8fcc58a9a2d6c842781e32a215e"
 NEWER_SHA = "3c1e4b8f0d9a7e6c5b4a39281706f5e4d3c2b1a0"
 """A commit pushed on top of `HEAD_SHA`."""
 
-FORK_BRANCH_NAMES = ["changes", "master", "pull/3/head"]
-"""Names a fork's pull request branch might have: one the installed
-repository lacks, one it shares, and one that names the pull request's own
-ref in the installed repository, which the compare API would resolve to the
-fork's commit.
+FORK_BRANCH_NAMES: list[str | None] = [
+    None,
+    "changes",
+    "master",
+    "trunk",
+    "pull/3/head",
+]
+"""Head branches that a check suite for a fork's commit might report.
+
+GitHub reports no head branch for a third-party app's check suite, such as
+Times Square's, on a fork's commit. GitHub Actions' check suites report the
+name of the fork's branch, so the names cover one the installed repository
+lacks, one it shares, one it has since renamed (see `FORK_RENAMED_BRANCHES`),
+and one that names the pull request's own ref in the installed repository,
+which the compare API would resolve to the fork's commit.
+"""
+
+FORK_RENAMED_BRANCHES = {"trunk": "master"}
+"""Branches of the installed repository renamed after a fork was made, so the
+fork still has a branch under the old name.
 """
 
 
@@ -543,18 +560,19 @@ def _was_skipped(mock: MockGitHubCheckRunAPI) -> bool:
 async def test_check_suite_skipped_for_fork_pull_request(
     http_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
-    fork_branch: str,
+    fork_branch: str | None,
 ) -> None:
     """A check suite for the head commit of an open pull request from a fork
     creates no check runs, so the fork's notebooks are never read or run.
 
     Through the base repository, GitHub lists no pull requests and no
-    branches for a fork's commit, and its check suite's head branch is the
-    name of the fork's branch.
+    branches for a fork's commit, and its check suite reports either no head
+    branch or the name of the fork's branch.
     """
     monkeypatch.setattr(config, "github_orgs", "Codertocat")
     mock = _make_mock(
         branches={"master": [BASE_SHA]},
+        renamed_branches=FORK_RENAMED_BRANCHES,
         pull_heads={3: HEAD_SHA},
         check_suite_head_branch=fork_branch,
     )
@@ -571,7 +589,7 @@ async def test_check_suite_skipped_for_fork_pull_request(
 async def test_rerequested_check_run_skipped_for_fork_pull_request(
     http_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
-    fork_branch: str,
+    fork_branch: str | None,
 ) -> None:
     """Re-running a check run on the head commit of an open pull request
     from a fork concludes it as skipped without reading the fork's content.
@@ -579,6 +597,7 @@ async def test_rerequested_check_run_skipped_for_fork_pull_request(
     monkeypatch.setattr(config, "github_orgs", "Codertocat")
     mock = _make_mock(
         branches={"master": [BASE_SHA]},
+        renamed_branches=FORK_RENAMED_BRANCHES,
         pull_heads={3: HEAD_SHA},
         check_suite_head_branch=fork_branch,
     )
@@ -592,6 +611,79 @@ async def test_rerequested_check_run_skipped_for_fork_pull_request(
         GitHubCheckRunConclusion.neutral
     ]
     assert _was_skipped(mock)
+    assert not _read_notebooks(mock)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fork_branch", FORK_BRANCH_NAMES)
+async def test_check_suite_skipped_for_fork_commit_on_branch_tip(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fork_branch: str | None,
+) -> None:
+    """A check suite for a fork's commit that was made on top of the tip of
+    the default branch creates no check runs.
+
+    GitHub compares such a commit as ``ahead`` of the branch, rather than
+    ``diverged``.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [BASE_SHA]},
+        renamed_branches=FORK_RENAMED_BRANCHES,
+        fork_commits={HEAD_SHA: BASE_SHA},
+        pull_heads={3: HEAD_SHA},
+        check_suite_head_branch=fork_branch,
+    )
+    comparison = await mock.getitem(
+        f"repos/Codertocat/Hello-World/compare/{BASE_SHA}...{HEAD_SHA}"
+    )
+    assert comparison["status"] == "ahead"
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _write_requests(mock) == []
+    assert not _read_notebooks(mock)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", [HTTPStatus.FORBIDDEN, HTTPStatus.BAD_GATEWAY]
+)
+@pytest.mark.parametrize(
+    "lookup",
+    [
+        r"/branches-where-head$",
+        r"/check-suites/\d+$",
+        r"/branches/master$",
+        r"/compare/",
+    ],
+    ids=["branches-where-head", "check-suite", "branch", "compare"],
+)
+async def test_check_suite_fails_closed_on_provenance_lookup_error(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    lookup: str,
+    status: HTTPStatus,
+) -> None:
+    """An error other than not found or a redirect from any of the lookups
+    that decide whether a commit may be checked propagates, and no check runs
+    are created, even for a commit that would otherwise be checked.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [NEWER_SHA, HEAD_SHA, BASE_SHA]},
+        check_suite_head_branch="master",
+        error_statuses={lookup: status},
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert excinfo.value.status_code == status
+    assert _write_requests(mock) == []
     assert not _read_notebooks(mock)
 
 
@@ -782,6 +874,32 @@ async def test_rerequested_check_run_runs_for_commit_of_deleted_branch(
     mock = _make_mock(
         branches={"master": [NEWER_SHA, HEAD_SHA, BASE_SHA]},
         check_suite_head_branch="changes",
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(
+        payload=_rerequested_payload(GitHubConfigsCheck.external_id)
+    )
+
+    assert _read_notebooks(mock)
+    assert not _was_skipped(mock)
+
+
+@pytest.mark.asyncio
+async def test_rerequested_check_run_runs_for_commit_of_renamed_branch(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running a check run on a default-branch commit whose check suite
+    names the default branch's old name runs the check.
+
+    GitHub answers a lookup of a renamed branch's old name with a redirect to
+    its new name.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [NEWER_SHA, HEAD_SHA, BASE_SHA]},
+        renamed_branches={"trunk": "master"},
+        check_suite_head_branch="trunk",
     )
     service = _make_guarded_service(http_client=http_client, mock=mock)
 

@@ -7,7 +7,7 @@ from collections import deque
 from http import HTTPStatus
 
 import httpx
-from gidgethub import BadRequest
+from gidgethub import BadRequest, RedirectionException
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
 from pydantic import ValidationError
@@ -201,7 +201,7 @@ class GitHubCheckRunService:
         # Otherwise the branch has moved on, as when a check is re-run on an
         # older commit, so look for the commit in the history of the branch
         # it was pushed to, or of the default branch in case that branch was
-        # merged and deleted.
+        # merged and deleted, or renamed.
         check_suite = GitHubCheckSuiteHeadBranchModel.model_validate(
             await retry_transient_github_errors(
                 lambda: self._github_client.getitem(
@@ -233,9 +233,10 @@ class GitHubCheckRunService:
         ancestors.
         """
         # The name is resolved strictly as a branch, and the commits are then
-        # compared by SHA. A fork's commit reports the fork's branch name as
-        # its check suite's head branch, and the compare API would resolve a
-        # name such as pull/3/head to the fork's commit itself.
+        # compared by SHA. A check suite for a fork's commit can name the
+        # fork's branch, as GitHub Actions' check suites do, and the compare
+        # API would resolve a name such as pull/3/head to the fork's commit
+        # itself.
         try:
             data = await retry_transient_github_errors(
                 lambda: self._github_client.getitem(
@@ -251,6 +252,12 @@ class GitHubCheckRunService:
             if e.status_code == HTTPStatus.NOT_FOUND:
                 return False
             raise
+        except RedirectionException:
+            # GitHub redirects the old name of a renamed branch to its new
+            # name. The redirect is not followed, so the guard only trusts
+            # branches it looked up by name in this repository. A renamed
+            # default branch is still checked under its current name.
+            return False
         branch = GitHubBranchModel.model_validate(data)
 
         try:
