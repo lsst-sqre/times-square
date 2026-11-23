@@ -417,3 +417,189 @@ async def test_notebook_check_raises_on_nontransient_blob_error(
         await service.run_notebook_check_run(
             check_run=check_run, repo=payload.repository
         )
+
+
+INSTALLED_REPO = {"id": 186853002, "full_name": "Codertocat/Hello-World"}
+"""The repository in the webhook fixtures, as a pull request ref's ``repo``."""
+
+FORK_REPO = {"id": 999000111, "full_name": "mallory/Hello-World"}
+"""A fork of `INSTALLED_REPO`, as a pull request ref's ``repo``."""
+
+HEAD_SHA = "ec26c3e57ca3a959ca5aad62de7213c562f8c821"
+"""The head commit in the webhook fixtures."""
+
+
+def _commit_pull(
+    number: int, *, head_repo: dict[str, object] | None
+) -> dict[str, object]:
+    """Create a pull request, as GitHub lists it for a commit, that targets
+    `INSTALLED_REPO` from a branch in ``head_repo``.
+    """
+    return {
+        "number": number,
+        "head": {"sha": HEAD_SHA, "repo": head_repo},
+        "base": {"sha": "f95f852bd8fca8fcc58a9a2d6c842781e32a215e"}
+        | {"repo": INSTALLED_REPO},
+    }
+
+
+def _make_guarded_service(
+    *, http_client: AsyncClient, mock: MockGitHubCheckRunAPI
+) -> GitHubCheckRunService:
+    """Build a check-run service for the untrusted-source guard tests, which
+    never get as far as the repository or page services.
+    """
+    return GitHubCheckRunService(
+        http_client=http_client,
+        github_client=cast("GitHubAPI", mock),
+        repo_service=cast("GitHubRepoService", None),
+        page_service=cast("PageService", None),
+        logger=structlog.get_logger(),
+    )
+
+
+def _check_suite_payload() -> GitHubCheckSuiteEventModel:
+    return GitHubCheckSuiteEventModel.model_validate(
+        json.loads((DATA / "check_suite_completed.json").read_text())
+    )
+
+
+def _check_run_data() -> dict[str, object]:
+    return json.loads((DATA / "check_run_created.json").read_text())[
+        "check_run"
+    ]
+
+
+def _write_requests(mock: MockGitHubCheckRunAPI) -> list[tuple[str, str]]:
+    """Get the requests that created or updated a check run."""
+    return [r for r in mock.requests if r[0] in ("POST", "PATCH")]
+
+
+@pytest.mark.asyncio
+async def test_check_suite_skipped_for_fork_pull_request(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A check suite whose head commit comes from a fork's pull request
+    creates no check runs, so the fork's notebooks are never read or run.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = MockGitHubCheckRunAPI(
+        check_run=_check_run_data(),
+        commit_pulls=[_commit_pull(3, head_repo=FORK_REPO)],
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _write_requests(mock) == []
+    assert not any("times-square.yaml" in url for _, url in mock.requests)
+
+
+@pytest.mark.asyncio
+async def test_check_suite_skipped_for_unaccepted_org(
+    http_client: AsyncClient,
+) -> None:
+    """A check suite for a repository whose owner is not in
+    ``TS_GITHUB_ORGS`` creates no check runs.
+    """
+    assert "Codertocat" not in config.accepted_github_orgs
+    mock = MockGitHubCheckRunAPI(check_run=_check_run_data())
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert mock.requests == []
+
+
+@pytest.mark.asyncio
+async def test_check_suite_runs_for_commit_also_in_same_repo_pull_request(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit that a pull request from the repository itself contains was
+    pushed by someone with write access, so it is still checked when a fork
+    opens a second pull request for the same commit.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = MockGitHubCheckRunAPI(
+        check_run=_check_run_data(),
+        commit_pulls=[
+            _commit_pull(2, head_repo=INSTALLED_REPO),
+            _commit_pull(3, head_repo=FORK_REPO),
+        ],
+        # An invalid sidecar fails the configs check, which ends the flow
+        # before the notebook check needs the repository or page services.
+        sidecar_content="enabled: [",
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _write_requests(mock)[0] == (
+        "POST",
+        "https://api.github.com/repos/Codertocat/Hello-World/check-runs",
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_suite_skipped_for_deleted_fork(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pull request whose head repository is unknown, because the fork was
+    deleted, is treated as coming from a fork.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = MockGitHubCheckRunAPI(
+        check_run=_check_run_data(),
+        commit_pulls=[_commit_pull(3, head_repo=None)],
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _write_requests(mock) == []
+
+
+@pytest.mark.asyncio
+async def test_check_suite_skipped_for_pull_request_inside_fork(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pull request between two branches of a fork does not vouch for a
+    commit, even though its head and base repositories match.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    pull = _commit_pull(1, head_repo=FORK_REPO)
+    pull["base"] = {"sha": "f95f852", "repo": FORK_REPO}
+    mock = MockGitHubCheckRunAPI(
+        check_run=_check_run_data(), commit_pulls=[pull]
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _write_requests(mock) == []
+
+
+@pytest.mark.asyncio
+async def test_rerequested_check_run_skipped_for_fork_pull_request(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running a check run whose head commit comes from a fork's pull
+    request concludes it as neutral without reading the fork's content.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    data = json.loads((DATA / "check_run_created.json").read_text())
+    data["action"] = "rerequested"
+    data["check_run"]["external_id"] = NotebookExecutionsCheck.external_id
+    payload = GitHubCheckRunEventModel.model_validate(data)
+    mock = MockGitHubCheckRunAPI(
+        check_run=data["check_run"],
+        commit_pulls=[_commit_pull(3, head_repo=FORK_REPO)],
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(payload=payload)
+
+    assert [p["conclusion"] for p in mock.patched] == [
+        GitHubCheckRunConclusion.neutral
+    ]
+    assert not any("times-square.yaml" in url for _, url in mock.requests)

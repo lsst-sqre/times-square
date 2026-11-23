@@ -511,6 +511,17 @@ async def handle_pr_opened(
     """Handle the ``pull_request`` (opened) webhook event from
     GitHub.
 
+    .. warning::
+
+       Do not use ``pull_request`` events to trigger notebook checks. GitHub
+       delivers this event for pull requests from forks, with a head commit
+       that anyone can author, so acting on it would execute untrusted
+       notebooks with Times Square's credentials. Checks are triggered by
+       ``check_suite`` events instead (see `handle_check_suite_request`),
+       which GitHub only sends for commits pushed to the repository where
+       the app is installed. This handler is a stub that queues a task that
+       does nothing.
+
     Parameters
     ----------
     event : `gidgethub.sansio.Event`
@@ -545,6 +556,17 @@ async def handle_pr_sync(
 ) -> None:
     """Handle the ``pull_request`` (synchronize) webhook event from
     GitHub.
+
+    .. warning::
+
+       Do not use ``pull_request`` events to trigger notebook checks. GitHub
+       delivers this event for pull requests from forks, with a head commit
+       that anyone can author, so acting on it would execute untrusted
+       notebooks with Times Square's credentials. Checks are triggered by
+       ``check_suite`` events instead (see `handle_check_suite_request`),
+       which GitHub only sends for commits pushed to the repository where
+       the app is installed. This handler is a stub that queues a task that
+       does nothing.
 
     Parameters
     ----------
@@ -588,6 +610,13 @@ async def handle_check_suite_request(
     The rerequested action occurs when a re-runs the entire check suite from
     the PR UI. Both "requested" and "rerequested" actions require Times Square
     to create a new check run.
+
+    This is the only event that starts a check of a commit's notebooks.
+    GitHub sends ``check_suite`` (requested) only for commits pushed to the
+    repository where the app is installed, never for a fork's commits, and
+    re-requesting a check requires write access. The queued task does not
+    rely on that alone: the check run service independently skips commits
+    that come from a fork.
 
     https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
 

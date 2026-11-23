@@ -18,9 +18,12 @@ from safir.github.webhooks import (
 )
 
 __all__ = [
+    "GitHubCommitPullRequestModel",
     "GitHubInstallationTargetChangesModel",
     "GitHubInstallationTargetLoginChangeModel",
     "GitHubInstallationTargetRenamedEventModel",
+    "GitHubPullRequestRefModel",
+    "GitHubPullRequestRefRepoModel",
     "GitHubPushEventWithIdModel",
     "GitHubRepoOwnerWithIdModel",
     "GitHubRepositoryChangesModel",
@@ -81,6 +84,98 @@ class GitHubRepositoryWithIdModel(GitHubRepositoryModel):
         GitHubRepoOwnerWithIdModel,
         Field(description="The repository's owner, including its numeric ID."),
     ]
+
+
+class GitHubPullRequestRefRepoModel(BaseModel):
+    """The repository that one side (``head`` or ``base``) of a pull request
+    lives in.
+    """
+
+    id: Annotated[
+        int,
+        Field(
+            title="Numeric ID",
+            description=(
+                "GitHub's stable numeric ID for the repository. The head and "
+                "base of a pull request have the same repository ID only "
+                "when the pull request is not from a fork."
+            ),
+        ),
+    ]
+
+    full_name: Annotated[
+        str,
+        Field(
+            title="Full name",
+            description="Full name, including the owner prefix.",
+            examples=["lsst-sqre/times-square-demo"],
+        ),
+    ]
+
+
+class GitHubPullRequestRefModel(BaseModel):
+    """One side (``head`` or ``base``) of a pull request."""
+
+    sha: Annotated[str, Field(description="The commit SHA of this ref.")]
+
+    repo: Annotated[
+        GitHubPullRequestRefRepoModel | None,
+        Field(
+            description=(
+                "The repository the ref lives in. GitHub reports `None` for "
+                "the head of a pull request whose fork has been deleted."
+            ),
+        ),
+    ] = None
+
+
+class GitHubCommitPullRequestModel(BaseModel):
+    """A pull request, parsed for the repositories its head and base live in.
+
+    Safir's `~safir.github.models.GitHubPullRequestModel` only parses the
+    head's commit SHA. This model retains the head and base repositories,
+    which is what distinguishes a pull request from a fork from one opened
+    from a branch of the repository itself.
+
+    https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit
+    """
+
+    number: Annotated[int, Field(description="Pull request number.")]
+
+    head: Annotated[
+        GitHubPullRequestRefModel,
+        Field(description="The branch the pull request merges from."),
+    ]
+
+    base: Annotated[
+        GitHubPullRequestRefModel,
+        Field(description="The branch the pull request merges into."),
+    ]
+
+    def is_within(self, repo_full_name: str) -> bool:
+        """Determine whether the pull request merges one branch of a
+        repository into another branch of that same repository.
+
+        Parameters
+        ----------
+        repo_full_name
+            Full name of the repository, including the owner prefix.
+
+        Returns
+        -------
+        bool
+            `True` if both the head and the base live in the named
+            repository. `False` for a pull request from a fork, including one
+            whose fork has been deleted, and for a pull request that belongs
+            to a different repository altogether (such as one opened inside a
+            fork).
+        """
+        if self.head.repo is None or self.base.repo is None:
+            return False
+        return (
+            self.head.repo.id == self.base.repo.id
+            and self.head.repo.full_name.lower() == repo_full_name.lower()
+        )
 
 
 class GitHubPushEventWithIdModel(GitHubPushEventModel):

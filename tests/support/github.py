@@ -79,7 +79,7 @@ class MockGitHubAPI(gh_abc.GitHubAPI):
 
     def create_response(
         self, method: str, url: str, request_json: dict | None
-    ) -> tuple[int, dict, dict]:
+    ) -> tuple[int, Any, dict]:
         """Create a response to a request."""
         raise NotImplementedError(
             "create_response() must be implemented by subclasses"
@@ -178,12 +178,18 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
     which is what the configs check reads as the notebook's sidecar file;
     without it there is no canned content behind those GETs and they are only
     meaningful with ``blob_error`` set.
+
+    The "list pull requests associated with a commit" GET returns
+    ``commit_pulls``, which defaults to no pull requests. Pass pull request
+    objects there to simulate a head commit that belongs to a pull request
+    from a fork or from the repository itself.
     """
 
     def __init__(
         self,
         *,
         check_run: dict[str, Any],
+        commit_pulls: list[dict[str, Any]] | None = None,
         contents_error: BaseException | None = None,
         tree_error: BaseException | None = None,
         blob_error: BaseException | None = None,
@@ -196,6 +202,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
             oauth_token=oauth_token, cache=cache, base_url=base_url
         )
         self._check_run = check_run
+        self._commit_pulls = commit_pulls if commit_pulls is not None else []
         self._contents_error = contents_error
         self._tree_error = tree_error
         self._blob_error = blob_error
@@ -233,7 +240,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
 
     def create_response(
         self, method: str, url: str, request_json: dict | None
-    ) -> tuple[int, dict, dict]:
+    ) -> tuple[int, Any, dict]:
         """Return the canned check-run object for every call, recording the
         bodies of PATCH requests (the in-progress and conclusion updates).
 
@@ -242,6 +249,8 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         git tree GET returns `CHECK_RUN_GIT_TREE`, and the git blob GETs
         return ``sidecar_content`` when it was provided.
         """
+        if method == "GET" and "/commits/" in url and "/pulls" in url:
+            return 200, self._commit_pulls, {}
         if method == "GET" and "times-square.yaml" in url:
             return 200, _blob(b'root: ""\n'), {}
         if method == "GET" and "git/trees" in url:

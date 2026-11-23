@@ -33,7 +33,11 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.exceptions import PageJinjaError
 
 from ..domain.page import PageExecutionInfo, PageModel
-from ..storage.github.retry import TRANSIENT_GITHUB_ERRORS
+from ..storage.github.apimodels import GitHubCommitPullRequestModel
+from ..storage.github.retry import (
+    TRANSIENT_GITHUB_ERRORS,
+    retry_transient_github_errors,
+)
 from ..storage.noteburst import NoteburstJobStatus
 from .githubrepo import GitHubRepoService
 from .page import PageService
@@ -65,10 +69,14 @@ class GitHubCheckRunService:
     async def check_pull_request(
         self, pr_payload: GitHubPullRequestModel
     ) -> None:
-        """Run a check on a pull request."""
-        # Called by the pull_request_sync function
-        # This isn't run. Instead we use the initial_check_run method
-        # called by the create_check_run async function.
+        """Do nothing for a pull request event.
+
+        This method is intentionally not implemented, and is only called by
+        the stub ``pull_request_sync`` task. Do not run checks from pull
+        request events: they are delivered for pull requests from forks,
+        whose notebooks must never be executed. Checks are run by
+        `initiate_check_runs` instead, in response to ``check_suite`` events.
+        """
 
     async def initiate_check_runs(
         self, *, payload: GitHubCheckSuiteEventModel
@@ -80,7 +88,15 @@ class GitHubCheckRunService:
         NOTE: currently we're assuming that check suites are automatically
         created when created a check run. See
         https://docs.github.com/en/rest/checks/runs#create-a-check-run
+
+        No check runs are created for a commit that comes from a fork, or for
+        a repository whose owner is not in ``TS_GITHUB_ORGS``.
         """
+        if not await self._is_trusted_source(
+            repo=payload.repository, head_sha=payload.check_suite.head_sha
+        ):
+            return
+
         # Run the configurations check
         config_check = await GitHubConfigsCheck.create_check_run_and_validate(
             github_client=self._github_client,
@@ -113,10 +129,87 @@ class GitHubCheckRunService:
                 data={"conclusion": GitHubCheckRunConclusion.neutral},
             )
 
+    async def _is_trusted_source(
+        self, *, repo: GitHubRepositoryModel, head_sha: str
+    ) -> bool:
+        """Determine whether notebooks at a commit may be read and executed.
+
+        Checking a commit means executing its notebooks with Times Square's
+        credentials, so this is the gate that keeps content from forks out.
+        GitHub serves a fork's commits through the base repository's API, so
+        being able to read ``head_sha`` from ``repo`` proves nothing about
+        where the commit was pushed.
+        """
+        if repo.owner.login not in config.accepted_github_orgs:
+            self._logger.warning(
+                "Skipping check for a repository in an unaccepted org",
+                head_sha=head_sha,
+                accepted_orgs=config.accepted_github_orgs,
+            )
+            return False
+
+        pulls = await retry_transient_github_errors(
+            lambda: self._get_pull_requests_for_commit(repo, head_sha)
+        )
+        outside_pulls = [
+            pr.number for pr in pulls if not pr.is_within(repo.full_name)
+        ]
+        # A commit contained in a pull request between two branches of this
+        # repository was pushed here by someone with write access. Without
+        # this exemption, anyone could suppress the checks on such a commit
+        # by opening a pull request for it from a fork.
+        if outside_pulls and len(outside_pulls) == len(pulls):
+            self._logger.warning(
+                "Skipping check for a commit from a forked repository",
+                head_sha=head_sha,
+                fork_pull_requests=outside_pulls,
+            )
+            return False
+        return True
+
+    async def _get_pull_requests_for_commit(
+        self, repo: GitHubRepositoryModel, head_sha: str
+    ) -> list[GitHubCommitPullRequestModel]:
+        """List the pull requests that contain a commit, including those
+        opened from forks.
+        """
+        return [
+            GitHubCommitPullRequestModel.model_validate(data)
+            async for data in self._github_client.getiter(
+                "/repos/{owner}/{repo}/commits/{sha}/pulls",
+                url_vars={
+                    "owner": repo.owner.login,
+                    "repo": repo.name,
+                    "sha": head_sha,
+                },
+            )
+        ]
+
     async def create_rerequested_check_run(
         self, *, payload: GitHubCheckRunEventModel
     ) -> None:
         """Run a GitHub check run that was rerequested."""
+        if not await self._is_trusted_source(
+            repo=payload.repository, head_sha=payload.check_run.head_sha
+        ):
+            # The check run already exists, so conclude it rather than
+            # leaving it queued.
+            await self._github_client.patch(
+                str(payload.check_run.url),
+                data={
+                    "conclusion": GitHubCheckRunConclusion.neutral,
+                    "output": {
+                        "title": "Skipped",
+                        "summary": (
+                            "Times Square only checks commits that were "
+                            "pushed to this repository. It does not check "
+                            "pull requests from forks."
+                        ),
+                    },
+                },
+            )
+            return
+
         external_id = payload.check_run.external_id
         if external_id == GitHubConfigsCheck.external_id:
             config_check = await GitHubConfigsCheck.validate_repo(
