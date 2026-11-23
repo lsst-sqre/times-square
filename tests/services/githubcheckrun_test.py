@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -33,6 +33,7 @@ from timessquare.config import config
 from timessquare.dbschema import Base
 from timessquare.domain.githubcheckrun import (
     TRANSIENT_CHECKOUT_ERROR_MESSAGE,
+    GitHubConfigsCheck,
     NotebookExecutionsCheck,
 )
 from timessquare.domain.page import PageExecutionInfo, PageModel
@@ -420,26 +421,51 @@ async def test_notebook_check_raises_on_nontransient_blob_error(
 
 
 INSTALLED_REPO = {"id": 186853002, "full_name": "Codertocat/Hello-World"}
-"""The repository in the webhook fixtures, as a pull request ref's ``repo``."""
+"""The repository in the webhook fixtures, as a pull request ref's ``repo``.
+
+Its default branch is ``master``.
+"""
 
 FORK_REPO = {"id": 999000111, "full_name": "mallory/Hello-World"}
 """A fork of `INSTALLED_REPO`, as a pull request ref's ``repo``."""
 
+UPSTREAM_REPO = {"id": 999000222, "full_name": "octo-org/Hello-World"}
+"""A repository that `INSTALLED_REPO` is itself a fork of."""
+
 HEAD_SHA = "ec26c3e57ca3a959ca5aad62de7213c562f8c821"
 """The head commit in the webhook fixtures."""
 
+BASE_SHA = "f95f852bd8fca8fcc58a9a2d6c842781e32a215e"
+"""An older commit that the branches in these tests start from."""
 
-def _commit_pull(
-    number: int, *, head_repo: dict[str, object] | None
+NEWER_SHA = "3c1e4b8f0d9a7e6c5b4a39281706f5e4d3c2b1a0"
+"""A commit pushed on top of `HEAD_SHA`."""
+
+FORK_BRANCH_NAMES = ["changes", "master", "pull/3/head"]
+"""Names a fork's pull request branch might have: one the installed
+repository lacks, one it shares, and one that names the pull request's own
+ref in the installed repository, which the compare API would resolve to the
+fork's commit.
+"""
+
+
+def _pull_request(
+    number: int,
+    *,
+    head_repo: dict[str, object] | None,
+    base_repo: dict[str, object] = INSTALLED_REPO,
+    merged: bool = False,
 ) -> dict[str, object]:
-    """Create a pull request, as GitHub lists it for a commit, that targets
-    `INSTALLED_REPO` from a branch in ``head_repo``.
+    """Create a pull request whose head is `HEAD_SHA`, as GitHub lists it
+    for a commit. A ``head_repo`` of `None` is how GitHub reports the head of
+    a pull request whose fork has been deleted.
     """
     return {
         "number": number,
+        "state": "closed" if merged else "open",
+        "merged_at": "2026-11-20T12:00:00Z" if merged else None,
         "head": {"sha": HEAD_SHA, "repo": head_repo},
-        "base": {"sha": "f95f852bd8fca8fcc58a9a2d6c842781e32a215e"}
-        | {"repo": INSTALLED_REPO},
+        "base": {"sha": BASE_SHA, "repo": base_repo},
     }
 
 
@@ -470,29 +496,103 @@ def _check_run_data() -> dict[str, object]:
     ]
 
 
+def _rerequested_payload(external_id: str) -> GitHubCheckRunEventModel:
+    """Create a ``check_run`` (rerequested) payload for `HEAD_SHA`."""
+    data = json.loads((DATA / "check_run_created.json").read_text())
+    data["action"] = "rerequested"
+    data["check_run"]["external_id"] = external_id
+    return GitHubCheckRunEventModel.model_validate(data)
+
+
+def _make_mock(**kwargs: Any) -> MockGitHubCheckRunAPI:
+    """Create a mock GitHub API for a check of `HEAD_SHA`.
+
+    An invalid sidecar fails the configs check, which ends a check suite's
+    flow before the notebook check needs the repository or page services.
+    """
+    return MockGitHubCheckRunAPI(
+        check_run=_check_run_data(), sidecar_content="enabled: [", **kwargs
+    )
+
+
 def _write_requests(mock: MockGitHubCheckRunAPI) -> list[tuple[str, str]]:
     """Get the requests that created or updated a check run."""
     return [r for r in mock.requests if r[0] in ("POST", "PATCH")]
 
 
+def _read_notebooks(mock: MockGitHubCheckRunAPI) -> bool:
+    """Determine whether the repository's Times Square content was read."""
+    return any("times-square.yaml" in url for _, url in mock.requests)
+
+
+def _created_check_runs(mock: MockGitHubCheckRunAPI) -> list[str]:
+    """Get the names of the check runs that were created."""
+    return [body["name"] for body in mock.posted]
+
+
+def _was_skipped(mock: MockGitHubCheckRunAPI) -> bool:
+    """Determine whether a check run was concluded as skipped."""
+    return any(
+        (body.get("output") or {}).get("title") == "Skipped"
+        for body in mock.patched
+    )
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize("fork_branch", FORK_BRANCH_NAMES)
 async def test_check_suite_skipped_for_fork_pull_request(
-    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fork_branch: str,
 ) -> None:
-    """A check suite whose head commit comes from a fork's pull request
+    """A check suite for the head commit of an open pull request from a fork
     creates no check runs, so the fork's notebooks are never read or run.
+
+    Through the base repository, GitHub lists no pull requests and no
+    branches for a fork's commit, and its check suite's head branch is the
+    name of the fork's branch.
     """
     monkeypatch.setattr(config, "github_orgs", "Codertocat")
-    mock = MockGitHubCheckRunAPI(
-        check_run=_check_run_data(),
-        commit_pulls=[_commit_pull(3, head_repo=FORK_REPO)],
+    mock = _make_mock(
+        branches={"master": [BASE_SHA]},
+        pull_heads={3: HEAD_SHA},
+        check_suite_head_branch=fork_branch,
     )
     service = _make_guarded_service(http_client=http_client, mock=mock)
 
     await service.initiate_check_runs(payload=_check_suite_payload())
 
     assert _write_requests(mock) == []
-    assert not any("times-square.yaml" in url for _, url in mock.requests)
+    assert not _read_notebooks(mock)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fork_branch", FORK_BRANCH_NAMES)
+async def test_rerequested_check_run_skipped_for_fork_pull_request(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fork_branch: str,
+) -> None:
+    """Re-running a check run on the head commit of an open pull request
+    from a fork concludes it as skipped without reading the fork's content.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [BASE_SHA]},
+        pull_heads={3: HEAD_SHA},
+        check_suite_head_branch=fork_branch,
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(
+        payload=_rerequested_payload(NotebookExecutionsCheck.external_id)
+    )
+
+    assert [p["conclusion"] for p in mock.patched] == [
+        GitHubCheckRunConclusion.neutral
+    ]
+    assert _was_skipped(mock)
+    assert not _read_notebooks(mock)
 
 
 @pytest.mark.asyncio
@@ -503,7 +603,7 @@ async def test_check_suite_skipped_for_unaccepted_org(
     ``TS_GITHUB_ORGS`` creates no check runs.
     """
     assert "Codertocat" not in config.accepted_github_orgs
-    mock = MockGitHubCheckRunAPI(check_run=_check_run_data())
+    mock = _make_mock(branches={"changes": [HEAD_SHA]})
     service = _make_guarded_service(http_client=http_client, mock=mock)
 
     await service.initiate_check_runs(payload=_check_suite_payload())
@@ -512,94 +612,182 @@ async def test_check_suite_skipped_for_unaccepted_org(
 
 
 @pytest.mark.asyncio
-async def test_check_suite_runs_for_commit_also_in_same_repo_pull_request(
-    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "fork", [FORK_REPO, None], ids=["fork-exists", "fork-deleted"]
+)
+async def test_check_suite_runs_for_merged_fork_pull_request(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fork: dict[str, object] | None,
 ) -> None:
-    """A commit that a pull request from the repository itself contains was
-    pushed by someone with write access, so it is still checked when a fork
-    opens a second pull request for the same commit.
+    """A default-branch commit that arrived through a merged pull request
+    from a fork, whether or not the fork still exists, gets both check runs.
     """
     monkeypatch.setattr(config, "github_orgs", "Codertocat")
-    mock = MockGitHubCheckRunAPI(
-        check_run=_check_run_data(),
-        commit_pulls=[
-            _commit_pull(2, head_repo=INSTALLED_REPO),
-            _commit_pull(3, head_repo=FORK_REPO),
-        ],
-        # An invalid sidecar fails the configs check, which ends the flow
-        # before the notebook check needs the repository or page services.
-        sidecar_content="enabled: [",
+    mock = _make_mock(
+        branches={"master": [HEAD_SHA, BASE_SHA]},
+        check_suite_head_branch="master",
+        commit_pulls={
+            HEAD_SHA: [_pull_request(3, head_repo=fork, merged=True)]
+        },
     )
     service = _make_guarded_service(http_client=http_client, mock=mock)
 
     await service.initiate_check_runs(payload=_check_suite_payload())
 
-    assert _write_requests(mock)[0] == (
-        "POST",
-        "https://api.github.com/repos/Codertocat/Hello-World/check-runs",
-    )
-
-
-@pytest.mark.asyncio
-async def test_check_suite_skipped_for_deleted_fork(
-    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A pull request whose head repository is unknown, because the fork was
-    deleted, is treated as coming from a fork.
-    """
-    monkeypatch.setattr(config, "github_orgs", "Codertocat")
-    mock = MockGitHubCheckRunAPI(
-        check_run=_check_run_data(),
-        commit_pulls=[_commit_pull(3, head_repo=None)],
-    )
-    service = _make_guarded_service(http_client=http_client, mock=mock)
-
-    await service.initiate_check_runs(payload=_check_suite_payload())
-
-    assert _write_requests(mock) == []
-
-
-@pytest.mark.asyncio
-async def test_check_suite_skipped_for_pull_request_inside_fork(
-    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A pull request between two branches of a fork does not vouch for a
-    commit, even though its head and base repositories match.
-    """
-    monkeypatch.setattr(config, "github_orgs", "Codertocat")
-    pull = _commit_pull(1, head_repo=FORK_REPO)
-    pull["base"] = {"sha": "f95f852", "repo": FORK_REPO}
-    mock = MockGitHubCheckRunAPI(
-        check_run=_check_run_data(), commit_pulls=[pull]
-    )
-    service = _make_guarded_service(http_client=http_client, mock=mock)
-
-    await service.initiate_check_runs(payload=_check_suite_payload())
-
-    assert _write_requests(mock) == []
-
-
-@pytest.mark.asyncio
-async def test_rerequested_check_run_skipped_for_fork_pull_request(
-    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Re-running a check run whose head commit comes from a fork's pull
-    request concludes it as neutral without reading the fork's content.
-    """
-    monkeypatch.setattr(config, "github_orgs", "Codertocat")
-    data = json.loads((DATA / "check_run_created.json").read_text())
-    data["action"] = "rerequested"
-    data["check_run"]["external_id"] = NotebookExecutionsCheck.external_id
-    payload = GitHubCheckRunEventModel.model_validate(data)
-    mock = MockGitHubCheckRunAPI(
-        check_run=data["check_run"],
-        commit_pulls=[_commit_pull(3, head_repo=FORK_REPO)],
-    )
-    service = _make_guarded_service(http_client=http_client, mock=mock)
-
-    await service.create_rerequested_check_run(payload=payload)
-
-    assert [p["conclusion"] for p in mock.patched] == [
-        GitHubCheckRunConclusion.neutral
+    assert _created_check_runs(mock) == [
+        GitHubConfigsCheck.title,
+        NotebookExecutionsCheck.title,
     ]
-    assert not any("times-square.yaml" in url for _, url in mock.requests)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fork", [FORK_REPO, None], ids=["fork-exists", "fork-deleted"]
+)
+async def test_rerequested_check_run_runs_for_merged_fork_pull_request(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    fork: dict[str, object] | None,
+) -> None:
+    """Re-running a check run on a default-branch commit that arrived through
+    a merged pull request from a fork runs the check, even after the default
+    branch has moved on.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [NEWER_SHA, HEAD_SHA, BASE_SHA]},
+        check_suite_head_branch="master",
+        commit_pulls={
+            HEAD_SHA: [_pull_request(3, head_repo=fork, merged=True)]
+        },
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(
+        payload=_rerequested_payload(GitHubConfigsCheck.external_id)
+    )
+
+    assert _read_notebooks(mock)
+    assert not _was_skipped(mock)
+
+
+@pytest.mark.asyncio
+async def test_check_suite_runs_for_installed_fork_with_upstream_pull_request(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit pushed to a branch of an installed repository that is itself
+    a fork gets both check runs, even when that branch has an open pull
+    request to the upstream repository.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [BASE_SHA], "changes": [HEAD_SHA, BASE_SHA]},
+        check_suite_head_branch="changes",
+        commit_pulls={
+            HEAD_SHA: [
+                _pull_request(
+                    7, head_repo=INSTALLED_REPO, base_repo=UPSTREAM_REPO
+                )
+            ]
+        },
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _created_check_runs(mock) == [
+        GitHubConfigsCheck.title,
+        NotebookExecutionsCheck.title,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pulls",
+    [
+        [],
+        [_pull_request(2, head_repo=INSTALLED_REPO)],
+        [
+            _pull_request(2, head_repo=INSTALLED_REPO),
+            _pull_request(3, head_repo=FORK_REPO),
+        ],
+    ],
+    ids=[
+        "no-pull-request",
+        "same-repo-pull-request",
+        "also-fork-pull-request",
+    ],
+)
+async def test_check_suite_runs_for_same_repo_commit(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    pulls: list[dict[str, object]],
+) -> None:
+    """A commit pushed to a branch of the repository gets both check runs,
+    with or without a pull request, and even when a fork has opened a pull
+    request for the same commit.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [BASE_SHA], "changes": [HEAD_SHA, BASE_SHA]},
+        check_suite_head_branch="changes",
+        commit_pulls={HEAD_SHA: pulls},
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.initiate_check_runs(payload=_check_suite_payload())
+
+    assert _created_check_runs(mock) == [
+        GitHubConfigsCheck.title,
+        NotebookExecutionsCheck.title,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rerequested_check_run_runs_for_older_branch_commit(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running a check run on a commit that is no longer the head of its
+    branch, because more commits were pushed on top of it, runs the check.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={
+            "master": [BASE_SHA],
+            "changes": [NEWER_SHA, HEAD_SHA, BASE_SHA],
+        },
+        check_suite_head_branch="changes",
+        commit_pulls={HEAD_SHA: [_pull_request(2, head_repo=INSTALLED_REPO)]},
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(
+        payload=_rerequested_payload(GitHubConfigsCheck.external_id)
+    )
+
+    assert _read_notebooks(mock)
+    assert not _was_skipped(mock)
+
+
+@pytest.mark.asyncio
+async def test_rerequested_check_run_runs_for_commit_of_deleted_branch(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running a check run on a commit whose branch was merged into the
+    default branch and then deleted runs the check, since the commit is on
+    the default branch.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [NEWER_SHA, HEAD_SHA, BASE_SHA]},
+        check_suite_head_branch="changes",
+    )
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(
+        payload=_rerequested_payload(GitHubConfigsCheck.external_id)
+    )
+
+    assert _read_notebooks(mock)
+    assert not _was_skipped(mock)

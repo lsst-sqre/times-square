@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from http import HTTPStatus
 
 import httpx
+from gidgethub import BadRequest
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
 from pydantic import ValidationError
 from safir.github.models import (
+    GitHubBranchModel,
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
     GitHubPullRequestModel,
@@ -33,7 +36,10 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.exceptions import PageJinjaError
 
 from ..domain.page import PageExecutionInfo, PageModel
-from ..storage.github.apimodels import GitHubCommitPullRequestModel
+from ..storage.github.apimodels import (
+    GitHubCheckSuiteHeadBranchModel,
+    GitHubCommitComparisonModel,
+)
 from ..storage.github.retry import (
     TRANSIENT_GITHUB_ERRORS,
     retry_transient_github_errors,
@@ -89,11 +95,14 @@ class GitHubCheckRunService:
         created when created a check run. See
         https://docs.github.com/en/rest/checks/runs#create-a-check-run
 
-        No check runs are created for a commit that comes from a fork, or for
-        a repository whose owner is not in ``TS_GITHUB_ORGS``.
+        No check runs are created for a commit that is not on a branch of the
+        repository, such as a commit from a fork, or for a repository whose
+        owner is not in ``TS_GITHUB_ORGS``.
         """
         if not await self._is_trusted_source(
-            repo=payload.repository, head_sha=payload.check_suite.head_sha
+            repo=payload.repository,
+            head_sha=payload.check_suite.head_sha,
+            check_suite_id=payload.check_suite.id,
         ):
             return
 
@@ -130,7 +139,11 @@ class GitHubCheckRunService:
             )
 
     async def _is_trusted_source(
-        self, *, repo: GitHubRepositoryModel, head_sha: str
+        self,
+        *,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        check_suite_id: int,
     ) -> bool:
         """Determine whether notebooks at a commit may be read and executed.
 
@@ -138,7 +151,10 @@ class GitHubCheckRunService:
         credentials, so this is the gate that keeps content from forks out.
         GitHub serves a fork's commits through the base repository's API, so
         being able to read ``head_sha`` from ``repo`` proves nothing about
-        where the commit was pushed.
+        where the commit was pushed. Instead, a commit is trusted only if it
+        is on a branch of ``repo``, which only someone with write access to
+        the repository can put it on, and only if the repository's owner is
+        in ``TS_GITHUB_ORGS``.
         """
         if repo.owner.login not in config.accepted_github_orgs:
             self._logger.warning(
@@ -148,49 +164,128 @@ class GitHubCheckRunService:
             )
             return False
 
-        pulls = await retry_transient_github_errors(
-            lambda: self._get_pull_requests_for_commit(repo, head_sha)
-        )
-        outside_pulls = [
-            pr.number for pr in pulls if not pr.is_within(repo.full_name)
-        ]
-        # A commit contained in a pull request between two branches of this
-        # repository was pushed here by someone with write access. Without
-        # this exemption, anyone could suppress the checks on such a commit
-        # by opening a pull request for it from a fork.
-        if outside_pulls and len(outside_pulls) == len(pulls):
+        if not await self._is_on_branch(
+            repo=repo, head_sha=head_sha, check_suite_id=check_suite_id
+        ):
             self._logger.warning(
-                "Skipping check for a commit from a forked repository",
+                "Skipping check for a commit that is not on a branch of the "
+                "repository, such as a commit from a fork",
                 head_sha=head_sha,
-                fork_pull_requests=outside_pulls,
             )
             return False
         return True
 
-    async def _get_pull_requests_for_commit(
-        self, repo: GitHubRepositoryModel, head_sha: str
-    ) -> list[GitHubCommitPullRequestModel]:
-        """List the pull requests that contain a commit, including those
-        opened from forks.
-        """
-        return [
-            GitHubCommitPullRequestModel.model_validate(data)
-            async for data in self._github_client.getiter(
-                "/repos/{owner}/{repo}/commits/{sha}/pulls",
+    async def _is_on_branch(
+        self,
+        *,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        check_suite_id: int,
+    ) -> bool:
+        """Determine whether a commit is on a branch of the repository."""
+        # A check suite is normally requested for a commit that was just
+        # pushed, which is the head of its branch.
+        branches_where_head = await retry_transient_github_errors(
+            lambda: self._github_client.getitem(
+                "repos/{owner}/{repo}/commits/{sha}/branches-where-head",
                 url_vars={
                     "owner": repo.owner.login,
                     "repo": repo.name,
                     "sha": head_sha,
                 },
             )
-        ]
+        )
+        if branches_where_head:
+            return True
+
+        # Otherwise the branch has moved on, as when a check is re-run on an
+        # older commit, so look for the commit in the history of the branch
+        # it was pushed to, or of the default branch in case that branch was
+        # merged and deleted.
+        check_suite = GitHubCheckSuiteHeadBranchModel.model_validate(
+            await retry_transient_github_errors(
+                lambda: self._github_client.getitem(
+                    "repos/{owner}/{repo}/check-suites/{check_suite_id}",
+                    url_vars={
+                        "owner": repo.owner.login,
+                        "repo": repo.name,
+                        "check_suite_id": str(check_suite_id),
+                    },
+                )
+            )
+        )
+        candidates = dict.fromkeys(
+            name
+            for name in (check_suite.head_branch, repo.default_branch)
+            if name
+        )
+        for branch_name in candidates:
+            if await self._is_in_branch_history(
+                repo=repo, head_sha=head_sha, branch_name=branch_name
+            ):
+                return True
+        return False
+
+    async def _is_in_branch_history(
+        self, *, repo: GitHubRepositoryModel, head_sha: str, branch_name: str
+    ) -> bool:
+        """Determine whether a commit is the head of a branch, or one of its
+        ancestors.
+        """
+        # The name is resolved strictly as a branch, and the commits are then
+        # compared by SHA. A fork's commit reports the fork's branch name as
+        # its check suite's head branch, and the compare API would resolve a
+        # name such as pull/3/head to the fork's commit itself.
+        try:
+            data = await retry_transient_github_errors(
+                lambda: self._github_client.getitem(
+                    "repos/{owner}/{repo}/branches/{branch}",
+                    url_vars={
+                        "owner": repo.owner.login,
+                        "repo": repo.name,
+                        "branch": branch_name,
+                    },
+                )
+            )
+        except BadRequest as e:
+            if e.status_code == HTTPStatus.NOT_FOUND:
+                return False
+            raise
+        branch = GitHubBranchModel.model_validate(data)
+
+        try:
+            data = await retry_transient_github_errors(
+                lambda: self._github_client.getitem(
+                    "repos/{owner}/{repo}/compare/{base}...{head}",
+                    url_vars={
+                        "owner": repo.owner.login,
+                        "repo": repo.name,
+                        "base": branch.commit.sha,
+                        "head": head_sha,
+                    },
+                )
+            )
+        except BadRequest as e:
+            # GitHub reports a commit it cannot relate to the branch as not
+            # found.
+            if e.status_code == HTTPStatus.NOT_FOUND:
+                return False
+            raise
+        return GitHubCommitComparisonModel.model_validate(data).head_is_in_base
 
     async def create_rerequested_check_run(
         self, *, payload: GitHubCheckRunEventModel
     ) -> None:
-        """Run a GitHub check run that was rerequested."""
+        """Run a GitHub check run that was rerequested.
+
+        A check run for a commit that is not on a branch of the repository,
+        such as a commit from a fork, or for a repository whose owner is not
+        in ``TS_GITHUB_ORGS``, is concluded as skipped instead.
+        """
         if not await self._is_trusted_source(
-            repo=payload.repository, head_sha=payload.check_run.head_sha
+            repo=payload.repository,
+            head_sha=payload.check_run.head_sha,
+            check_suite_id=payload.check_run.check_suite.id,
         ):
             # The check run already exists, so conclude it rather than
             # leaving it queued.

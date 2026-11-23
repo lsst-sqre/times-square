@@ -615,8 +615,9 @@ async def handle_check_suite_request(
     GitHub sends ``check_suite`` (requested) only for commits pushed to the
     repository where the app is installed, never for a fork's commits, and
     re-requesting a check requires write access. The queued task does not
-    rely on that alone: the check run service independently skips commits
-    that come from a fork.
+    rely on that alone: the check run service independently verifies that
+    the commit is on a branch of the repository, which a fork's commits never
+    are, and skips the check otherwise.
 
     https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
 
