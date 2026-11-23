@@ -611,13 +611,16 @@ async def handle_check_suite_request(
     the PR UI. Both "requested" and "rerequested" actions require Times Square
     to create a new check run.
 
-    This is the only event that starts a check of a commit's notebooks.
-    GitHub sends ``check_suite`` (requested) only for commits pushed to the
-    repository where the app is installed, never for a fork's commits, and
-    re-requesting a check requires write access. The queued task does not
-    rely on that alone: the check run service independently verifies that
-    the commit is on a branch of the repository, which a fork's commits never
-    are, and skips the check otherwise.
+    This event and ``check_run`` (rerequested), handled by
+    `handle_check_run_rerequested`, are the events that start a check of a
+    commit's notebooks. GitHub sends ``check_suite`` (requested) only for
+    commits pushed to the repository where the app is installed, never for a
+    fork's commits, and re-requesting a check requires write access. The
+    queued task does not rely on that alone: the check run service
+    independently verifies that the commit is on a branch of the repository,
+    which a fork's commits never are, and skips the check otherwise. That
+    also skips a commit that is no longer on any branch, such as one whose
+    branch was deleted after a squash or rebase merge.
 
     https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
 
@@ -698,6 +701,14 @@ async def handle_check_run_rerequested(
     **kwargs: Any,
 ) -> None:
     """Handle the ``check_run`` (rerequested) webhook event from GitHub.
+
+    Like ``check_suite`` (see `handle_check_suite_request`), this event
+    starts a check of a commit's notebooks: the queued task re-runs the
+    check run, executing the notebooks for a notebook check. The check run
+    service applies the same guard first, verifying that the commit is on a
+    branch of the repository. A commit from a fork, or one that is no longer
+    on any branch, such as one whose branch was deleted after a squash or
+    rebase merge, has its check run concluded as skipped instead.
 
     Parameters
     ----------

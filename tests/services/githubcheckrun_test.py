@@ -555,6 +555,21 @@ def _was_skipped(mock: MockGitHubCheckRunAPI) -> bool:
     )
 
 
+def _assert_skipped_as_not_on_branch(mock: MockGitHubCheckRunAPI) -> None:
+    """Assert that a check run was concluded as skipped, with a summary that
+    gives both reasons a commit can be missing from the repository's
+    branches.
+    """
+    assert [p["conclusion"] for p in mock.patched] == [
+        GitHubCheckRunConclusion.neutral
+    ]
+    assert _was_skipped(mock)
+    summary = mock.patched[0]["output"]["summary"]
+    assert "not on a branch of this repository" in summary
+    assert "fork" in summary
+    assert "deleted" in summary
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fork_branch", FORK_BRANCH_NAMES)
 async def test_check_suite_skipped_for_fork_pull_request(
@@ -607,10 +622,40 @@ async def test_rerequested_check_run_skipped_for_fork_pull_request(
         payload=_rerequested_payload(NotebookExecutionsCheck.external_id)
     )
 
-    assert [p["conclusion"] for p in mock.patched] == [
-        GitHubCheckRunConclusion.neutral
-    ]
-    assert _was_skipped(mock)
+    _assert_skipped_as_not_on_branch(mock)
+    assert not _read_notebooks(mock)
+
+
+@pytest.mark.asyncio
+async def test_rerequested_check_run_skipped_for_deleted_commit(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running a check run on a commit that was pushed to the repository
+    but is no longer on any of its branches concludes it as skipped without
+    reading its content.
+
+    This is the head commit of a pull request that was squash or rebase
+    merged, so the default branch has a new commit in its place, and whose
+    branch was then deleted. GitHub serves such a commit just as it does a
+    fork's, so it fails the same guard, and the summary says it may have been
+    deleted rather than blaming forks alone.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(
+        branches={"master": [NEWER_SHA, BASE_SHA]},
+        check_suite_head_branch="changes",
+    )
+    comparison = await mock.getitem(
+        f"repos/Codertocat/Hello-World/compare/{NEWER_SHA}...{HEAD_SHA}"
+    )
+    assert comparison["status"] == "diverged"
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    await service.create_rerequested_check_run(
+        payload=_rerequested_payload(NotebookExecutionsCheck.external_id)
+    )
+
+    _assert_skipped_as_not_on_branch(mock)
     assert not _read_notebooks(mock)
 
 

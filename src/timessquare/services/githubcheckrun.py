@@ -95,9 +95,12 @@ class GitHubCheckRunService:
         created when created a check run. See
         https://docs.github.com/en/rest/checks/runs#create-a-check-run
 
-        No check runs are created for a commit that is not on a branch of the
-        repository, such as a commit from a fork, or for a repository whose
-        owner is not in ``TS_GITHUB_ORGS``.
+        No check runs are created for a repository whose owner is not in
+        ``TS_GITHUB_ORGS``, or for a commit that is not on a branch of the
+        repository. That is a commit from a fork, but also a commit that was
+        pushed to the repository and is no longer on any of its branches,
+        such as the head of a pull request whose branch was deleted after a
+        squash or rebase merge, or a commit that was force-pushed away.
         """
         if not await self._is_trusted_source(
             repo=payload.repository,
@@ -155,6 +158,12 @@ class GitHubCheckRunService:
         is on a branch of ``repo``, which only someone with write access to
         the repository can put it on, and only if the repository's owner is
         in ``TS_GITHUB_ORGS``.
+
+        A commit that was pushed to ``repo`` but is no longer on any of its
+        branches is not trusted either, because GitHub serves it just as it
+        serves a fork's commit. Examples are the head of a pull request whose
+        branch was deleted after a squash or rebase merge, and a commit that
+        was force-pushed away. Checks of such commits are skipped.
         """
         if repo.owner.login not in config.accepted_github_orgs:
             self._logger.warning(
@@ -169,7 +178,8 @@ class GitHubCheckRunService:
         ):
             self._logger.warning(
                 "Skipping check for a commit that is not on a branch of the "
-                "repository, such as a commit from a fork",
+                "repository, such as a commit from a fork or a commit that "
+                "was deleted",
                 head_sha=head_sha,
             )
             return False
@@ -182,7 +192,15 @@ class GitHubCheckRunService:
         head_sha: str,
         check_suite_id: int,
     ) -> bool:
-        """Determine whether a commit is on a branch of the repository."""
+        """Determine whether a commit is on a branch of the repository.
+
+        The commit is on a branch if it is the head of any branch, or in the
+        history of the check suite's head branch or of the default branch.
+        Other branches' histories are not searched. A commit that none of
+        these branches reach, such as one whose branch was deleted after a
+        squash or rebase merge or one that was force-pushed away, is not on a
+        branch.
+        """
         # A check suite is normally requested for a commit that was just
         # pushed, which is the head of its branch.
         branches_where_head = await retry_transient_github_errors(
@@ -285,9 +303,13 @@ class GitHubCheckRunService:
     ) -> None:
         """Run a GitHub check run that was rerequested.
 
-        A check run for a commit that is not on a branch of the repository,
-        such as a commit from a fork, or for a repository whose owner is not
-        in ``TS_GITHUB_ORGS``, is concluded as skipped instead.
+        A check run for a repository whose owner is not in
+        ``TS_GITHUB_ORGS``, or for a commit that is not on a branch of the
+        repository, is concluded as skipped instead. That is a commit from a
+        fork, but also a commit that was pushed to the repository and is no
+        longer on any of its branches, such as the head of a pull request
+        whose branch was deleted after a squash or rebase merge, or a commit
+        that was force-pushed away.
         """
         if not await self._is_trusted_source(
             repo=payload.repository,
@@ -303,9 +325,12 @@ class GitHubCheckRunService:
                     "output": {
                         "title": "Skipped",
                         "summary": (
-                            "Times Square only checks commits that were "
-                            "pushed to this repository. It does not check "
-                            "pull requests from forks."
+                            "This commit is not on a branch of this "
+                            "repository, so Times Square did not check it. "
+                            "It may come from a fork, or the original commit "
+                            "may have been deleted: its branch was deleted "
+                            "after a squash or rebase merge, or it was "
+                            "force-pushed away."
                         ),
                     },
                 },
