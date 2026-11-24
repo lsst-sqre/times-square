@@ -78,7 +78,8 @@ class GitHubCheckRunService:
         """Do nothing for a pull request event.
 
         This method is intentionally not implemented, and is only called by
-        the stub ``pull_request_sync`` task. Do not run checks from pull
+        the stub ``pull_request_sync`` task, which the ``pull_request``
+        webhook handlers no longer queue. Do not run checks from pull
         request events: they are delivered for pull requests from forks,
         whose notebooks must never be executed. Checks are run by
         `initiate_check_runs` instead, in response to ``check_suite`` events.

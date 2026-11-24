@@ -17,7 +17,6 @@ from safir.github.webhooks import (
     GitHubAppInstallationRepositoriesEventModel,
     GitHubCheckRunEventModel,
     GitHubCheckSuiteEventModel,
-    GitHubPullRequestEventModel,
 )
 from structlog.stdlib import BoundLogger
 
@@ -500,7 +499,6 @@ async def handle_installation_target_renamed(
 
 
 @router.register("pull_request", action="opened")
-@filter_installation_owner
 async def handle_pr_opened(
     event: Event,
     logger: BoundLogger,
@@ -508,8 +506,13 @@ async def handle_pr_opened(
     *args: Any,
     **kwargs: Any,
 ) -> None:
-    """Handle the ``pull_request`` (opened) webhook event from
-    GitHub.
+    """Handle the ``pull_request`` (opened) webhook event from GitHub by
+    ignoring it.
+
+    The event is received and logged, and nothing else: no task is queued
+    and no GitHub API request is made. That is also why this handler is not
+    gated by `filter_installation_owner`, whose installation lookup would be
+    a GitHub API request made only to decide whether to ignore the event.
 
     .. warning::
 
@@ -519,34 +522,25 @@ async def handle_pr_opened(
        notebooks with Times Square's credentials. Checks are triggered by
        ``check_suite`` events instead (see `handle_check_suite_request`),
        which GitHub only sends for commits pushed to the repository where
-       the app is installed. This handler is a stub that queues a task that
-       does nothing.
+       the app is installed.
 
     Parameters
     ----------
-    event : `gidgethub.sansio.Event`
-         The parsed event payload.
+    event
+        The parsed event payload.
     logger
-        The logger instance
-    arq_queue : `safir.dependencies.arq.ArqQueue`
-        An arq queue client.
+        The logger instance.
+    arq_queue
+        An arq queue client, which is not used.
     """
-    logger.info(
-        "GitHub pull_request opened event",
+    logger.debug(
+        "Ignoring GitHub pull_request opened event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
     )
 
-    payload = GitHubPullRequestEventModel.model_validate(event.data)
-
-    await arq_queue.enqueue(
-        "pull_request_sync",
-        payload=payload,
-    )
-
 
 @router.register("pull_request", action="synchronize")
-@filter_installation_owner
 async def handle_pr_sync(
     event: Event,
     logger: BoundLogger,
@@ -554,8 +548,13 @@ async def handle_pr_sync(
     *args: Any,
     **kwargs: Any,
 ) -> None:
-    """Handle the ``pull_request`` (synchronize) webhook event from
-    GitHub.
+    """Handle the ``pull_request`` (synchronize) webhook event from GitHub by
+    ignoring it.
+
+    The event is received and logged, and nothing else: no task is queued
+    and no GitHub API request is made. That is also why this handler is not
+    gated by `filter_installation_owner`, whose installation lookup would be
+    a GitHub API request made only to decide whether to ignore the event.
 
     .. warning::
 
@@ -565,29 +564,21 @@ async def handle_pr_sync(
        notebooks with Times Square's credentials. Checks are triggered by
        ``check_suite`` events instead (see `handle_check_suite_request`),
        which GitHub only sends for commits pushed to the repository where
-       the app is installed. This handler is a stub that queues a task that
-       does nothing.
+       the app is installed.
 
     Parameters
     ----------
-    event : `gidgethub.sansio.Event`
-         The parsed event payload.
+    event
+        The parsed event payload.
     logger
-        The logger instance
-    arq_queue : `safir.dependencies.arq.ArqQueue`
-        An arq queue client.
+        The logger instance.
+    arq_queue
+        An arq queue client, which is not used.
     """
-    logger.info(
-        "GitHub pull_request synchronize event",
+    logger.debug(
+        "Ignoring GitHub pull_request synchronize event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
-    )
-
-    payload = GitHubPullRequestEventModel.model_validate(event.data)
-
-    await arq_queue.enqueue(
-        "pull_request_sync",
-        payload=payload,
     )
 
 

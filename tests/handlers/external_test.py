@@ -362,3 +362,62 @@ async def test_handle_repository_transferred_unaccepted_org(
 
     assert len(arq_queue.calls) == 1
     assert arq_queue.calls[0][0] == "repo_transferred"
+
+
+def _pull_request_event(action: str) -> Event:
+    """Build a ``pull_request`` webhook event with the given action from the
+    recorded pull request fixture.
+    """
+    payload = json.loads((DATA / "pull_request_event.json").read_text())
+    payload["action"] = action
+    return Event(payload, event="pull_request", delivery_id="1234")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["opened", "synchronize"])
+async def test_handle_pull_request_enqueues_nothing(
+    action: str, mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """A ``pull_request`` webhook is received and ignored: GitHub delivers it
+    for pull requests from forks, so it must not queue any work, even for an
+    accepted org.
+    """
+    arq_queue = RecordingArqQueue()
+
+    await webhook_router.dispatch(
+        _pull_request_event(action),
+        structlog.get_logger(__name__),
+        arq_queue,
+        _client_factory_for_owner(mocker, http_client, "lsst-sqre"),
+    )
+
+    assert arq_queue.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["opened", "synchronize"])
+async def test_handle_pull_request_calls_no_github_api(
+    action: str, mocker: MockerFixture, http_client: AsyncClient
+) -> None:
+    """Ignoring a ``pull_request`` webhook makes no GitHub API request, not
+    even the installation lookup that gates the other events on the owner, so
+    a GitHub outage cannot fail the delivery of an event that does nothing.
+    """
+    factory = GitHubAppClientFactory(
+        id=1234,
+        key=SAMPLE_PRIVATE_KEY,
+        name="lsst-sqre/times-square",
+        http_client=http_client,
+    )
+    anonymous = mocker.patch.object(factory, "create_anonymous_client")
+    installation = mocker.patch.object(factory, "create_installation_client")
+
+    await webhook_router.dispatch(
+        _pull_request_event(action),
+        structlog.get_logger(__name__),
+        RecordingArqQueue(),
+        factory,
+    )
+
+    anonymous.assert_not_called()
+    installation.assert_not_called()

@@ -16,8 +16,11 @@ async def pull_request_sync(
     *,
     payload: GitHubPullRequestEventModel,
 ) -> str:
-    """Process pull_request_sync tasks, triggered by GitHub Pull Request
-    events.
+    """Process pull_request_sync tasks, which are no longer queued.
+
+    The ``pull_request`` webhook handlers used to queue this task, but now
+    ignore the event instead. The task stays registered only so that jobs
+    already on the queue when that change was deployed still resolve.
 
     This task is a stub that does nothing, and it must stay that way. Pull
     request events are delivered for pull requests from forks, so a check
