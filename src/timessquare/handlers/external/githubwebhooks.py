@@ -611,7 +611,9 @@ async def handle_check_suite_request(
     independently verifies that the commit is on a branch of the repository,
     which a fork's commits never are, and skips the check otherwise. That
     also skips a commit that is no longer on any branch, such as one whose
-    branch was deleted after a squash or rebase merge.
+    branch was deleted after a squash or rebase merge. For a requested check
+    suite whose commit GitHub may not show on its branch yet, the task
+    defers itself a few times before skipping.
 
     https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
 

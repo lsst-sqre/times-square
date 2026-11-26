@@ -41,7 +41,10 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.domain.page import PageExecutionInfo, PageModel
 from timessquare.domain.pageparameters import PageParameters
 from timessquare.factory import ProcessContext, WorkerFactory
-from timessquare.services.githubcheckrun import GitHubCheckRunService
+from timessquare.services.githubcheckrun import (
+    CheckSuiteOutcome,
+    GitHubCheckRunService,
+)
 from timessquare.services.githubrepo import GitHubRepoService
 from timessquare.services.page import PageService
 from timessquare.storage.github.apimodels import (
@@ -505,12 +508,13 @@ def _make_guarded_service(
 
 
 def _check_suite_payload(
-    *, head_branch: str | None
+    *, head_branch: str | None, action: str = "completed"
 ) -> GitHubCheckSuiteEventWithNullableBranchModel:
     """Create a ``check_suite`` payload for `HEAD_SHA` whose check suite
     reports the given head branch.
     """
     data = json.loads((DATA / "check_suite_completed.json").read_text())
+    data["action"] = action
     data["check_suite"]["head_branch"] = head_branch
     return GitHubCheckSuiteEventWithNullableBranchModel.model_validate(data)
 
@@ -695,7 +699,7 @@ async def test_check_suite_skipped_for_fork_commit_on_branch_tip(
     mock = _make_mock(
         branches={"master": [BASE_SHA]},
         renamed_branches=FORK_RENAMED_BRANCHES,
-        fork_commits={HEAD_SHA: BASE_SHA},
+        unbranched_commits={HEAD_SHA: BASE_SHA},
         pull_heads={3: HEAD_SHA},
     )
     comparison = await mock.getitem(
@@ -1089,3 +1093,64 @@ async def test_rerequested_check_run_runs_for_commit_of_renamed_branch(
 
     assert _read_notebooks(mock)
     assert not _was_refused(mock)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("head_branch", "mock_kwargs"),
+    [
+        (
+            "changes",
+            {
+                "branches": {
+                    "master": [BASE_SHA],
+                    "changes": [NEWER_SHA, BASE_SHA],
+                },
+                "unbranched_commits": {HEAD_SHA: BASE_SHA},
+            },
+        ),
+        (
+            "trunk",
+            {
+                "branches": {"master": [BASE_SHA]},
+                "renamed_branches": {"trunk": "master"},
+                "unbranched_commits": {HEAD_SHA: BASE_SHA},
+            },
+        ),
+        (
+            "changes",
+            {
+                "branches": {"master": [BASE_SHA], "changes": [BASE_SHA]},
+                "unbranched_commits": {HEAD_SHA: BASE_SHA},
+                "error_statuses": {r"/compare/": HTTPStatus.NOT_FOUND},
+            },
+        ),
+    ],
+    ids=["diverged", "renamed-branch", "compare-not-found"],
+)
+async def test_requested_check_suite_not_deferred_without_signs_of_lag(
+    http_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    head_branch: str,
+    mock_kwargs: dict[str, Any],
+) -> None:
+    """A requested check suite that the caller may retry is still skipped,
+    rather than reported as not yet visible, when its commit diverged from
+    its head branch, its head branch was renamed, or GitHub cannot relate the
+    commit to its head branch, since GitHub lagging behind a push does not
+    explain any of these.
+    """
+    monkeypatch.setattr(config, "github_orgs", "Codertocat")
+    mock = _make_mock(**mock_kwargs)
+    service = _make_guarded_service(http_client=http_client, mock=mock)
+
+    outcome = await service.initiate_check_runs(
+        payload=_check_suite_payload(
+            head_branch=head_branch, action="requested"
+        ),
+        may_retry=True,
+    )
+
+    assert outcome is CheckSuiteOutcome.skipped
+    assert _write_requests(mock) == []
+    assert not _read_notebooks(mock)

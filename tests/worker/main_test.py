@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timedelta
 
 from arq.cron import CronJob, next_cron
+from arq.worker import Function, Worker
 
+from timessquare.worker.functions.create_check_run import NOT_VISIBLE_RETRIES
 from timessquare.worker.main import WorkerSettings
 
 EXPECTED_RUNS_PER_DAY = {
@@ -65,3 +68,27 @@ def test_daily_cron_jobs_run_at_the_top_of_their_hour() -> None:
         assert len(runs) == 1
         assert runs[0].hour == hour
         assert runs[0].minute == 0
+
+
+def test_create_check_run_tries_allow_not_visible_retries() -> None:
+    """The worker allows create_check_run enough tries for every retry of a
+    check suite whose commit GitHub does not show on its branch yet, plus
+    the last attempt that skips it.
+
+    arq fails a job that has used up its tries without running it, which
+    would leave the check suite with no check runs and no skip logged.
+    """
+    # The list is annotated as callables, though arq.worker.func entries are
+    # Function tuples.
+    functions: list[object] = list(WorkerSettings.functions)
+    function = next(
+        f
+        for f in functions
+        if isinstance(f, Function) and f.name == "create_check_run"
+    )
+    max_tries = function.max_tries or getattr(
+        WorkerSettings,
+        "max_tries",
+        inspect.signature(Worker).parameters["max_tries"].default,
+    )
+    assert max_tries > NOT_VISIBLE_RETRIES

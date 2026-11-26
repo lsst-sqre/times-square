@@ -200,10 +200,13 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         Maps the old names of renamed branches to their new names. As on
         GitHub, "get a branch" answers an old name with a 301 redirect to
         the new name, and the old name is not otherwise a branch.
-    ``fork_commits``
-        Maps commits that are only in a fork to their parent commits, which
-        may be on a branch of the installed repository. A fork's commit that
-        is not listed here shares no history with the installed repository.
+    ``unbranched_commits``
+        Maps commits that are on no branch of the installed repository to
+        their parent commits, which may be on one. That is a fork's commit,
+        or a commit just pushed to a branch while GitHub still serves the
+        branch at its previous tip, as GitHub can for a moment after a push.
+        A fork's commit that is not listed here shares no history with the
+        installed repository.
     ``pull_heads``
         Maps pull request numbers to head commits. GitHub keeps a
         ``refs/pull/N/head`` ref in the base repository for every pull
@@ -237,7 +240,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         check_run: dict[str, Any],
         branches: Mapping[str, Sequence[str]] | None = None,
         renamed_branches: Mapping[str, str] | None = None,
-        fork_commits: Mapping[str, str] | None = None,
+        unbranched_commits: Mapping[str, str] | None = None,
         pull_heads: Mapping[int, str] | None = None,
         check_suite_head_branch: str | None = None,
         commit_pulls: Mapping[str, list[dict[str, Any]]] | None = None,
@@ -258,7 +261,7 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
             name: list(history) for name, history in (branches or {}).items()
         }
         self._renamed_branches = dict(renamed_branches or {})
-        self._fork_commits = dict(fork_commits or {})
+        self._unbranched_commits = dict(unbranched_commits or {})
         self._pull_heads = dict(pull_heads or {})
         self._check_suite_head_branch = check_suite_head_branch
         self._commit_pulls = dict(commit_pulls or {})
@@ -419,8 +422,8 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
 
     def _history(self, sha: str) -> list[str]:
         """Get the commits reachable from a commit, newest first."""
-        if sha in self._fork_commits:
-            return [sha, *self._history(self._fork_commits[sha])]
+        if sha in self._unbranched_commits:
+            return [sha, *self._history(self._unbranched_commits[sha])]
         for history in self._branches.values():
             if sha in history:
                 return history[history.index(sha) :]
