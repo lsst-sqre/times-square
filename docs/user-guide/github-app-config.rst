@@ -74,6 +74,11 @@ The GitHub App needs the following repository permissions:
 
 No organization permissions are needed.
 
+The **Pull requests** permission lets Times Square look up the pull requests that a commit's check runs belong to, so that its pull request preview pages can show each pull request's number, title, and status.
+This permission is separate from the **Pull request** event, which the GitHub App does not need to subscribe to (see :ref:`github-app-events`).
+
+.. _github-app-events:
+
 Events
 ------
 
@@ -83,8 +88,16 @@ The GitHub App needs to subscribe to the following events:
 - Check Suite
 - Installation target
 - Push
-- Pull request
 - Repository
+
+Times Square does not use the **Pull request** event.
+Notebook checks are started by **Check Suite** events instead, which GitHub sends only for commits pushed to the repository where the app is installed, never for pull requests from forks.
+
+.. note::
+
+   Earlier versions of these instructions subscribed the GitHub App to the **Pull request** event.
+   You can unsubscribe an existing Times Square GitHub App from that event on the app's :guilabel:`Permissions & events` settings page, while keeping the **Pull requests** read-only permission.
+   If GitHub still delivers the event, Times Square receives and ignores it.
 
 The **Installation target** event lets Times Square follow a rename of the account the app is installed on, whether that is an organization or a personal account.
 Because :envvar:`TS_GITHUB_ORGS` names owners by their login, update it to the new login after such a rename; Times Square logs a warning to that effect when it processes the rename.
