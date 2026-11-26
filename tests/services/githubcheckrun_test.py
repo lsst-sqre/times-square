@@ -547,23 +547,22 @@ def _created_check_runs(mock: MockGitHubCheckRunAPI) -> list[str]:
     return [body["name"] for body in mock.posted]
 
 
-def _was_skipped(mock: MockGitHubCheckRunAPI) -> bool:
-    """Determine whether a check run was concluded as skipped."""
+def _was_refused(mock: MockGitHubCheckRunAPI) -> bool:
+    """Determine whether a check run was concluded as refused by the guard."""
     return any(
-        (body.get("output") or {}).get("title") == "Skipped"
+        body.get("conclusion") == GitHubCheckRunConclusion.cancelled
         for body in mock.patched
     )
 
 
-def _assert_skipped_as_not_on_branch(mock: MockGitHubCheckRunAPI) -> None:
-    """Assert that a check run was concluded as skipped, with a summary that
-    gives both reasons a commit can be missing from the repository's
-    branches.
+def _assert_refused_as_not_on_branch(mock: MockGitHubCheckRunAPI) -> None:
+    """Assert that a check run was concluded as cancelled, which does not
+    satisfy a required check, with a summary that gives both reasons a commit
+    can be missing from the repository's branches.
     """
     assert [p["conclusion"] for p in mock.patched] == [
-        GitHubCheckRunConclusion.neutral
+        GitHubCheckRunConclusion.cancelled
     ]
-    assert _was_skipped(mock)
     summary = mock.patched[0]["output"]["summary"]
     assert "not on a branch of this repository" in summary
     assert "fork" in summary
@@ -601,13 +600,17 @@ async def test_check_suite_skipped_for_fork_pull_request(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fork_branch", FORK_BRANCH_NAMES)
-async def test_rerequested_check_run_skipped_for_fork_pull_request(
+async def test_rerequested_check_run_cancelled_for_fork_pull_request(
     http_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     fork_branch: str | None,
 ) -> None:
     """Re-running a check run on the head commit of an open pull request
-    from a fork concludes it as skipped without reading the fork's content.
+    from a fork concludes it as cancelled without reading the fork's content.
+
+    The check run may hold an earlier real result, such as a failure from
+    when the commit was on a branch of the repository, so the refusal must
+    not conclude it as passing.
     """
     monkeypatch.setattr(config, "github_orgs", "Codertocat")
     mock = _make_mock(
@@ -622,16 +625,16 @@ async def test_rerequested_check_run_skipped_for_fork_pull_request(
         payload=_rerequested_payload(NotebookExecutionsCheck.external_id)
     )
 
-    _assert_skipped_as_not_on_branch(mock)
+    _assert_refused_as_not_on_branch(mock)
     assert not _read_notebooks(mock)
 
 
 @pytest.mark.asyncio
-async def test_rerequested_check_run_skipped_for_deleted_commit(
+async def test_rerequested_check_run_cancelled_for_deleted_commit(
     http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Re-running a check run on a commit that was pushed to the repository
-    but is no longer on any of its branches concludes it as skipped without
+    but is no longer on any of its branches concludes it as cancelled without
     reading its content.
 
     This is the head commit of a pull request that was squash or rebase
@@ -655,7 +658,7 @@ async def test_rerequested_check_run_skipped_for_deleted_commit(
         payload=_rerequested_payload(NotebookExecutionsCheck.external_id)
     )
 
-    _assert_skipped_as_not_on_branch(mock)
+    _assert_refused_as_not_on_branch(mock)
     assert not _read_notebooks(mock)
 
 
@@ -806,7 +809,7 @@ async def test_rerequested_check_run_runs_for_merged_fork_pull_request(
     )
 
     assert _read_notebooks(mock)
-    assert not _was_skipped(mock)
+    assert not _was_refused(mock)
 
 
 @pytest.mark.asyncio
@@ -904,7 +907,7 @@ async def test_rerequested_check_run_runs_for_older_branch_commit(
     )
 
     assert _read_notebooks(mock)
-    assert not _was_skipped(mock)
+    assert not _was_refused(mock)
 
 
 @pytest.mark.asyncio
@@ -927,7 +930,7 @@ async def test_rerequested_check_run_runs_for_commit_of_deleted_branch(
     )
 
     assert _read_notebooks(mock)
-    assert not _was_skipped(mock)
+    assert not _was_refused(mock)
 
 
 @pytest.mark.asyncio
@@ -953,4 +956,4 @@ async def test_rerequested_check_run_runs_for_commit_of_renamed_branch(
     )
 
     assert _read_notebooks(mock)
-    assert not _was_skipped(mock)
+    assert not _was_refused(mock)

@@ -699,7 +699,10 @@ async def handle_check_run_rerequested(
     service applies the same guard first, verifying that the commit is on a
     branch of the repository. A commit from a fork, or one that is no longer
     on any branch, such as one whose branch was deleted after a squash or
-    rebase merge, has its check run concluded as skipped instead.
+    rebase merge, has its check run concluded as cancelled instead. The check
+    run held the commit's earlier result, and a neutral conclusion would
+    satisfy a required check, so a refused re-run must not turn an earlier
+    failure into a pass.
 
     Parameters
     ----------

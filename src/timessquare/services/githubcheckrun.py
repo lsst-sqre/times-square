@@ -306,11 +306,18 @@ class GitHubCheckRunService:
 
         A check run for a repository whose owner is not in
         ``TS_GITHUB_ORGS``, or for a commit that is not on a branch of the
-        repository, is concluded as skipped instead. That is a commit from a
+        repository, is concluded as cancelled instead. That is a commit from a
         fork, but also a commit that was pushed to the repository and is no
         longer on any of its branches, such as the head of a pull request
         whose branch was deleted after a squash or rebase merge, or a commit
         that was force-pushed away.
+
+        The refused check run is concluded as cancelled, rather than neutral,
+        because it is the check run that held the commit's earlier result,
+        and GitHub counts a neutral conclusion as passing a required check.
+        Concluding it as neutral would turn an earlier failure, from when the
+        commit was on a branch of the repository, into a pass for a pull
+        request from a fork.
         """
         if not await self._is_trusted_source(
             repo=payload.repository,
@@ -318,13 +325,14 @@ class GitHubCheckRunService:
             check_suite_id=payload.check_run.check_suite.id,
         ):
             # The check run already exists, so conclude it rather than
-            # leaving it queued.
+            # leaving it queued. Use a conclusion that does not satisfy a
+            # required check, since the notebooks were not checked.
             await self._github_client.patch(
                 str(payload.check_run.url),
                 data={
-                    "conclusion": GitHubCheckRunConclusion.neutral,
+                    "conclusion": GitHubCheckRunConclusion.cancelled,
                     "output": {
-                        "title": "Skipped",
+                        "title": "Not checked",
                         "summary": (
                             "This commit is not on a branch of this "
                             "repository, so Times Square did not check it. "
