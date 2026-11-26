@@ -211,10 +211,12 @@ class MockGitHubCheckRunAPI(MockGitHubAPI):
         ``pull/N/head`` through it just as GitHub does. "Get a branch" does
         not, since that ref is not a branch.
     ``check_suite_head_branch``
-        The ``head_branch`` that the "get a check suite" GET reports. For a
-        fork's commit, GitHub reports `None` for a third-party app's check
-        suite, such as Times Square's. Only GitHub Actions' own check suites
-        report the name of the fork's branch.
+        The ``head_branch`` that the "get a check suite" GET reports. Only a
+        re-requested check run's check suite is looked up: a ``check_suite``
+        event carries its head branch, so tests of check suites set it on
+        the payload instead. For a fork's commit, GitHub reports `None` for a
+        third-party app's check suite, such as Times Square's. Only GitHub
+        Actions' own check suites report the name of the fork's branch.
     ``commit_pulls``
         Maps commits to what the "list pull requests associated with a
         commit" GET returns for them, which is no pull requests by default.

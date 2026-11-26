@@ -15,13 +15,11 @@ from safir.github.models import (
     GitHubBranchModel,
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
+    GitHubCheckSuiteId,
     GitHubPullRequestModel,
     GitHubRepositoryModel,
 )
-from safir.github.webhooks import (
-    GitHubCheckRunEventModel,
-    GitHubCheckSuiteEventModel,
-)
+from safir.github.webhooks import GitHubCheckRunEventModel
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
@@ -37,7 +35,9 @@ from timessquare.exceptions import PageJinjaError
 
 from ..domain.page import PageExecutionInfo, PageModel
 from ..storage.github.apimodels import (
+    GitHubCheckSuiteEventWithNullableBranchModel,
     GitHubCheckSuiteHeadBranchModel,
+    GitHubCheckSuiteWithNullableBranchModel,
     GitHubCommitComparisonModel,
 )
 from ..storage.github.retry import (
@@ -86,7 +86,7 @@ class GitHubCheckRunService:
         """
 
     async def initiate_check_runs(
-        self, *, payload: GitHubCheckSuiteEventModel
+        self, *, payload: GitHubCheckSuiteEventWithNullableBranchModel
     ) -> None:
         """Create a new GitHub check runs, given a new Check Suite.
 
@@ -101,12 +101,15 @@ class GitHubCheckRunService:
         repository. That is a commit from a fork, but also a commit that was
         pushed to the repository and is no longer on any of its branches,
         such as the head of a pull request whose branch was deleted after a
-        squash or rebase merge, or a commit that was force-pushed away.
+        squash or rebase merge, or a commit that was force-pushed away. A
+        check suite with no head branch is not refused for that alone, since
+        its commit may still be the head of a branch or in the history of the
+        default branch.
         """
         if not await self._is_trusted_source(
             repo=payload.repository,
             head_sha=payload.check_suite.head_sha,
-            check_suite_id=payload.check_suite.id,
+            check_suite=payload.check_suite,
         ):
             return
 
@@ -147,7 +150,8 @@ class GitHubCheckRunService:
         *,
         repo: GitHubRepositoryModel,
         head_sha: str,
-        check_suite_id: int,
+        check_suite: GitHubCheckSuiteWithNullableBranchModel
+        | GitHubCheckSuiteId,
     ) -> bool:
         """Determine whether notebooks at a commit may be read and executed.
 
@@ -175,7 +179,7 @@ class GitHubCheckRunService:
             return False
 
         if not await self._is_on_branch(
-            repo=repo, head_sha=head_sha, check_suite_id=check_suite_id
+            repo=repo, head_sha=head_sha, check_suite=check_suite
         ):
             self._logger.warning(
                 "Skipping check for a commit that is not on a branch of the "
@@ -191,7 +195,8 @@ class GitHubCheckRunService:
         *,
         repo: GitHubRepositoryModel,
         head_sha: str,
-        check_suite_id: int,
+        check_suite: GitHubCheckSuiteWithNullableBranchModel
+        | GitHubCheckSuiteId,
     ) -> bool:
         """Determine whether a commit is on a branch of the repository.
 
@@ -201,6 +206,10 @@ class GitHubCheckRunService:
         these branches reach, such as one whose branch was deleted after a
         squash or rebase merge or one that was force-pushed away, is not on a
         branch.
+
+        A ``check_suite`` event carries its check suite's head branch, which
+        may be `None`. A ``check_run`` event identifies the check suite only
+        by its ID, so its head branch is looked up when it is needed.
         """
         # A check suite is normally requested for a commit that was just
         # pushed, which is the head of its branch.
@@ -221,22 +230,14 @@ class GitHubCheckRunService:
         # older commit, so look for the commit in the history of the branch
         # it was pushed to, or of the default branch in case that branch was
         # merged and deleted, or renamed.
-        check_suite = GitHubCheckSuiteHeadBranchModel.model_validate(
-            await retry_transient_github_errors(
-                lambda: self._github_client.getitem(
-                    "repos/{owner}/{repo}/check-suites/{check_suite_id}",
-                    url_vars={
-                        "owner": repo.owner.login,
-                        "repo": repo.name,
-                        "check_suite_id": str(check_suite_id),
-                    },
-                )
+        if isinstance(check_suite, GitHubCheckSuiteWithNullableBranchModel):
+            head_branch = check_suite.head_branch
+        else:
+            head_branch = await self._get_check_suite_head_branch(
+                repo=repo, check_suite_id=check_suite.id
             )
-        )
         candidates = dict.fromkeys(
-            name
-            for name in (check_suite.head_branch, repo.default_branch)
-            if name
+            name for name in (head_branch, repo.default_branch) if name
         )
         for branch_name in candidates:
             if await self._is_in_branch_history(
@@ -244,6 +245,24 @@ class GitHubCheckRunService:
             ):
                 return True
         return False
+
+    async def _get_check_suite_head_branch(
+        self, *, repo: GitHubRepositoryModel, check_suite_id: int
+    ) -> str | None:
+        """Look up the name of the branch a check suite's commit was pushed
+        to, or `None` if GitHub reports no branch.
+        """
+        data = await retry_transient_github_errors(
+            lambda: self._github_client.getitem(
+                "repos/{owner}/{repo}/check-suites/{check_suite_id}",
+                url_vars={
+                    "owner": repo.owner.login,
+                    "repo": repo.name,
+                    "check_suite_id": str(check_suite_id),
+                },
+            )
+        )
+        return GitHubCheckSuiteHeadBranchModel.model_validate(data).head_branch
 
     async def _is_in_branch_history(
         self, *, repo: GitHubRepositoryModel, head_sha: str, branch_name: str
@@ -322,7 +341,7 @@ class GitHubCheckRunService:
         if not await self._is_trusted_source(
             repo=payload.repository,
             head_sha=payload.check_run.head_sha,
-            check_suite_id=payload.check_run.check_suite.id,
+            check_suite=payload.check_run.check_suite,
         ):
             # The check run already exists, so conclude it rather than
             # leaving it queued. Use a conclusion that does not satisfy a

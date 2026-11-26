@@ -16,12 +16,12 @@ from safir.github.webhooks import (
     GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
     GitHubCheckRunEventModel,
-    GitHubCheckSuiteEventModel,
 )
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
 from timessquare.storage.github.apimodels import (
+    GitHubCheckSuiteEventWithNullableBranchModel,
     GitHubInstallationTargetRenamedEventModel,
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
@@ -630,7 +630,9 @@ async def handle_check_suite_request(
             "GitHub check suite request event",
             repo=event.data["repository"]["full_name"],
         )
-        payload = GitHubCheckSuiteEventModel.model_validate(event.data)
+        payload = GitHubCheckSuiteEventWithNullableBranchModel.model_validate(
+            event.data
+        )
         logger.debug("GitHub check suite request payload", payload=payload)
 
         # Note that architecturally it might be possible to run this as part

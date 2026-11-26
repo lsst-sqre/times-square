@@ -11,14 +11,21 @@ from pathlib import PurePosixPath
 from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl
-from safir.github.models import GitHubRepoOwnerModel, GitHubRepositoryModel
+from safir.github.models import (
+    GitHubCheckSuiteModel,
+    GitHubRepoOwnerModel,
+    GitHubRepositoryModel,
+)
 from safir.github.webhooks import (
     GitHubAppInstallationModel,
+    GitHubCheckSuiteEventModel,
     GitHubPushEventModel,
 )
 
 __all__ = [
+    "GitHubCheckSuiteEventWithNullableBranchModel",
     "GitHubCheckSuiteHeadBranchModel",
+    "GitHubCheckSuiteWithNullableBranchModel",
     "GitHubCommitComparisonModel",
     "GitHubCommitComparisonStatus",
     "GitHubInstallationTargetChangesModel",
@@ -109,6 +116,45 @@ class GitHubCheckSuiteHeadBranchModel(BaseModel):
             )
         ),
     ] = None
+
+
+class GitHubCheckSuiteWithNullableBranchModel(GitHubCheckSuiteModel):
+    """The ``check_suite`` object of a ``check_suite`` webhook payload, whose
+    head branch may be `None`.
+
+    Safir's `~safir.github.models.GitHubCheckSuiteModel` requires the head
+    branch, which GitHub can report as `None`.
+    """
+
+    # Widening the base model's str field is the point of this model.
+    head_branch: Annotated[  # type: ignore[assignment]
+        str | None,
+        Field(
+            description=(
+                "Name of the branch the check suite's commit was pushed to, "
+                "or `None` if GitHub reports no branch. A check suite with "
+                "no head branch can still be for a commit that is the head "
+                "of a branch, or in the history of the default branch."
+            )
+        ),
+    ]
+
+
+class GitHubCheckSuiteEventWithNullableBranchModel(GitHubCheckSuiteEventModel):
+    """A ``check_suite`` webhook payload whose check suite's head branch may
+    be `None`.
+
+    https://docs.github.com/en/webhooks/webhook-events-and-payloads#check_suite
+
+    Times Square validates check suite payloads with this model, rather than
+    Safir's `~safir.github.webhooks.GitHubCheckSuiteEventModel`, so that a
+    check suite with no head branch is still queued and checked.
+    """
+
+    check_suite: Annotated[
+        GitHubCheckSuiteWithNullableBranchModel,
+        Field(description="Information about the check suite."),
+    ]
 
 
 class GitHubCommitComparisonStatus(StrEnum):

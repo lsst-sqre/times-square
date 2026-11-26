@@ -5,14 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from safir.dependencies.db_session import db_session_dependency
-from safir.github.webhooks import GitHubCheckSuiteEventModel
 from safir.slack.blockkit import SlackCodeBlock, SlackMessage, SlackTextField
 
 from timessquare.factory import WorkerFactory
+from timessquare.storage.github.apimodels import (
+    GitHubCheckSuiteEventWithNullableBranchModel,
+)
 
 
 async def create_check_run(
-    ctx: dict[Any, Any], *, payload: GitHubCheckSuiteEventModel
+    ctx: dict[Any, Any],
+    *,
+    payload: GitHubCheckSuiteEventWithNullableBranchModel,
 ) -> str:
     """Process create_check_run queue tasks, triggered by check_suite created
     events on GitHub repositories.

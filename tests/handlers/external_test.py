@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from pathlib import Path
 
 import pytest
+import respx
 import structlog
 from gidgethub.routing import Router
 from gidgethub.sansio import Event
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from pytest_mock import MockerFixture
-from safir.arq import MockArqQueue
+from safir.arq import ArqQueue, MockArqQueue
 from safir.github import GitHubAppClientFactory
 from structlog.stdlib import BoundLogger
 from structlog.testing import capture_logs
@@ -19,6 +22,7 @@ from structlog.testing import capture_logs
 from tests.support.arq import RecordingArqQueue
 from tests.support.github import SAMPLE_PRIVATE_KEY, MockGitHubAPI
 from timessquare.config import config
+from timessquare.factory import Factory
 from timessquare.handlers.external.githubwebhooks import (
     filter_installation_owner,
 )
@@ -362,6 +366,97 @@ async def test_handle_repository_transferred_unaccepted_org(
 
     assert len(arq_queue.calls) == 1
     assert arq_queue.calls[0][0] == "repo_transferred"
+
+
+WEBHOOK_SECRET = "webhook-secret"
+"""The webhook secret that `_post_signed_webhook` signs deliveries with."""
+
+
+def _enable_github_app(monkeypatch: pytest.MonkeyPatch) -> RecordingArqQueue:
+    """Configure the app to accept GitHub webhooks signed with
+    `WEBHOOK_SECRET`, and return the queue that its handlers enqueue onto.
+    """
+    monkeypatch.setattr(config, "enable_github_app", True)
+    monkeypatch.setattr(config, "github_app_id", 1234)
+    monkeypatch.setattr(config, "github_app_private_key", SAMPLE_PRIVATE_KEY)
+    monkeypatch.setattr(config, "github_webhook_secret", WEBHOOK_SECRET)
+    arq_queue = RecordingArqQueue()
+
+    def get_arq_queue(factory: Factory) -> ArqQueue:
+        return arq_queue
+
+    monkeypatch.setattr(Factory, "arq_queue", property(get_arq_queue))
+    return arq_queue
+
+
+async def _post_signed_webhook(
+    client: AsyncClient, *, event: str, payload: dict
+) -> Response:
+    """Deliver a webhook to the app the way GitHub does, signed with
+    `WEBHOOK_SECRET`.
+    """
+    body = json.dumps(payload).encode()
+    signature = hmac.new(
+        WEBHOOK_SECRET.encode(), msg=body, digestmod=hashlib.sha256
+    ).hexdigest()
+    return await client.post(
+        f"{config.path_prefix}/github/webhook",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-GitHub-Event": event,
+            "X-GitHub-Delivery": "72d3162e-cc78-11e3-81ab-4c9367dc0958",
+            "X-Hub-Signature-256": f"sha256={signature}",
+        },
+    )
+
+
+def _mock_installation_owner(
+    respx_mock: respx.Router, *, installation_id: int, owner: str
+) -> None:
+    """Route the installation lookup that ``filter_installation_owner``
+    gates events on, resolving it to ``owner``.
+    """
+    respx_mock.get(
+        f"https://api.github.com/app/installations/{installation_id}"
+    ).mock(return_value=Response(200, json={"account": {"login": owner}}))
+
+
+@pytest.mark.asyncio
+async def test_post_check_suite_requested_with_null_head_branch(
+    client: AsyncClient,
+    respx_mock: respx.Router,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``check_suite`` (requested) webhook whose check suite has no head
+    branch is accepted and queues a ``create_check_run`` task.
+
+    GitHub can report a check suite's head branch as null. The commit may
+    still be the head of a branch or in the default branch's history, so the
+    event must reach the check run service's guard rather than fail
+    validation in the handler.
+    """
+    arq_queue = _enable_github_app(monkeypatch)
+    payload = json.loads((DATA / "check_suite_completed.json").read_text())
+    payload["action"] = "requested"
+    payload["check_suite"].update(
+        head_branch=None, status="queued", conclusion=None
+    )
+    _mock_installation_owner(
+        respx_mock,
+        installation_id=payload["installation"]["id"],
+        owner="lsst-sqre",
+    )
+
+    response = await _post_signed_webhook(
+        client, event="check_suite", payload=payload
+    )
+
+    assert response.status_code == 202
+    assert len(arq_queue.calls) == 1
+    task_name, task_kwargs = arq_queue.calls[0]
+    assert task_name == "create_check_run"
+    assert task_kwargs["payload"].check_suite.head_branch is None
 
 
 def _pull_request_event(action: str) -> Event:
