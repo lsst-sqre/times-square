@@ -42,7 +42,7 @@ Every user-visible change needs a scriv changelog fragment in `changelog.d/`.
 Two deployable processes share one codebase, configuration (`config.py`, env vars prefixed `TS_`), and service layer:
 
 1. **FastAPI app** (`src/timessquare/main.py`) — routers in `handlers/`: `internal.py` (health, off the ingress), `external/` (GitHub webhook receiver and unversioned endpoints), `v1/` (the REST API). Authentication is handled upstream by Gafaelfawr; handlers read identity from the `X-Auth-Request-User` header.
-2. **arq worker** (`src/timessquare/worker/main.py`) — background task functions in `worker/functions/` (one file per task), plus cron jobs (`schedule_runs` every 5 minutes, `cleanup_scheduled_runs` daily). Handlers enqueue tasks by name onto the arq Redis queue; e.g. GitHub webhook handlers do no real work themselves, they enqueue `repo_push`, `pull_request_sync`, `compute_check_run`, etc.
+2. **arq worker** (`src/timessquare/worker/main.py`) — background task functions in `worker/functions/` (one file per task), plus cron jobs (`schedule_runs` every 5 minutes, `cleanup_scheduled_runs` daily). Handlers enqueue tasks by name onto the arq Redis queue; e.g. GitHub webhook handlers do no real work themselves, they enqueue `repo_push`, `compute_check_run`, etc. (`pull_request` events are received and ignored).
 
 Both processes refuse to start if the Alembic schema is not current (`safir.database.is_database_current`).
 

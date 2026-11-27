@@ -4,20 +4,25 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from enum import Enum, StrEnum, auto
+from http import HTTPStatus
 
 import httpx
+from gidgethub import BadRequest, RedirectionException
 from gidgethub.httpx import GitHubAPI
 from httpx import AsyncClient
 from pydantic import ValidationError
 from safir.github.models import (
+    GitHubBranchModel,
     GitHubCheckRunConclusion,
     GitHubCheckRunModel,
+    GitHubCheckSuiteId,
     GitHubPullRequestModel,
     GitHubRepositoryModel,
 )
 from safir.github.webhooks import (
     GitHubCheckRunEventModel,
-    GitHubCheckSuiteEventModel,
+    GitHubCheckSuiteEventAction,
 )
 from structlog.stdlib import BoundLogger
 
@@ -33,12 +38,71 @@ from timessquare.domain.githubcheckrun import (
 from timessquare.exceptions import PageJinjaError
 
 from ..domain.page import PageExecutionInfo, PageModel
-from ..storage.github.retry import TRANSIENT_GITHUB_ERRORS
+from ..storage.github.apimodels import (
+    GitHubCheckSuiteEventWithNullableBranchModel,
+    GitHubCheckSuiteHeadBranchModel,
+    GitHubCheckSuiteWithNullableBranchModel,
+    GitHubCommitComparisonModel,
+    GitHubCommitComparisonStatus,
+)
+from ..storage.github.retry import (
+    TRANSIENT_GITHUB_ERRORS,
+    retry_transient_github_errors,
+)
 from ..storage.noteburst import NoteburstJobStatus
 from .githubrepo import GitHubRepoService
 from .page import PageService
 
-__all__ = ["GitHubCheckRunService"]
+__all__ = ["CheckSuiteOutcome", "GitHubCheckRunService"]
+
+
+class CheckSuiteOutcome(StrEnum):
+    """What `GitHubCheckRunService.initiate_check_runs` did with a check
+    suite.
+    """
+
+    checked = "checked"
+    """The commit was trusted, so its check runs were created."""
+
+    skipped = "skipped"
+    """The commit was not trusted, so no check runs were created."""
+
+    not_yet_visible = "not_yet_visible"
+    """The commit was not found on a branch, but GitHub may not show it
+    there yet, so no check runs were created and the check suite should be
+    tried again later.
+    """
+
+
+class _BranchSearch(Enum):
+    """Whether a commit was found on a branch of the repository."""
+
+    found = auto()
+    """The commit is the head of the branch, or one of its ancestors."""
+
+    not_found = auto()
+    """The commit is not on the branch."""
+
+    possibly_not_visible = auto()
+    """The commit is not on the branch as GitHub reports it, but may be
+    once GitHub shows a recent push: no branch by that name was found, or
+    the branch's head is an ancestor of the commit.
+    """
+
+
+class _Trust(Enum):
+    """Whether notebooks at a commit may be read and executed."""
+
+    trusted = auto()
+    """The repository's owner is accepted and the commit is on a branch."""
+
+    untrusted = auto()
+    """The commit may not be checked."""
+
+    not_yet_visible = auto()
+    """The commit may not be checked yet, but may be once GitHub shows it on
+    its branch.
+    """
 
 
 class GitHubCheckRunService:
@@ -65,22 +129,78 @@ class GitHubCheckRunService:
     async def check_pull_request(
         self, pr_payload: GitHubPullRequestModel
     ) -> None:
-        """Run a check on a pull request."""
-        # Called by the pull_request_sync function
-        # This isn't run. Instead we use the initial_check_run method
-        # called by the create_check_run async function.
+        """Do nothing for a pull request event.
+
+        This method is intentionally not implemented, and is only called by
+        the stub ``pull_request_sync`` task, which the ``pull_request``
+        webhook handlers no longer queue. Do not run checks from pull
+        request events: they are delivered for pull requests from forks,
+        whose notebooks must never be executed. Checks are run by
+        `initiate_check_runs` instead, in response to ``check_suite`` events.
+        """
 
     async def initiate_check_runs(
-        self, *, payload: GitHubCheckSuiteEventModel
-    ) -> None:
+        self,
+        *,
+        payload: GitHubCheckSuiteEventWithNullableBranchModel,
+        may_retry: bool = False,
+    ) -> CheckSuiteOutcome:
         """Create a new GitHub check runs, given a new Check Suite.
+
+        Parameters
+        ----------
+        payload
+            The ``check_suite`` webhook payload.
+        may_retry
+            Whether the caller can call again later for the same check suite.
+            If so, a newly requested check suite whose commit GitHub may not
+            show on its branch yet is not skipped, but reported as
+            `CheckSuiteOutcome.not_yet_visible` so that it can be tried again.
+
+        Returns
+        -------
+        CheckSuiteOutcome
+            Whether check runs were created, the check suite was skipped, or
+            it should be tried again later.
 
         Notes
         -----
         NOTE: currently we're assuming that check suites are automatically
         created when created a check run. See
         https://docs.github.com/en/rest/checks/runs#create-a-check-run
+
+        No check runs are created for a repository whose owner is not in
+        ``TS_GITHUB_ORGS``, or for a commit that is not on a branch of the
+        repository. That is a commit from a fork, but also a commit that was
+        pushed to the repository and is no longer on any of its branches,
+        such as the head of a pull request whose branch was deleted after a
+        squash or rebase merge, or a commit that was force-pushed away. A
+        check suite with no head branch is not refused for that alone, since
+        its commit may still be the head of a branch or in the history of the
+        default branch.
+
+        A check suite is requested seconds after its commit is pushed, and
+        for a moment GitHub may still serve the commit's branch as it was
+        before the push, which looks the same as a commit that is not on the
+        branch. With ``may_retry``, a requested check suite in that state is
+        reported as not yet visible rather than skipped (see
+        `_search_branches`). A rerequested check suite is skipped instead,
+        since its commit was pushed long before.
         """
+        trust = await self._check_source(
+            repo=payload.repository,
+            head_sha=payload.check_suite.head_sha,
+            check_suite=payload.check_suite,
+            retry_if_not_visible=(
+                may_retry
+                and payload.action == GitHubCheckSuiteEventAction.requested
+            ),
+        )
+        if trust is _Trust.not_yet_visible:
+            return CheckSuiteOutcome.not_yet_visible
+        if trust is _Trust.untrusted:
+            return CheckSuiteOutcome.skipped
+
         # Run the configurations check
         config_check = await GitHubConfigsCheck.create_check_run_and_validate(
             github_client=self._github_client,
@@ -112,11 +232,285 @@ class GitHubCheckRunService:
                 str(check_run.url),
                 data={"conclusion": GitHubCheckRunConclusion.neutral},
             )
+        return CheckSuiteOutcome.checked
+
+    async def _check_source(
+        self,
+        *,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        check_suite: GitHubCheckSuiteWithNullableBranchModel
+        | GitHubCheckSuiteId,
+        retry_if_not_visible: bool = False,
+    ) -> _Trust:
+        """Determine whether notebooks at a commit may be read and executed.
+
+        Checking a commit means executing its notebooks with Times Square's
+        credentials, so this is the gate that keeps content from forks out.
+        GitHub serves a fork's commits through the base repository's API, so
+        being able to read ``head_sha`` from ``repo`` proves nothing about
+        where the commit was pushed. Instead, a commit is trusted only if it
+        is on a branch of ``repo``, which only someone with write access to
+        the repository can put it on, and only if the repository's owner is
+        in ``TS_GITHUB_ORGS``.
+
+        A commit that was pushed to ``repo`` but is no longer on any of its
+        branches is not trusted either, because GitHub serves it just as it
+        serves a fork's commit. Examples are the head of a pull request whose
+        branch was deleted after a squash or rebase merge, and a commit that
+        was force-pushed away. Checks of such commits are skipped.
+
+        With ``retry_if_not_visible``, a commit that GitHub may not show on
+        its branch yet (see `_search_branches`) is reported as
+        `_Trust.not_yet_visible` instead of untrusted, so that the caller can
+        try again later. That does not trust the commit: only a later
+        search that finds it on a branch does, so for a fork's commit, trying
+        again only delays the skip.
+        """
+        if repo.owner.login not in config.accepted_github_orgs:
+            self._logger.warning(
+                "Skipping check for a repository in an unaccepted org",
+                head_sha=head_sha,
+                accepted_orgs=config.accepted_github_orgs,
+            )
+            return _Trust.untrusted
+
+        search = await self._search_branches(
+            repo=repo, head_sha=head_sha, check_suite=check_suite
+        )
+        if search is _BranchSearch.found:
+            return _Trust.trusted
+        if (
+            search is _BranchSearch.possibly_not_visible
+            and retry_if_not_visible
+        ):
+            self._logger.info(
+                "Commit is not on its branch yet, possibly because GitHub "
+                "does not show a recent push",
+                head_sha=head_sha,
+            )
+            return _Trust.not_yet_visible
+        self._logger.warning(
+            "Skipping check for a commit that is not on a branch of the "
+            "repository, such as a commit from a fork or a commit that "
+            "was deleted",
+            head_sha=head_sha,
+        )
+        return _Trust.untrusted
+
+    async def _search_branches(
+        self,
+        *,
+        repo: GitHubRepositoryModel,
+        head_sha: str,
+        check_suite: GitHubCheckSuiteWithNullableBranchModel
+        | GitHubCheckSuiteId,
+    ) -> _BranchSearch:
+        """Determine whether a commit is on a branch of the repository.
+
+        The commit is on a branch if it is the head of any branch, or in the
+        history of the check suite's head branch or of the default branch.
+        Other branches' histories are not searched. A commit that none of
+        these branches reach, such as one whose branch was deleted after a
+        squash or rebase merge or one that was force-pushed away, is not on a
+        branch.
+
+        A ``check_suite`` event carries its check suite's head branch, which
+        may be `None`. A ``check_run`` event identifies the check suite only
+        by its ID, so its head branch is looked up when it is needed.
+
+        A commit that is not found is possibly not visible when the check
+        suite's head branch is known and either no branch by that name is
+        found or its head is an ancestor of the commit. That is what GitHub
+        reports for a commit pushed moments ago while it still serves the
+        branch as it was before the push, whether the push created the
+        branch or moved it forward. It is also what GitHub reports for some
+        commits that are not on the branch, such as a fork's commit made on
+        top of it, so the commit is still not on a branch. A commit with no
+        known head branch, or whose head branch was renamed, diverged from
+        it, or cannot be related to it at all, is not found.
+        """
+        # A check suite is normally requested for a commit that was just
+        # pushed, which is the head of its branch.
+        branches_where_head = await retry_transient_github_errors(
+            lambda: self._github_client.getitem(
+                "repos/{owner}/{repo}/commits/{sha}/branches-where-head",
+                url_vars={
+                    "owner": repo.owner.login,
+                    "repo": repo.name,
+                    "sha": head_sha,
+                },
+            )
+        )
+        if branches_where_head:
+            return _BranchSearch.found
+
+        # Otherwise the branch has moved on, as when a check is re-run on an
+        # older commit, so look for the commit in the history of the branch
+        # it was pushed to, or of the default branch in case that branch was
+        # merged and deleted, or renamed.
+        if isinstance(check_suite, GitHubCheckSuiteWithNullableBranchModel):
+            head_branch = check_suite.head_branch
+        else:
+            head_branch = await self._get_check_suite_head_branch(
+                repo=repo, check_suite_id=check_suite.id
+            )
+        candidates = dict.fromkeys(
+            name for name in (head_branch, repo.default_branch) if name
+        )
+        result = _BranchSearch.not_found
+        for branch_name in candidates:
+            search = await self._search_branch(
+                repo=repo, head_sha=head_sha, branch_name=branch_name
+            )
+            if search is _BranchSearch.found:
+                return search
+            # Only the branch the commit was pushed to can be lagging behind
+            # the push.
+            if branch_name == head_branch:
+                result = search
+        return result
+
+    async def _get_check_suite_head_branch(
+        self, *, repo: GitHubRepositoryModel, check_suite_id: int
+    ) -> str | None:
+        """Look up the name of the branch a check suite's commit was pushed
+        to, or `None` if GitHub reports no branch.
+        """
+        data = await retry_transient_github_errors(
+            lambda: self._github_client.getitem(
+                "repos/{owner}/{repo}/check-suites/{check_suite_id}",
+                url_vars={
+                    "owner": repo.owner.login,
+                    "repo": repo.name,
+                    "check_suite_id": str(check_suite_id),
+                },
+            )
+        )
+        return GitHubCheckSuiteHeadBranchModel.model_validate(data).head_branch
+
+    async def _search_branch(
+        self, *, repo: GitHubRepositoryModel, head_sha: str, branch_name: str
+    ) -> _BranchSearch:
+        """Determine whether a commit is the head of a branch, or one of its
+        ancestors.
+
+        The commit is possibly not visible if no branch by that name is
+        found, or if the branch's head is an ancestor of the commit.
+        """
+        # The name is resolved strictly as a branch, and the commits are then
+        # compared by SHA. A check suite for a fork's commit can name the
+        # fork's branch, as GitHub Actions' check suites do, and the compare
+        # API would resolve a name such as pull/3/head to the fork's commit
+        # itself.
+        try:
+            data = await retry_transient_github_errors(
+                lambda: self._github_client.getitem(
+                    "repos/{owner}/{repo}/branches/{branch}",
+                    url_vars={
+                        "owner": repo.owner.login,
+                        "repo": repo.name,
+                        "branch": branch_name,
+                    },
+                )
+            )
+        except BadRequest as e:
+            if e.status_code == HTTPStatus.NOT_FOUND:
+                # The branch may have been created by a push GitHub does not
+                # show yet.
+                return _BranchSearch.possibly_not_visible
+            raise
+        except RedirectionException:
+            # GitHub redirects the old name of a renamed branch to its new
+            # name. The redirect is not followed, so the guard only trusts
+            # branches it looked up by name in this repository. A renamed
+            # default branch is still checked under its current name.
+            return _BranchSearch.not_found
+        branch = GitHubBranchModel.model_validate(data)
+
+        try:
+            data = await retry_transient_github_errors(
+                lambda: self._github_client.getitem(
+                    "repos/{owner}/{repo}/compare/{base}...{head}",
+                    url_vars={
+                        "owner": repo.owner.login,
+                        "repo": repo.name,
+                        "base": branch.commit.sha,
+                        "head": head_sha,
+                    },
+                )
+            )
+        except BadRequest as e:
+            # GitHub reports a commit it cannot relate to the branch as not
+            # found.
+            if e.status_code == HTTPStatus.NOT_FOUND:
+                return _BranchSearch.not_found
+            raise
+        comparison = GitHubCommitComparisonModel.model_validate(data)
+        if comparison.head_is_in_base:
+            return _BranchSearch.found
+        if comparison.status is GitHubCommitComparisonStatus.ahead:
+            # The commit may have been pushed on top of the head that GitHub
+            # still shows for the branch.
+            return _BranchSearch.possibly_not_visible
+        return _BranchSearch.not_found
 
     async def create_rerequested_check_run(
         self, *, payload: GitHubCheckRunEventModel
     ) -> None:
-        """Run a GitHub check run that was rerequested."""
+        """Run a GitHub check run that was rerequested.
+
+        A check run for a repository whose owner is not in
+        ``TS_GITHUB_ORGS``, or for a commit that is not on a branch of the
+        repository, is concluded as cancelled instead. That is a commit from a
+        fork, but also a commit that was pushed to the repository and is no
+        longer on any of its branches, such as the head of a pull request
+        whose branch was deleted after a squash or rebase merge, or a commit
+        that was force-pushed away.
+
+        The refused check run is concluded as cancelled, rather than neutral,
+        because it is the check run that held the commit's earlier result,
+        and GitHub counts a neutral conclusion as passing a required check.
+        Concluding it as neutral would turn an earlier failure, from when the
+        commit was on a branch of the repository, into a pass for a pull
+        request from a fork.
+
+        Unlike a newly requested check suite (see `initiate_check_runs`), a
+        re-requested check run is never deferred for a commit that GitHub may
+        not show on its branch yet: its commit was pushed long before, so
+        GitHub lagging behind the push is not a plausible reason for the
+        commit to be missing.
+        """
+        if (
+            await self._check_source(
+                repo=payload.repository,
+                head_sha=payload.check_run.head_sha,
+                check_suite=payload.check_run.check_suite,
+            )
+            is not _Trust.trusted
+        ):
+            # The check run already exists, so conclude it rather than
+            # leaving it queued. Use a conclusion that does not satisfy a
+            # required check, since the notebooks were not checked.
+            await self._github_client.patch(
+                str(payload.check_run.url),
+                data={
+                    "conclusion": GitHubCheckRunConclusion.cancelled,
+                    "output": {
+                        "title": "Not checked",
+                        "summary": (
+                            "This commit is not on a branch of this "
+                            "repository, so Times Square did not check it. "
+                            "It may come from a fork, or the original commit "
+                            "may have been deleted: its branch was deleted "
+                            "after a squash or rebase merge, or it was "
+                            "force-pushed away."
+                        ),
+                    },
+                },
+            )
+            return
+
         external_id = payload.check_run.external_id
         if external_id == GitHubConfigsCheck.external_id:
             config_check = await GitHubConfigsCheck.validate_repo(

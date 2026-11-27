@@ -16,13 +16,12 @@ from safir.github.webhooks import (
     GitHubAppInstallationEventModel,
     GitHubAppInstallationRepositoriesEventModel,
     GitHubCheckRunEventModel,
-    GitHubCheckSuiteEventModel,
-    GitHubPullRequestEventModel,
 )
 from structlog.stdlib import BoundLogger
 
 from timessquare.config import config
 from timessquare.storage.github.apimodels import (
+    GitHubCheckSuiteEventWithNullableBranchModel,
     GitHubInstallationTargetRenamedEventModel,
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
@@ -500,7 +499,6 @@ async def handle_installation_target_renamed(
 
 
 @router.register("pull_request", action="opened")
-@filter_installation_owner
 async def handle_pr_opened(
     event: Event,
     logger: BoundLogger,
@@ -508,34 +506,41 @@ async def handle_pr_opened(
     *args: Any,
     **kwargs: Any,
 ) -> None:
-    """Handle the ``pull_request`` (opened) webhook event from
-    GitHub.
+    """Handle the ``pull_request`` (opened) webhook event from GitHub by
+    ignoring it.
+
+    The event is received and logged, and nothing else: no task is queued
+    and no GitHub API request is made. That is also why this handler is not
+    gated by `filter_installation_owner`, whose installation lookup would be
+    a GitHub API request made only to decide whether to ignore the event.
+
+    .. warning::
+
+       Do not use ``pull_request`` events to trigger notebook checks. GitHub
+       delivers this event for pull requests from forks, with a head commit
+       that anyone can author, so acting on it would execute untrusted
+       notebooks with Times Square's credentials. Checks are triggered by
+       ``check_suite`` events instead (see `handle_check_suite_request`),
+       which GitHub only sends for commits pushed to the repository where
+       the app is installed.
 
     Parameters
     ----------
-    event : `gidgethub.sansio.Event`
-         The parsed event payload.
+    event
+        The parsed event payload.
     logger
-        The logger instance
-    arq_queue : `safir.dependencies.arq.ArqQueue`
-        An arq queue client.
+        The logger instance.
+    arq_queue
+        An arq queue client, which is not used.
     """
-    logger.info(
-        "GitHub pull_request opened event",
+    logger.debug(
+        "Ignoring GitHub pull_request opened event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
     )
 
-    payload = GitHubPullRequestEventModel.model_validate(event.data)
-
-    await arq_queue.enqueue(
-        "pull_request_sync",
-        payload=payload,
-    )
-
 
 @router.register("pull_request", action="synchronize")
-@filter_installation_owner
 async def handle_pr_sync(
     event: Event,
     logger: BoundLogger,
@@ -543,29 +548,37 @@ async def handle_pr_sync(
     *args: Any,
     **kwargs: Any,
 ) -> None:
-    """Handle the ``pull_request`` (synchronize) webhook event from
-    GitHub.
+    """Handle the ``pull_request`` (synchronize) webhook event from GitHub by
+    ignoring it.
+
+    The event is received and logged, and nothing else: no task is queued
+    and no GitHub API request is made. That is also why this handler is not
+    gated by `filter_installation_owner`, whose installation lookup would be
+    a GitHub API request made only to decide whether to ignore the event.
+
+    .. warning::
+
+       Do not use ``pull_request`` events to trigger notebook checks. GitHub
+       delivers this event for pull requests from forks, with a head commit
+       that anyone can author, so acting on it would execute untrusted
+       notebooks with Times Square's credentials. Checks are triggered by
+       ``check_suite`` events instead (see `handle_check_suite_request`),
+       which GitHub only sends for commits pushed to the repository where
+       the app is installed.
 
     Parameters
     ----------
-    event : `gidgethub.sansio.Event`
-         The parsed event payload.
+    event
+        The parsed event payload.
     logger
-        The logger instance
-    arq_queue : `safir.dependencies.arq.ArqQueue`
-        An arq queue client.
+        The logger instance.
+    arq_queue
+        An arq queue client, which is not used.
     """
-    logger.info(
-        "GitHub pull_request synchronize event",
+    logger.debug(
+        "Ignoring GitHub pull_request synchronize event",
         number=event.data["number"],
         repo=event.data["repository"]["full_name"],
-    )
-
-    payload = GitHubPullRequestEventModel.model_validate(event.data)
-
-    await arq_queue.enqueue(
-        "pull_request_sync",
-        payload=payload,
     )
 
 
@@ -589,6 +602,19 @@ async def handle_check_suite_request(
     the PR UI. Both "requested" and "rerequested" actions require Times Square
     to create a new check run.
 
+    This event and ``check_run`` (rerequested), handled by
+    `handle_check_run_rerequested`, are the events that start a check of a
+    commit's notebooks. GitHub sends ``check_suite`` (requested) only for
+    commits pushed to the repository where the app is installed, never for a
+    fork's commits, and re-requesting a check requires write access. The
+    queued task does not rely on that alone: the check run service
+    independently verifies that the commit is on a branch of the repository,
+    which a fork's commits never are, and skips the check otherwise. That
+    also skips a commit that is no longer on any branch, such as one whose
+    branch was deleted after a squash or rebase merge. For a requested check
+    suite whose commit GitHub may not show on its branch yet, the task
+    defers itself a few times before skipping.
+
     https://docs.github.com/en/developers/webhooks-and-events/webhooks/webhook-events-and-payloads#check_suite
 
     Parameters
@@ -606,7 +632,9 @@ async def handle_check_suite_request(
             "GitHub check suite request event",
             repo=event.data["repository"]["full_name"],
         )
-        payload = GitHubCheckSuiteEventModel.model_validate(event.data)
+        payload = GitHubCheckSuiteEventWithNullableBranchModel.model_validate(
+            event.data
+        )
         logger.debug("GitHub check suite request payload", payload=payload)
 
         # Note that architecturally it might be possible to run this as part
@@ -668,6 +696,17 @@ async def handle_check_run_rerequested(
     **kwargs: Any,
 ) -> None:
     """Handle the ``check_run`` (rerequested) webhook event from GitHub.
+
+    Like ``check_suite`` (see `handle_check_suite_request`), this event
+    starts a check of a commit's notebooks: the queued task re-runs the
+    check run, executing the notebooks for a notebook check. The check run
+    service applies the same guard first, verifying that the commit is on a
+    branch of the repository. A commit from a fork, or one that is no longer
+    on any branch, such as one whose branch was deleted after a squash or
+    rebase merge, has its check run concluded as cancelled instead. The check
+    run held the commit's earlier result, and a neutral conclusion would
+    satisfy a required check, so a refused re-run must not turn an earlier
+    failure into a pass.
 
     Parameters
     ----------

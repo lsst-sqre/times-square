@@ -11,13 +11,23 @@ from pathlib import PurePosixPath
 from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl
-from safir.github.models import GitHubRepoOwnerModel, GitHubRepositoryModel
+from safir.github.models import (
+    GitHubCheckSuiteModel,
+    GitHubRepoOwnerModel,
+    GitHubRepositoryModel,
+)
 from safir.github.webhooks import (
     GitHubAppInstallationModel,
+    GitHubCheckSuiteEventModel,
     GitHubPushEventModel,
 )
 
 __all__ = [
+    "GitHubCheckSuiteEventWithNullableBranchModel",
+    "GitHubCheckSuiteHeadBranchModel",
+    "GitHubCheckSuiteWithNullableBranchModel",
+    "GitHubCommitComparisonModel",
+    "GitHubCommitComparisonStatus",
     "GitHubInstallationTargetChangesModel",
     "GitHubInstallationTargetLoginChangeModel",
     "GitHubInstallationTargetRenamedEventModel",
@@ -81,6 +91,108 @@ class GitHubRepositoryWithIdModel(GitHubRepositoryModel):
         GitHubRepoOwnerWithIdModel,
         Field(description="The repository's owner, including its numeric ID."),
     ]
+
+
+class GitHubCheckSuiteHeadBranchModel(BaseModel):
+    """A check suite from the GitHub REST API, parsed only for its head
+    branch.
+
+    Safir's `~safir.github.models.GitHubCheckSuiteModel` requires the head
+    branch, which GitHub can report as `None`.
+
+    https://docs.github.com/en/rest/checks/suites#get-a-check-suite
+    """
+
+    head_branch: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Name of the branch the check suite's commit was pushed to, "
+                "which may since have been renamed or deleted. For a commit "
+                "from a fork, GitHub reports no branch for a third-party "
+                "app's check suite, such as Times Square's, while GitHub "
+                "Actions' check suites name the fork's branch, which need "
+                "not exist in the repository the check suite belongs to."
+            )
+        ),
+    ] = None
+
+
+class GitHubCheckSuiteWithNullableBranchModel(GitHubCheckSuiteModel):
+    """The ``check_suite`` object of a ``check_suite`` webhook payload, whose
+    head branch may be `None`.
+
+    Safir's `~safir.github.models.GitHubCheckSuiteModel` requires the head
+    branch, which GitHub can report as `None`.
+    """
+
+    # Widening the base model's str field is the point of this model.
+    head_branch: Annotated[  # type: ignore[assignment]
+        str | None,
+        Field(
+            description=(
+                "Name of the branch the check suite's commit was pushed to, "
+                "or `None` if GitHub reports no branch. A check suite with "
+                "no head branch can still be for a commit that is the head "
+                "of a branch, or in the history of the default branch."
+            )
+        ),
+    ]
+
+
+class GitHubCheckSuiteEventWithNullableBranchModel(GitHubCheckSuiteEventModel):
+    """A ``check_suite`` webhook payload whose check suite's head branch may
+    be `None`.
+
+    https://docs.github.com/en/webhooks/webhook-events-and-payloads#check_suite
+
+    Times Square validates check suite payloads with this model, rather than
+    Safir's `~safir.github.webhooks.GitHubCheckSuiteEventModel`, so that a
+    check suite with no head branch is still queued and checked.
+    """
+
+    check_suite: Annotated[
+        GitHubCheckSuiteWithNullableBranchModel,
+        Field(description="Information about the check suite."),
+    ]
+
+
+class GitHubCommitComparisonStatus(StrEnum):
+    """How the head commit of a comparison relates to its base commit."""
+
+    identical = "identical"
+    """The head and base are the same commit."""
+
+    behind = "behind"
+    """The head commit is an ancestor of the base commit."""
+
+    ahead = "ahead"
+    """The base commit is an ancestor of the head commit."""
+
+    diverged = "diverged"
+    """Neither commit is an ancestor of the other."""
+
+
+class GitHubCommitComparisonModel(BaseModel):
+    """A comparison of two commits, parsed for how they relate.
+
+    https://docs.github.com/en/rest/commits/commits#compare-two-commits
+    """
+
+    status: Annotated[
+        GitHubCommitComparisonStatus,
+        Field(description="How the head commit relates to the base commit."),
+    ]
+
+    @property
+    def head_is_in_base(self) -> bool:
+        """Whether the head commit is the base commit or one of its
+        ancestors.
+        """
+        return self.status in (
+            GitHubCommitComparisonStatus.identical,
+            GitHubCommitComparisonStatus.behind,
+        )
 
 
 class GitHubPushEventWithIdModel(GitHubPushEventModel):

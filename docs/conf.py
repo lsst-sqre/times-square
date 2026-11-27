@@ -38,7 +38,6 @@ def create_github_app_qs(domain="data-dev.lsst.cloud"):
         ("events[]", "push"),
         ("events[]", "check_run"),
         ("events[]", "check_suite"),
-        ("events[]", "pull_request"),
         ("events[]", "repository"),
         ("events[]", "installation_target"),
         ("contents", "read"),

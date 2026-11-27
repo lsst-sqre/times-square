@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from arq.jobs import deserialize_job, serialize_job
+
 from timessquare.storage.github.apimodels import (
+    GitHubCheckSuiteEventWithNullableBranchModel,
     GitHubInstallationTargetRenamedEventModel,
     GitHubPushEventWithIdModel,
     GitHubRepositoryRenamedEventModel,
@@ -30,6 +33,34 @@ def test_push_event_carries_numeric_ids() -> None:
     assert event.repository.owner.id == 21031067
     assert event.repository.owner.login == "Codertocat"
     assert event.installation.id == 456
+
+
+def test_check_suite_event_round_trips_through_arq() -> None:
+    """Test that a check suite payload with no head branch survives arq's
+    job serialization, which is how the webhook handler hands it to the
+    ``create_check_run`` worker task.
+    """
+    json_path = Path(__file__).parent.joinpath(
+        "../../data/github_webhooks/check_suite_completed.json"
+    )
+    payload = json.loads(json_path.read_text())
+    payload["check_suite"]["head_branch"] = None
+    event = GitHubCheckSuiteEventWithNullableBranchModel.model_validate(
+        payload
+    )
+
+    job = deserialize_job(
+        serialize_job(
+            "create_check_run",
+            (),
+            {"payload": event},
+            job_try=None,
+            enqueue_time_ms=0,
+        )
+    )
+
+    assert job.kwargs["payload"] == event
+    assert job.kwargs["payload"].check_suite.head_branch is None
 
 
 def test_repository_renamed_event() -> None:

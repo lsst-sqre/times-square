@@ -16,11 +16,17 @@ async def pull_request_sync(
     *,
     payload: GitHubPullRequestEventModel,
 ) -> str:
-    """Process pull_requet_sync tasks, triggered by GitHub Pull Request
-    events.
+    """Process pull_request_sync tasks, which are no longer queued.
 
-    This function runs a CI testing service for Times Square content and
-    configuration.
+    The ``pull_request`` webhook handlers used to queue this task, but now
+    ignore the event instead. The task stays registered only so that jobs
+    already on the queue when that change was deployed still resolve.
+
+    This task is a stub that does nothing, and it must stay that way. Pull
+    request events are delivered for pull requests from forks, so a check
+    triggered from here would execute notebooks that anyone can author.
+    Checks are instead run by the ``create_check_run`` task, triggered by
+    ``check_suite`` events.
     """
     logger = ctx["logger"].bind(
         task="pull_request_sync",
